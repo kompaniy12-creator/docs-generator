@@ -139,6 +139,15 @@
   .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
   .status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
   small.hint{display:block;color:#888;font-size:12px;margin-top:4px}
+  .site-footer{
+    margin-top:48px;
+    padding-top:20px;
+    border-top:1px solid #e5e5e5;
+    text-align:center;
+    font-size:13px;
+  }
+  .site-footer a{color:#666;text-decoration:none}
+  .site-footer a:hover{color:#111;text-decoration:underline}
 </style>
 </head>
 <body>
@@ -199,6 +208,10 @@
     <button type="submit" id="submitBtn">Pobierz dokumenty (ZIP)</button>
     <div id="status" class="status"></div>
   </form>
+
+  <footer class="site-footer">
+    <a href="rodo.html">Informacja o przetwarzaniu danych osobowych (RODO)</a>
+  </footer>
 </main>
 
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
