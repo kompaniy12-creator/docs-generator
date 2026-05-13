@@ -1,6 +1,13 @@
 /* global PDFLib, fontkit, JSZip */
 const { PDFDocument, rgb } = PDFLib;
 
+// Transliterate Polish characters to ASCII and strip everything except a-zA-Z
+function toAsciiLetters(s) {
+  const map = { ą:'a', ć:'c', ę:'e', ł:'l', ń:'n', ó:'o', ś:'s', ź:'z', ż:'z',
+    Ą:'A', Ć:'C', Ę:'E', Ł:'L', Ń:'N', Ó:'O', Ś:'S', Ź:'Z', Ż:'Z' };
+  return (s || '').split('').map(c => map[c] || c).join('').replace(/[^a-zA-Z]/g, '');
+}
+
 // ---------------- Dynamic person groups ----------------
 const MAX_PERSONS = 4;
 
@@ -620,20 +627,19 @@ form.addEventListener('submit', async (e) => {
     ]);
 
     const zip = new JSZip();
-    zip.file('Lista wspolnikow.pdf', wsp);
-    zip.file('Lista czlonkow zarzadu.pdf', zar);
-    zip.file('Oswiadczenie cudzoziemiec.pdf', cud);
+    zip.file('ShareholdersList.pdf', wsp);
+    zip.file('BoardMembersList.pdf', zar);
+    zip.file('ForeignStatusDeclaration.pdf', cud);
     zgody.forEach((bytes, i) => {
       const m = filledZarzad[i];
-      const safe = `${m.imie} ${m.nazwisko}`.trim().replace(/[^\p{L}\p{N} -]/gu, '');
-      zip.file(`Zgoda - ${safe}.pdf`, bytes);
+      const safe = toAsciiLetters(`${m.imie}${m.nazwisko}`);
+      zip.file(`Consent${safe}.pdf`, bytes);
     });
     const blob = await zip.generateAsync({ type: 'blob' });
 
-    const safeName = (data.company.split(' ')[0] || 'spolka').toLowerCase().replace(/[^a-z0-9]/g, '');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `dokumenty_${safeName}_${data.date}.zip`;
+    a.download = 'Documents.zip';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
