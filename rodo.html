@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Informacja o przetwarzaniu danych osobowych (RODO) — TD Consulting Group</title>
 <style>
+  :root{
+    --brand-navy:#1B3F7F;
+    --brand-navy-dark:#15315F;
+    --brand-green:#1FA84B;
+    --brand-tint:#EEF3F9;
+  }
   *,*::before,*::after{box-sizing:border-box}
   html,body{margin:0;padding:0}
   body{
@@ -15,8 +21,10 @@
     -webkit-font-smoothing:antialiased;
   }
   main{max-width:820px;margin:0 auto;padding:48px 24px 96px}
-  h1{font-size:26px;font-weight:700;margin:0 0 8px;letter-spacing:-0.01em}
-  h2{font-size:18px;font-weight:600;margin:40px 0 12px;letter-spacing:-0.005em;color:#111}
+  .brand{text-align:center;margin:0 0 24px}
+  .brand img{display:inline-block;width:auto;height:72px;object-fit:contain}
+  h1{font-size:26px;font-weight:700;margin:0 0 8px;letter-spacing:-0.01em;color:var(--brand-navy)}
+  h2{font-size:18px;font-weight:600;margin:40px 0 12px;letter-spacing:-0.005em;color:var(--brand-navy)}
   h3{font-size:15px;font-weight:600;margin:24px 0 8px;color:#111}
   h4{font-size:14px;font-weight:600;margin:16px 0 6px;color:#333}
   .lead{color:#666;margin:0 0 32px;font-size:15px}
@@ -25,15 +33,15 @@
   ul li{margin:4px 0;font-size:14px;color:#222}
   hr{border:0;border-top:1px solid #e5e5e5;margin:48px 0}
   .meta{
-    background:#fafafa;
-    border:1px solid #ececec;
+    background:var(--brand-tint);
+    border:1px solid #d6e0ee;
     border-radius:8px;
     padding:16px 18px;
     margin:0 0 24px;
     font-size:13.5px;
   }
-  .meta strong{display:inline-block;min-width:70px;color:#555;font-weight:500}
-  a{color:#0a66c2;text-decoration:none}
+  .meta strong{display:inline-block;min-width:70px;color:var(--brand-navy);font-weight:600}
+  a{color:var(--brand-navy);text-decoration:none}
   a:hover{text-decoration:underline}
   .back{
     display:inline-block;
@@ -55,7 +63,7 @@
     font-weight:600;
     text-transform:uppercase;
     letter-spacing:.08em;
-    color:#888;
+    color:var(--brand-green);
     margin-bottom:8px;
   }
 </style>
@@ -63,6 +71,9 @@
 <body>
 <main>
   <a href="index.html" class="back">← Powrót do generatora dokumentów</a>
+  <div class="brand">
+    <img src="logo.png" alt="TD Consulting Group" />
+  </div>
   <h1>Informacja o przetwarzaniu danych osobowych</h1>
   <p class="lead">Niniejsza informacja przedstawia zasady przetwarzania danych osobowych przez TD Consulting Group sp. z o.o. zgodnie z RODO oraz przepisami AML.</p>
 
