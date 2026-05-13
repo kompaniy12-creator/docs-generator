@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Generator dokumentów spółki</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:#fff;
+    color:#111;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  main{max-width:760px;margin:0 auto;padding:48px 24px 96px}
+  h1{font-size:24px;font-weight:600;margin:0 0 8px;letter-spacing:-0.01em}
+  .lead{color:#666;margin:0 0 40px;font-size:15px}
+  fieldset{
+    border:1px solid #e5e5e5;
+    border-radius:8px;
+    padding:24px;
+    margin:0 0 20px;
+  }
+  legend{
+    padding:0 8px;
+    font-weight:600;
+    font-size:14px;
+    color:#111;
+  }
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .row.three{grid-template-columns:1fr 1fr 1fr}
+  @media (max-width:560px){
+    .row,.row.three{grid-template-columns:1fr}
+  }
+  label{display:block;font-size:13px;font-weight:500;margin-bottom:6px;color:#333}
+  input[type="text"],input[type="date"],textarea{
+    width:100%;
+    padding:10px 12px;
+    border:1px solid #d4d4d4;
+    border-radius:6px;
+    font:inherit;
+    font-size:14px;
+    background:#fff;
+    transition:border-color .15s,box-shadow .15s;
+  }
+  input[type="text"]:focus,input[type="date"]:focus,textarea:focus{
+    outline:none;
+    border-color:#111;
+    box-shadow:0 0 0 3px rgba(0,0,0,.06);
+  }
+  .field{margin-bottom:14px}
+  .field:last-child{margin-bottom:0}
+  .subgroup{
+    border:1px solid #ececec;
+    border-radius:6px;
+    padding:16px;
+    margin-bottom:12px;
+    background:#fafafa;
+  }
+  .subgroup h3{
+    margin:0 0 12px;
+    font-size:13px;
+    font-weight:600;
+    color:#555;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+  }
+  .radio-group{display:flex;gap:24px;margin-top:4px}
+  .radio-group label{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-weight:500;
+    margin-bottom:0;
+    cursor:pointer;
+  }
+  .radio-group input{margin:0;width:18px;height:18px;accent-color:#111}
+  .question{margin-bottom:20px}
+  .question:last-child{margin-bottom:0}
+  .question p{margin:0 0 8px;font-size:14px;font-weight:500}
+  button[type="submit"]{
+    background:#111;
+    color:#fff;
+    border:none;
+    padding:14px 28px;
+    border-radius:8px;
+    font:inherit;
+    font-size:15px;
+    font-weight:600;
+    cursor:pointer;
+    width:100%;
+    transition:background .15s;
+  }
+  button[type="submit"]:hover{background:#000}
+  button[type="submit"]:disabled{background:#999;cursor:wait}
+  .status{
+    margin-top:16px;
+    padding:12px 14px;
+    border-radius:6px;
+    font-size:14px;
+    display:none;
+  }
+  .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+  .status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+  small.hint{display:block;color:#888;font-size:12px;margin-top:4px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Generator dokumentów spółki</h1>
+  <p class="lead">Lista wspólników, lista członków zarządu, oświadczenie o statusie Cudzoziemca. Po wypełnieniu formularza pobierzesz wszystkie trzy dokumenty w pliku ZIP.</p>
+
+  <form id="form" novalidate>
+
+    <fieldset>
+      <legend>Dane spółki</legend>
+      <div class="field">
+        <label for="company">Pełna nazwa spółki</label>
+        <input id="company" name="company" type="text" required placeholder="np. ART-CON GROUP SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ" />
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="seat">Siedziba</label>
+          <input id="seat" name="seat" type="text" required placeholder="np. POZNAŃ (POZNAŃ-STARE MIASTO, POZNAŃ, WIELKOPOLSKIE)" />
+        </div>
+        <div class="field">
+          <label for="date">Data (na dzień)</label>
+          <input id="date" name="date" type="date" required />
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Wspólnicy</legend>
+      <div id="wspolnicy"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Członkowie zarządu</legend>
+      <div id="zarzad"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Status Cudzoziemca</legend>
+      <div class="question">
+        <p>Czy spółka jest Cudzoziemcem w rozumieniu ustawy z dnia 24 marca 1920 r.?</p>
+        <div class="radio-group">
+          <label><input type="radio" name="foreign" value="TAK" required /> TAK</label>
+          <label><input type="radio" name="foreign" value="NIE" required /> NIE</label>
+        </div>
+      </div>
+      <div class="question">
+        <p>Czy spółka jest właścicielem nieruchomości na terenie Rzeczypospolitej Polskiej?</p>
+        <div class="radio-group">
+          <label><input type="radio" name="property" value="TAK" required /> TAK</label>
+          <label><input type="radio" name="property" value="NIE" required /> NIE</label>
+        </div>
+      </div>
+    </fieldset>
+
+    <button type="submit" id="submitBtn">Pobierz dokumenty (ZIP)</button>
+    <div id="status" class="status"></div>
+  </form>
+</main>
+
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
