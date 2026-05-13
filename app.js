@@ -1,17 +1,21 @@
 /* global PDFLib, fontkit, JSZip */
 const { PDFDocument, rgb } = PDFLib;
 
-// ---------------- Render dynamic form rows ----------------
-const PERSON_COUNT = 4;
+// ---------------- Dynamic person groups ----------------
+const MAX_PERSONS = 4;
 
 function makePersonGroup(prefix, idx, kind) {
   const wrapper = document.createElement('div');
   wrapper.className = 'subgroup';
-  const title = kind === 'wsp'
-    ? `Wspólnik ${idx}`
-    : `Członek zarządu ${idx}`;
+  wrapper.dataset.idx = idx;
+  wrapper.dataset.prefix = prefix;
+  const title = kind === 'wsp' ? 'Wspólnik' : 'Członek zarządu';
+  const removeBtn = idx > 1
+    ? `<button type="button" class="remove-btn" aria-label="Usuń">×</button>`
+    : '';
   wrapper.innerHTML = `
-    <h3>${title}${idx > 1 ? ' (opcjonalnie)' : ''}</h3>
+    ${removeBtn}
+    <h3>${title} ${idx}</h3>
     <div class="row">
       <div class="field">
         <label>Imię${kind === 'wsp' ? ' / nazwa (osoba prawna)' : ''}</label>
@@ -30,12 +34,47 @@ function makePersonGroup(prefix, idx, kind) {
   return wrapper;
 }
 
-const wspContainer = document.getElementById('wspolnicy');
-const zarContainer = document.getElementById('zarzad');
-for (let i = 1; i <= PERSON_COUNT; i++) {
-  wspContainer.appendChild(makePersonGroup('w', i, 'wsp'));
-  zarContainer.appendChild(makePersonGroup('z', i, 'zar'));
+function setupDynamicList(containerId, addBtnId, prefix, kind) {
+  const container = document.getElementById(containerId);
+  const addBtn = document.getElementById(addBtnId);
+
+  const renumber = () => {
+    const groups = container.querySelectorAll('.subgroup');
+    groups.forEach((g, i) => {
+      const newIdx = i + 1;
+      g.dataset.idx = newIdx;
+      g.querySelector('h3').textContent =
+        (kind === 'wsp' ? 'Wspólnik ' : 'Członek zarządu ') + newIdx;
+      // update input names to keep collectData() working
+      g.querySelectorAll('input').forEach(inp => {
+        inp.name = inp.name.replace(/_\d+$/, '_' + newIdx);
+      });
+    });
+    addBtn.style.display = groups.length >= MAX_PERSONS ? 'none' : '';
+  };
+
+  const addGroup = () => {
+    const next = container.querySelectorAll('.subgroup').length + 1;
+    if (next > MAX_PERSONS) return;
+    const g = makePersonGroup(prefix, next, kind);
+    container.appendChild(g);
+    renumber();
+    g.querySelector('input').focus();
+  };
+
+  container.appendChild(makePersonGroup(prefix, 1, kind));
+  addBtn.addEventListener('click', addGroup);
+  container.addEventListener('click', (e) => {
+    const btn = e.target.closest('.remove-btn');
+    if (!btn) return;
+    btn.closest('.subgroup').remove();
+    renumber();
+  });
+  renumber();
 }
+
+setupDynamicList('wspolnicy', 'addWspolnik', 'w', 'wsp');
+setupDynamicList('zarzad', 'addZarzad', 'z', 'zar');
 
 // Default today's date
 document.getElementById('date').valueAsDate = new Date();
@@ -66,7 +105,7 @@ function collectData() {
 
   const collect = (prefix) => {
     const out = [];
-    for (let i = 1; i <= PERSON_COUNT; i++) {
+    for (let i = 1; i <= MAX_PERSONS; i++) {
       const imie = get(`${prefix}_imie_${i}`).toUpperCase();
       const nazwisko = get(`${prefix}_nazwisko_${i}`).toUpperCase();
       const adres = get(`${prefix}_adres_${i}`);
