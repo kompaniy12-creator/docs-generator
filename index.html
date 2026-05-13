@@ -16,7 +16,21 @@
   }
   main{max-width:760px;margin:0 auto;padding:48px 24px 96px}
   h1{font-size:24px;font-weight:600;margin:0 0 8px;letter-spacing:-0.01em}
-  .lead{color:#666;margin:0 0 40px;font-size:15px}
+  .lead{color:#666;margin:0 0 12px;font-size:15px}
+  .docs-list{
+    margin:0 0 40px;
+    padding:16px 18px 16px 36px;
+    background:#fafafa;
+    border:1px solid #ececec;
+    border-radius:8px;
+  }
+  .docs-list li{
+    font-size:13.5px;
+    color:#333;
+    margin:6px 0;
+    line-height:1.55;
+  }
+  .docs-list li strong{color:#111;font-weight:600}
   fieldset{
     border:1px solid #e5e5e5;
     border-radius:8px;
@@ -153,7 +167,13 @@
 <body>
 <main>
   <h1>Generator dokumentów spółki</h1>
-  <p class="lead">Lista wspólników, lista członków zarządu, oświadczenie o statusie Cudzoziemca. Po wypełnieniu formularza pobierzesz wszystkie trzy dokumenty w pliku ZIP.</p>
+  <p class="lead">Po wypełnieniu formularza pobierzesz pakiet dokumentów w pliku ZIP. W zestawie znajdziesz:</p>
+  <ul class="docs-list">
+    <li><strong>Lista wspólników spółki</strong> — wykaz wszystkich wspólników wraz z ich danymi i adresami do doręczeń; składany m.in. do KRS oraz instytucji finansowych.</li>
+    <li><strong>Lista członków zarządu spółki</strong> — wykaz osób uprawnionych do reprezentowania spółki; wymagany przez KRS, banki i kontrahentów.</li>
+    <li><strong>Oświadczenie zarządu w sprawie statusu Cudzoziemca</strong> — oświadczenie czy spółka jest cudzoziemcem w rozumieniu ustawy z 24 marca 1920 r. o nabywaniu nieruchomości; wymagane przy nabywaniu nieruchomości w Polsce.</li>
+    <li><strong>Oświadczenie o wyrażeniu ZGODY na powołanie do zarządu</strong> (po jednym na każdego członka zarządu) — pisemna zgoda na pełnienie funkcji oraz wskazanie adresu do doręczeń; wymagana przy rejestracji i zmianach w KRS.</li>
+  </ul>
 
   <form id="form" novalidate>
 
