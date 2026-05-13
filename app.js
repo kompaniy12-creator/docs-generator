@@ -13,6 +13,18 @@ function makePersonGroup(prefix, idx, kind) {
   const removeBtn = idx > 1
     ? `<button type="button" class="remove-btn" aria-label="Usuń">×</button>`
     : '';
+  const extras = kind === 'zar' ? `
+    <div class="row">
+      <div class="field">
+        <label>Miasto (do oświadczenia ZGODY)</label>
+        <input type="text" name="${prefix}_miasto_${idx}" required />
+      </div>
+      <div class="field">
+        <label>PESEL</label>
+        <input type="text" name="${prefix}_pesel_${idx}" required pattern="[0-9]{11}" title="PESEL musi zawierać 11 cyfr" inputmode="numeric" maxlength="11" />
+      </div>
+    </div>
+  ` : '';
   wrapper.innerHTML = `
     ${removeBtn}
     <h3>${title} ${idx}</h3>
@@ -30,6 +42,7 @@ function makePersonGroup(prefix, idx, kind) {
       <label>Adres do doręczeń</label>
       <input type="text" name="${prefix}_adres_${idx}" required />
     </div>
+    ${extras}
   `;
   return wrapper;
 }
@@ -109,7 +122,9 @@ function collectData() {
       const imie = get(`${prefix}_imie_${i}`).toUpperCase();
       const nazwisko = get(`${prefix}_nazwisko_${i}`).toUpperCase();
       const adres = get(`${prefix}_adres_${i}`);
-      out.push({ imie, nazwisko, adres, empty: !imie && !nazwisko && !adres });
+      const miasto = get(`${prefix}_miasto_${i}`);
+      const pesel = get(`${prefix}_pesel_${i}`);
+      out.push({ imie, nazwisko, adres, miasto, pesel, empty: !imie && !nazwisko && !adres });
     }
     return out;
   };
@@ -413,6 +428,91 @@ async function generateCudzoziemiec(data) {
   return await doc.save();
 }
 
+async function generateZgoda(data, member) {
+  const { doc, page, font, bold } = await newPdf();
+  const W = page.getWidth();
+  const margin = 60;
+  const innerW = W - margin * 2;
+  const size = 11;
+  const lh = 16;
+
+  // Top-right: "Miasto, DD.MM.YYYY"
+  const [d, m, y] = data.date.split('-');
+  const dateDots = `${d}.${m}.${y}`;
+  const headerLine = `${member.miasto || ''}, ${dateDots}`;
+  let cy = page.getHeight() - 60;
+  const headerW = font.widthOfTextAtSize(headerLine, size);
+  page.drawText(headerLine, { x: W - margin - headerW, y: cy, font, size });
+  cy -= lh * 2;
+
+  // Left block: imię nazwisko / adres / PESEL
+  const fullName = `${member.imie} ${member.nazwisko}`.trim();
+  page.drawText(fullName, { x: margin, y: cy, font, size }); cy -= lh;
+  page.drawText(member.adres || '', { x: margin, y: cy, font, size }); cy -= lh;
+  page.drawText(`PESEL: ${member.pesel || ''}`, { x: margin, y: cy, font, size }); cy -= lh * 2;
+
+  // Title (3 lines, centered, bold)
+  const titleLines = [
+    'OŚWIADCZENIE',
+    'O WYRAŻENIU ZGODY NA POWOŁANIE DO ZARZĄDU SPÓŁKI',
+    'ORAZ WSKAZANIE ADRESU DO DORĘCZEŃ',
+  ];
+  for (const line of titleLines) {
+    const w = bold.widthOfTextAtSize(line, 12);
+    page.drawText(line, { x: (W - w) / 2, y: cy, font: bold, size: 12 });
+    cy -= lh;
+  }
+  cy -= lh;
+
+  // Body 1
+  const body1 = `Niniejszym wyrażam zgodę na powołanie w skład Zarządu spółki ${data.company} z siedzibą w ${data.seat} i powierzenie mi funkcji Członka Zarządu.`;
+  cy = drawWrapped(page, body1, margin, cy, innerW, size, font, lh);
+  cy -= lh / 2;
+
+  // Body 2
+  const body2 = 'Stosownie do treści przepisu art. 166 § 1 pkt 5 ustawy z dnia 15 września 2000 roku Kodeks spółek handlowych oraz art. 19a ust. 5 ustawy z dnia 20 sierpnia 1997 roku o Krajowym Rejestrze Sądowym niniejszym wskazuję adres do doręczeń:';
+  cy = drawWrapped(page, body2, margin, cy, innerW, size, font, lh);
+  cy -= lh / 2;
+
+  // Address
+  page.drawText(member.adres || '', { x: margin, y: cy, font, size });
+  cy -= lh * 1.5;
+
+  // "Ponadto oświadczam, że:"
+  page.drawText('Ponadto oświadczam, że:', { x: margin, y: cy, font, size });
+  cy -= lh;
+
+  // Bulleted list
+  const bullets = [
+    'posiadam pełną zdolność do czynności prawnych,',
+    'nie zachodzą przesłanki uniemożliwiające powołanie mnie do Zarządu Spółki, o których mowa w przepisie art. 18 ustawy z dnia 15 września 2000 r. Kodeks spółek handlowych, art. 22 pkt 2 ustawy z dnia 16 grudnia 2016 r. o zasadach zarządzania mieniem państwowym i innych powszechnie obowiązujących przepisach prawa.',
+  ];
+  for (const b of bullets) {
+    const bulletIndent = margin + 16;
+    page.drawText('•', { x: margin + 4, y: cy, font, size });
+    cy = drawWrapped(page, b, bulletIndent, cy, innerW - 16, size, font, lh);
+    cy -= 4;
+  }
+  cy -= lh / 2;
+
+  // Body 3
+  const body3 = 'W przypadku zaistnienia ww. okoliczności stanowiących przeszkodę w powołaniu mnie do Zarządu, zobowiązuję się do złożenia skutecznie, najpóźniej przed dniem zaistnienia tych okoliczności (chyba, że nie jest to obiektywnie możliwe – w takim wypadku niezwłocznie po zaistnieniu takiej okoliczności), rezygnacji z kandydowania na stanowisko członka Zarządu.';
+  cy = drawWrapped(page, body3, margin, cy, innerW, size, font, lh);
+  cy -= lh / 2;
+
+  // Body 4
+  const body4 = 'Jeżeli po powołaniu na stanowisko członka Zarządu Spółki pojawią się okoliczności stanowiące przeszkodę w pełnieniu funkcji członka Zarządu, zobowiązuję się do złożenia skutecznie, najpóźniej przed dniem zaistnienia tych okoliczności (chyba, że nie jest to obiektywnie możliwe – w takim wypadku niezwłocznie po zaistnieniu takiej okoliczności), rezygnacji z zajmowanego w Spółce stanowiska członka Zarządu.';
+  cy = drawWrapped(page, body4, margin, cy, innerW, size, font, lh);
+  cy -= lh * 3;
+
+  // Signature
+  const sigName = fullName;
+  const sigW = font.widthOfTextAtSize(sigName, size);
+  page.drawText(sigName, { x: W - margin - sigW, y: cy, font, size });
+
+  return await doc.save();
+}
+
 // ---------------- Submit ----------------
 const form = document.getElementById('form');
 const submitBtn = document.getElementById('submitBtn');
@@ -453,16 +553,23 @@ form.addEventListener('submit', async (e) => {
   try {
     await loadFonts();
     const data = collectData();
-    const [wsp, zar, cud] = await Promise.all([
+    const filledZarzad = data.zarzad.filter(z => !z.empty);
+    const [wsp, zar, cud, ...zgody] = await Promise.all([
       generateWspolnik(data),
       generateZarzad(data),
       generateCudzoziemiec(data),
+      ...filledZarzad.map(m => generateZgoda(data, m)),
     ]);
 
     const zip = new JSZip();
     zip.file('Lista wspolnikow.pdf', wsp);
     zip.file('Lista czlonkow zarzadu.pdf', zar);
     zip.file('Oswiadczenie cudzoziemiec.pdf', cud);
+    zgody.forEach((bytes, i) => {
+      const m = filledZarzad[i];
+      const safe = `${m.imie} ${m.nazwisko}`.trim().replace(/[^\p{L}\p{N} -]/gu, '');
+      zip.file(`Zgoda - ${safe}.pdf`, bytes);
+    });
     const blob = await zip.generateAsync({ type: 'blob' });
 
     const safeName = (data.company.split(' ')[0] || 'spolka').toLowerCase().replace(/[^a-z0-9]/g, '');
