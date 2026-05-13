@@ -35,7 +35,7 @@
     .row,.row.three{grid-template-columns:1fr}
   }
   label{display:block;font-size:13px;font-weight:500;margin-bottom:6px;color:#333}
-  input[type="text"],input[type="date"],textarea{
+  input[type="text"],input[type="date"],textarea,select{
     width:100%;
     padding:10px 12px;
     border:1px solid #d4d4d4;
@@ -45,11 +45,12 @@
     background:#fff;
     transition:border-color .15s,box-shadow .15s;
   }
-  input[type="text"]:focus,input[type="date"]:focus,textarea:focus{
+  input[type="text"]:focus,input[type="date"]:focus,textarea:focus,select:focus{
     outline:none;
     border-color:#111;
     box-shadow:0 0 0 3px rgba(0,0,0,.06);
   }
+  select{cursor:pointer}
   .field{margin-bottom:14px}
   .field:last-child{margin-bottom:0}
   .subgroup{

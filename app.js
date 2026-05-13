@@ -13,6 +13,14 @@ function makePersonGroup(prefix, idx, kind) {
   const removeBtn = idx > 1
     ? `<button type="button" class="remove-btn" aria-label="Usuń">×</button>`
     : '';
+  const copyFromWsp = kind === 'zar' ? `
+    <div class="field">
+      <label>Skopiuj dane z wspólnika</label>
+      <select class="copy-from-wsp">
+        <option value="">— wybierz wspólnika —</option>
+      </select>
+    </div>
+  ` : '';
   const extras = kind === 'zar' ? `
     <div class="row">
       <div class="field">
@@ -28,6 +36,7 @@ function makePersonGroup(prefix, idx, kind) {
   wrapper.innerHTML = `
     ${removeBtn}
     <h3>${title} ${idx}</h3>
+    ${copyFromWsp}
     <div class="row">
       <div class="field">
         <label>Imię${kind === 'wsp' ? ' / nazwa (osoba prawna)' : ''}</label>
@@ -45,6 +54,42 @@ function makePersonGroup(prefix, idx, kind) {
     ${extras}
   `;
   return wrapper;
+}
+
+function refreshCopyFromWspDropdowns() {
+  const wspGroups = document.querySelectorAll('#wspolnicy .subgroup');
+  const options = [];
+  wspGroups.forEach((g, i) => {
+    const imie = g.querySelector(`[name^="w_imie_"]`)?.value.trim() || '';
+    const nazwisko = g.querySelector(`[name^="w_nazwisko_"]`)?.value.trim() || '';
+    const label = `${imie} ${nazwisko}`.trim() || `Wspólnik ${i + 1}`;
+    options.push({ idx: i + 1, label });
+  });
+
+  document.querySelectorAll('#zarzad .copy-from-wsp').forEach(sel => {
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">— wybierz wspólnika —</option>' +
+      options.map(o => `<option value="${o.idx}">${o.label}</option>`).join('');
+    if (options.find(o => String(o.idx) === prev)) sel.value = prev;
+  });
+}
+
+function handleCopyFromWsp(e) {
+  const sel = e.target.closest('.copy-from-wsp');
+  if (!sel) return;
+  const val = sel.value;
+  if (!val) return;
+  const wspGroup = document.querySelectorAll('#wspolnicy .subgroup')[Number(val) - 1];
+  if (!wspGroup) return;
+  const zarGroup = sel.closest('.subgroup');
+  const get = (g, prefix) => g.querySelector(`[name^="${prefix}"]`)?.value || '';
+  const setVal = (g, prefix, v) => {
+    const inp = g.querySelector(`[name^="${prefix}"]`);
+    if (inp) { inp.value = v; inp.setCustomValidity(''); }
+  };
+  setVal(zarGroup, 'z_imie_', get(wspGroup, 'w_imie_'));
+  setVal(zarGroup, 'z_nazwisko_', get(wspGroup, 'w_nazwisko_'));
+  setVal(zarGroup, 'z_adres_', get(wspGroup, 'w_adres_'));
 }
 
 function setupDynamicList(containerId, addBtnId, prefix, kind) {
@@ -76,18 +121,31 @@ function setupDynamicList(containerId, addBtnId, prefix, kind) {
   };
 
   container.appendChild(makePersonGroup(prefix, 1, kind));
-  addBtn.addEventListener('click', addGroup);
+  addBtn.addEventListener('click', () => { addGroup(); refreshCopyFromWspDropdowns(); });
   container.addEventListener('click', (e) => {
     const btn = e.target.closest('.remove-btn');
     if (!btn) return;
     btn.closest('.subgroup').remove();
     renumber();
+    refreshCopyFromWspDropdowns();
   });
   renumber();
 }
 
 setupDynamicList('wspolnicy', 'addWspolnik', 'w', 'wsp');
 setupDynamicList('zarzad', 'addZarzad', 'z', 'zar');
+
+// Refresh dropdown labels when wspólnik names change
+document.getElementById('wspolnicy').addEventListener('input', (e) => {
+  if (e.target.name?.startsWith('w_imie_') || e.target.name?.startsWith('w_nazwisko_')) {
+    refreshCopyFromWspDropdowns();
+  }
+});
+
+// Wire up "copy from wsp" dropdown
+document.getElementById('zarzad').addEventListener('change', handleCopyFromWsp);
+
+refreshCopyFromWspDropdowns();
 
 // Default today's date
 document.getElementById('date').valueAsDate = new Date();
