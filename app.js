@@ -19,16 +19,16 @@ function makePersonGroup(prefix, idx, kind) {
     <div class="row">
       <div class="field">
         <label>Imię${kind === 'wsp' ? ' / nazwa (osoba prawna)' : ''}</label>
-        <input type="text" name="${prefix}_imie_${idx}" ${idx === 1 ? 'required' : ''} />
+        <input type="text" name="${prefix}_imie_${idx}" required />
       </div>
       <div class="field">
         <label>Nazwisko${kind === 'wsp' ? ' / nr rejestru' : ''}</label>
-        <input type="text" name="${prefix}_nazwisko_${idx}" ${idx === 1 ? 'required' : ''} />
+        <input type="text" name="${prefix}_nazwisko_${idx}" required />
       </div>
     </div>
     <div class="field">
       <label>Adres do doręczeń</label>
-      <input type="text" name="${prefix}_adres_${idx}" ${idx === 1 ? 'required' : ''} placeholder="np. ul. Marcelińska 94C/82, 60-324 Poznań" />
+      <input type="text" name="${prefix}_adres_${idx}" required />
     </div>
   `;
   return wrapper;
@@ -426,8 +426,23 @@ function showStatus(message, type) {
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   statusEl.className = 'status';
+
+  // Reject whitespace-only values on required inputs
+  let firstInvalid = null;
+  form.querySelectorAll('input[required]').forEach(inp => {
+    const v = (inp.value || '').trim();
+    if (!v) {
+      inp.setCustomValidity('To pole jest wymagane.');
+      if (!firstInvalid) firstInvalid = inp;
+    } else {
+      inp.setCustomValidity('');
+    }
+  });
+
   if (!form.checkValidity()) {
     form.reportValidity();
+    if (firstInvalid) firstInvalid.focus();
+    showStatus('Uzupełnij wszystkie wymagane pola.', 'error');
     return;
   }
 
