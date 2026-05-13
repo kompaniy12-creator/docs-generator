@@ -162,6 +162,76 @@
   }
   .site-footer a{color:#666;text-decoration:none}
   .site-footer a:hover{color:#111;text-decoration:underline}
+  .cta{
+    margin-top:56px;
+    padding:32px 28px;
+    background:#111;
+    color:#fff;
+    border-radius:12px;
+  }
+  .cta h2{
+    margin:0 0 16px;
+    font-size:22px;
+    font-weight:700;
+    letter-spacing:-0.01em;
+  }
+  .cta-text{
+    margin:0 0 12px;
+    font-size:14.5px;
+    line-height:1.6;
+    color:#d4d4d4;
+  }
+  .cta-text strong{color:#fff;font-weight:600}
+  .cta-form{margin-top:24px}
+  .cta-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:560px){.cta-row{grid-template-columns:1fr}}
+  .cta .field{margin-bottom:12px}
+  .cta .field label{color:#bbb;font-size:13px;font-weight:500;margin-bottom:6px;display:block}
+  .cta input[type="text"],
+  .cta input[type="email"],
+  .cta input[type="tel"],
+  .cta textarea{
+    width:100%;
+    padding:10px 12px;
+    border:1px solid #444;
+    border-radius:6px;
+    font:inherit;
+    font-size:14px;
+    background:#1c1c1c;
+    color:#fff;
+    transition:border-color .15s,box-shadow .15s;
+  }
+  .cta input:focus,.cta textarea:focus{
+    outline:none;
+    border-color:#fff;
+    box-shadow:0 0 0 3px rgba(255,255,255,.1);
+  }
+  .cta textarea{resize:vertical}
+  .cta button.cta-submit{
+    background:#fff;
+    color:#111;
+    border:none;
+    padding:13px 24px;
+    border-radius:8px;
+    font:inherit;
+    font-size:15px;
+    font-weight:600;
+    cursor:pointer;
+    width:100%;
+    margin-top:8px;
+    transition:background .15s;
+  }
+  .cta button.cta-submit:hover{background:#eee}
+  .cta button.cta-submit:disabled{background:#666;color:#ccc;cursor:wait}
+  .cta-disclaimer{
+    margin:14px 0 0;
+    font-size:11.5px;
+    color:#888;
+    text-align:center;
+    line-height:1.5;
+  }
+  .cta-disclaimer a{color:#aaa;text-decoration:underline}
+  .cta-disclaimer a:hover{color:#fff}
 </style>
 </head>
 <body>
@@ -228,6 +298,45 @@
     <button type="submit" id="submitBtn">Pobierz dokumenty (ZIP)</button>
     <div id="status" class="status"></div>
   </form>
+
+  <section class="cta">
+    <h2>Potrzebujesz wsparcia?</h2>
+    <p class="cta-text">
+      Nie masz pewności, czy dokumenty są wypełnione prawidłowo, albo nie wiesz, jak przeprowadzić rejestrację spółki w S24? Zostaw kontakt — nasi prawnicy oddzwonią i udzielą <strong>bezpłatnej konsultacji oraz wsparcia</strong> przy rejestracji.
+    </p>
+    <p class="cta-text">
+      Dodatkowo proponujemy profesjonalną obsługę księgową: <strong>pierwszy miesiąc księgowości na test — gratis</strong>.
+    </p>
+
+    <form id="leadForm" class="cta-form" action="https://formsubmit.co/rodo@td-group.pl" method="POST">
+      <input type="hidden" name="_subject" value="Nowe zapytanie z generatora dokumentów" />
+      <input type="hidden" name="_template" value="table" />
+      <input type="hidden" name="_captcha" value="false" />
+      <input type="text" name="_honey" style="display:none" tabindex="-1" autocomplete="off" />
+
+      <div class="cta-row">
+        <div class="field">
+          <label for="leadName">Imię i Nazwisko</label>
+          <input id="leadName" name="Imię i Nazwisko" type="text" required />
+        </div>
+        <div class="field">
+          <label for="leadPhone">Telefon</label>
+          <input id="leadPhone" name="Telefon" type="tel" required placeholder="+48 ..." />
+        </div>
+      </div>
+      <div class="field">
+        <label for="leadEmail">E-mail</label>
+        <input id="leadEmail" name="E-mail" type="email" required />
+      </div>
+      <div class="field">
+        <label for="leadMessage">Wiadomość (opcjonalnie)</label>
+        <textarea id="leadMessage" name="Wiadomość" rows="3"></textarea>
+      </div>
+      <button type="submit" class="cta-submit" id="leadSubmit">Otrzymaj bezpłatną konsultację</button>
+      <div id="leadStatus" class="status"></div>
+      <p class="cta-disclaimer">Wysyłając formularz akceptujesz <a href="rodo.html">zasady przetwarzania danych osobowych (RODO)</a>.</p>
+    </form>
+  </section>
 
   <footer class="site-footer">
     <a href="rodo.html">Informacja o przetwarzaniu danych osobowych (RODO)</a>

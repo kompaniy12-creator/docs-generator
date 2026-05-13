@@ -654,3 +654,44 @@ form.addEventListener('submit', async (e) => {
     submitBtn.textContent = originalLabel;
   }
 });
+
+// ---------------- Lead form (CTA) ----------------
+const leadForm = document.getElementById('leadForm');
+const leadStatus = document.getElementById('leadStatus');
+const leadSubmit = document.getElementById('leadSubmit');
+
+if (leadForm) {
+  leadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    leadStatus.className = 'status';
+    if (!leadForm.checkValidity()) {
+      leadForm.reportValidity();
+      return;
+    }
+    const origLabel = leadSubmit.textContent;
+    leadSubmit.disabled = true;
+    leadSubmit.textContent = 'Wysyłanie...';
+    try {
+      const fd = new FormData(leadForm);
+      const res = await fetch(leadForm.action, {
+        method: 'POST',
+        body: fd,
+        headers: { Accept: 'application/json' },
+      });
+      if (res.ok) {
+        leadStatus.textContent = 'Dziękujemy! Skontaktujemy się z Państwem najszybciej, jak to możliwe.';
+        leadStatus.className = 'status success';
+        leadForm.reset();
+      } else {
+        throw new Error('HTTP ' + res.status);
+      }
+    } catch (err) {
+      console.error(err);
+      leadStatus.textContent = 'Nie udało się wysłać formularza. Spróbuj ponownie lub napisz na rodo@td-group.pl.';
+      leadStatus.className = 'status error';
+    } finally {
+      leadSubmit.disabled = false;
+      leadSubmit.textContent = origLabel;
+    }
+  });
+}
