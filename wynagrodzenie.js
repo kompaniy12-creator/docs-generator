@@ -444,7 +444,7 @@ async function generateUchwala(data) {
   drawCentered(page, titleSubject, y, 11, bold); y -= 26;
 
   // ----- § 1
-  const par1 = `§ 1. W dniu ${isoToPLLong(data.resDate)} r. w siedzibie Spółki w ${data.city} odbyło się Nadzwyczajne Zgromadzenie Wspólników spółki ${data.company} z siedzibą w ${data.seat}, wpisanej do KRS pod numerem ${data.krs}, NIP ${data.nip}, REGON ${data.regon}.`;
+  const par1 = `§ 1. W dniu ${isoToPLLong(data.resDate)} r. w siedzibie Spółki w ${data.seat} odbyło się Nadzwyczajne Zgromadzenie Wspólników spółki ${data.company} z siedzibą w ${data.seat}, wpisanej do KRS pod numerem ${data.krs}, NIP ${data.nip}, REGON ${data.regon}.`;
   y = drawWrapped(page, par1, margin, y, innerW, sz, font, lh);
   y -= 8;
 
