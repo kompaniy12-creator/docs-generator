@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Generator dokumentów spółki</title>
+<title>Portal dokumentów spółki — TD Consulting Group</title>
 <style>
   :root{
     --brand-navy:#1B3F7F;
     --brand-navy-dark:#15315F;
     --brand-green:#1FA84B;
-    --brand-green-light:#E8F7EE;
+    --brand-green-dark:#198D3F;
     --brand-tint:#EEF3F9;
   }
   *,*::before,*::after{box-sizing:border-box}
@@ -18,239 +18,124 @@
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     background:#fff;
     color:#111;
-    line-height:1.5;
+    line-height:1.55;
     -webkit-font-smoothing:antialiased;
   }
-  main{max-width:760px;margin:0 auto;padding:48px 24px 96px}
-  .brand{
-    text-align:center;
-    margin:0 0 24px;
+  main{max-width:880px;margin:0 auto;padding:48px 24px 96px}
+  .brand{text-align:center;margin:0 0 28px}
+  .brand img{height:96px;width:auto;object-fit:contain}
+  h1{
+    font-size:28px;font-weight:700;margin:0 0 12px;letter-spacing:-0.01em;
+    color:var(--brand-navy);text-align:center;
   }
-  .brand img{
-    display:inline-block;
-    width:auto;
-    height:88px;
-    object-fit:contain;
+  .lead{
+    color:#555;font-size:15.5px;margin:0 auto 48px;
+    text-align:center;max-width:640px;
   }
-  h1{font-size:24px;font-weight:600;margin:0 0 8px;letter-spacing:-0.01em;color:var(--brand-navy)}
-  .lead{color:#666;margin:0 0 12px;font-size:15px}
-  .docs-list{
-    margin:0 0 40px;
-    padding:16px 18px 16px 36px;
-    background:var(--brand-tint);
-    border:1px solid #d6e0ee;
-    border-radius:8px;
+  .category{margin:0 0 40px}
+  .category-label{
+    font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+    color:var(--brand-green);margin:0 0 8px;
   }
-  .docs-list li{
-    font-size:13.5px;
-    color:#333;
-    margin:6px 0;
-    line-height:1.55;
+  .category h2{
+    font-size:20px;font-weight:600;margin:0 0 16px;
+    letter-spacing:-0.005em;color:var(--brand-navy);
   }
-  .docs-list li strong{color:var(--brand-navy);font-weight:600}
-  fieldset{
-    border:1px solid #e5e5e5;
-    border-radius:8px;
-    padding:24px;
-    margin:0 0 20px;
+  .cards{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+    gap:16px;
   }
-  legend{
-    padding:0 8px;
-    font-weight:600;
-    font-size:14px;
-    color:#111;
-  }
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-  .row.three{grid-template-columns:1fr 1fr 1fr}
-  @media (max-width:560px){
-    .row,.row.three{grid-template-columns:1fr}
-  }
-  label{display:block;font-size:13px;font-weight:500;margin-bottom:6px;color:#333}
-  input[type="text"],input[type="date"],textarea,select{
-    width:100%;
-    padding:10px 12px;
-    border:1px solid #d4d4d4;
-    border-radius:6px;
-    font:inherit;
-    font-size:14px;
+  .card{
+    display:flex;flex-direction:column;
+    padding:24px 22px;
     background:#fff;
-    transition:border-color .15s,box-shadow .15s;
-  }
-  input[type="text"]:focus,input[type="date"]:focus,textarea:focus,select:focus{
-    outline:none;
-    border-color:var(--brand-navy);
-    box-shadow:0 0 0 3px rgba(27,63,127,.12);
-  }
-  select{cursor:pointer}
-  .field{margin-bottom:14px}
-  .field:last-child{margin-bottom:0}
-  .subgroup{
-    border:1px solid #ececec;
-    border-radius:6px;
-    padding:16px;
-    margin-bottom:12px;
-    background:#fafafa;
-    position:relative;
-  }
-  .remove-btn{
-    position:absolute;
-    top:8px;
-    right:8px;
-    width:26px;
-    height:26px;
-    border:1px solid #d4d4d4;
-    background:#fff;
-    border-radius:50%;
-    cursor:pointer;
-    font-size:18px;
-    line-height:1;
-    color:#666;
-    padding:0;
-    transition:all .15s;
-  }
-  .remove-btn:hover{background:#fee;border-color:#fca5a5;color:#b91c1c}
-  .add-btn{
-    background:#fff;
-    border:1px dashed var(--brand-navy);
-    color:var(--brand-navy);
-    border-radius:6px;
-    padding:10px 16px;
-    font:inherit;
-    font-size:13px;
-    font-weight:500;
-    cursor:pointer;
-    width:100%;
-    transition:all .15s;
-    margin-top:4px;
-  }
-  .add-btn:hover{border-style:solid;background:var(--brand-tint);color:var(--brand-navy-dark)}
-  .subgroup h3{
-    margin:0 0 12px;
-    font-size:13px;
-    font-weight:600;
-    color:#555;
-    text-transform:uppercase;
-    letter-spacing:.04em;
-  }
-  .radio-group{display:flex;gap:24px;margin-top:4px}
-  .radio-group label{
-    display:flex;
-    align-items:center;
-    gap:8px;
-    font-weight:500;
-    margin-bottom:0;
-    cursor:pointer;
-  }
-  .radio-group input{margin:0;width:18px;height:18px;accent-color:var(--brand-navy)}
-  .question{margin-bottom:20px}
-  .question:last-child{margin-bottom:0}
-  .question p{margin:0 0 8px;font-size:14px;font-weight:500}
-  button[type="submit"]{
-    background:var(--brand-navy);
-    color:#fff;
-    border:none;
-    padding:14px 28px;
-    border-radius:8px;
-    font:inherit;
-    font-size:15px;
-    font-weight:600;
-    cursor:pointer;
-    width:100%;
-    transition:background .15s;
-  }
-  button[type="submit"]:hover{background:var(--brand-navy-dark)}
-  button[type="submit"]:disabled{background:#999;cursor:wait}
-  .status{
-    margin-top:16px;
-    padding:12px 14px;
-    border-radius:6px;
-    font-size:14px;
-    display:none;
-  }
-  .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
-  .status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
-  small.hint{display:block;color:#888;font-size:12px;margin-top:4px}
-  .site-footer{
-    margin-top:48px;
-    padding-top:20px;
-    border-top:1px solid #e5e5e5;
-    text-align:center;
-    font-size:13px;
-  }
-  .site-footer a{color:#666;text-decoration:none}
-  .site-footer a:hover{color:#111;text-decoration:underline}
-  .cta{
-    margin-top:56px;
-    padding:32px 28px;
-    background:linear-gradient(135deg,var(--brand-navy) 0%,var(--brand-navy-dark) 100%);
-    color:#fff;
+    border:1.5px solid #e5e9ef;
     border-radius:12px;
+    text-decoration:none;
+    color:inherit;
+    transition:all .18s ease;
   }
-  .cta h2{
-    margin:0 0 16px;
-    font-size:22px;
-    font-weight:700;
-    letter-spacing:-0.01em;
+  .card:hover{
+    border-color:var(--brand-navy);
+    transform:translateY(-2px);
+    box-shadow:0 8px 24px rgba(27,63,127,.10);
   }
-  .cta-text{
-    margin:0 0 12px;
-    font-size:14.5px;
-    line-height:1.6;
-    color:#d4d4d4;
+  .card.disabled{opacity:.5;pointer-events:none;cursor:not-allowed}
+  .card-icon{
+    width:42px;height:42px;
+    border-radius:10px;
+    background:var(--brand-tint);
+    color:var(--brand-navy);
+    display:flex;align-items:center;justify-content:center;
+    font-size:20px;font-weight:700;
+    margin-bottom:14px;
   }
+  .card h3{
+    font-size:16px;font-weight:600;margin:0 0 8px;
+    color:var(--brand-navy);letter-spacing:-0.005em;
+  }
+  .card p{
+    font-size:13px;line-height:1.55;color:#555;
+    margin:0 0 16px;flex:1;
+  }
+  .card-cta{
+    font-size:13px;font-weight:600;color:var(--brand-navy);
+    display:inline-flex;align-items:center;gap:4px;
+  }
+  .card-soon{
+    font-size:11px;font-weight:600;text-transform:uppercase;
+    letter-spacing:.08em;color:#999;
+  }
+
+  /* CTA section (re-used pattern) */
+  .cta{
+    margin-top:56px;padding:32px 28px;
+    background:linear-gradient(135deg,var(--brand-navy) 0%,var(--brand-navy-dark) 100%);
+    color:#fff;border-radius:12px;
+  }
+  .cta h2{margin:0 0 16px;font-size:22px;font-weight:700;letter-spacing:-0.01em;color:#fff}
+  .cta-text{margin:0 0 12px;font-size:14.5px;line-height:1.6;color:#d4d4d4}
   .cta-text strong{color:var(--brand-green);font-weight:600}
   .cta-form{margin-top:24px}
   .cta-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
   @media (max-width:560px){.cta-row{grid-template-columns:1fr}}
   .cta .field{margin-bottom:12px}
   .cta .field label{color:#bbb;font-size:13px;font-weight:500;margin-bottom:6px;display:block}
-  .cta input[type="text"],
-  .cta input[type="email"],
-  .cta input[type="tel"],
-  .cta textarea{
-    width:100%;
-    padding:10px 12px;
-    border:1px solid rgba(255,255,255,.2);
-    border-radius:6px;
-    font:inherit;
-    font-size:14px;
-    background:rgba(255,255,255,.08);
-    color:#fff;
+  .cta input[type="text"],.cta input[type="email"],.cta input[type="tel"],.cta textarea{
+    width:100%;padding:10px 12px;
+    border:1px solid rgba(255,255,255,.2);border-radius:6px;
+    font:inherit;font-size:14px;
+    background:rgba(255,255,255,.08);color:#fff;
     transition:border-color .15s,box-shadow .15s;
   }
   .cta input:focus,.cta textarea:focus{
-    outline:none;
-    border-color:var(--brand-green);
-    box-shadow:0 0 0 3px rgba(31,168,75,.25);
-    background:rgba(255,255,255,.12);
+    outline:none;border-color:var(--brand-green);
+    box-shadow:0 0 0 3px rgba(31,168,75,.25);background:rgba(255,255,255,.12);
   }
   .cta textarea{resize:vertical}
   .cta button.cta-submit{
-    background:var(--brand-green);
-    color:#fff;
-    border:none;
-    padding:14px 24px;
-    border-radius:8px;
-    font:inherit;
-    font-size:15px;
-    font-weight:600;
-    cursor:pointer;
-    width:100%;
-    margin-top:8px;
-    transition:background .15s,transform .1s;
+    background:var(--brand-green);color:#fff;border:none;
+    padding:14px 24px;border-radius:8px;
+    font:inherit;font-size:15px;font-weight:600;cursor:pointer;
+    width:100%;margin-top:8px;transition:background .15s,transform .1s;
   }
-  .cta button.cta-submit:hover{background:#198D3F}
+  .cta button.cta-submit:hover{background:var(--brand-green-dark)}
   .cta button.cta-submit:active{transform:translateY(1px)}
   .cta button.cta-submit:disabled{background:rgba(255,255,255,.2);color:#ccc;cursor:wait}
-  .cta-disclaimer{
-    margin:14px 0 0;
-    font-size:11.5px;
-    color:#888;
-    text-align:center;
-    line-height:1.5;
-  }
+  .cta-disclaimer{margin:14px 0 0;font-size:11.5px;color:#888;text-align:center;line-height:1.5}
   .cta-disclaimer a{color:#aaa;text-decoration:underline}
   .cta-disclaimer a:hover{color:#fff}
+  .status{margin-top:16px;padding:12px 14px;border-radius:6px;font-size:14px;display:none}
+  .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+  .status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+
+  .site-footer{
+    margin-top:48px;padding-top:20px;border-top:1px solid #e5e5e5;
+    text-align:center;font-size:13px;
+  }
+  .site-footer a{color:#666;text-decoration:none}
+  .site-footer a:hover{color:var(--brand-navy);text-decoration:underline}
 </style>
 </head>
 <body>
@@ -258,82 +143,58 @@
   <div class="brand">
     <img src="logo.png" alt="TD Consulting Group" />
   </div>
-  <h1>Generator dokumentów spółki</h1>
-  <p class="lead">Wszystkie dokumenty wymagane do rejestracji spółki przez system <strong>S24</strong> na portalu <a href="https://ekrs.ms.gov.pl/" target="_blank" rel="noopener">ekrs.ms.gov.pl</a>. Po wypełnieniu formularza pobierzesz cały pakiet w pliku ZIP, gotowy do załączenia jako dokumenty zewnętrzne. W zestawie:</p>
-  <ul class="docs-list">
-    <li><strong>Lista wspólników spółki</strong> — wykaz wszystkich wspólników z danymi i adresami do doręczeń. Załącznik obowiązkowy do wniosku rejestrowego w S24.</li>
-    <li><strong>Lista członków zarządu spółki</strong> — wykaz osób uprawnionych do reprezentowania spółki. Załącznik obowiązkowy przy rejestracji oraz zmianach składu zarządu w S24.</li>
-    <li><strong>Oświadczenie zarządu w sprawie statusu Cudzoziemca</strong> — oświadczenie czy spółka jest cudzoziemcem w rozumieniu ustawy z 24 marca 1920 r. Wymagane w trakcie rejestracji spółki w S24/KRS.</li>
-    <li><strong>Oświadczenie o wyrażeniu ZGODY na powołanie do zarządu</strong> (po jednym dla każdego członka zarządu) — pisemna zgoda na pełnienie funkcji oraz wskazanie adresu do doręczeń. Obowiązkowy załącznik do wniosku w S24.</li>
-  </ul>
+  <h1>Portal generatora dokumentów spółki</h1>
+  <p class="lead">Wygodne narzędzia do tworzenia dokumentów dla Twojej spółki z o.o. — od rejestracji w S24 po bieżącą działalność. Wybierz, jakie dokumenty chcesz wygenerować.</p>
 
-  <form id="form" novalidate>
+  <section class="category">
+    <div class="category-label">Rejestracja</div>
+    <h2>Założenie spółki z o.o.</h2>
+    <div class="cards">
+      <a href="rejestracja.html" class="card">
+        <div class="card-icon">📋</div>
+        <h3>Pakiet rejestracyjny S24</h3>
+        <p>4 dokumenty wymagane przy rejestracji spółki przez system S24: lista wspólników, lista członków zarządu, oświadczenie o statusie Cudzoziemca oraz oświadczenia o zgodzie na powołanie do zarządu.</p>
+        <span class="card-cta">Wygeneruj →</span>
+      </a>
+    </div>
+  </section>
 
-    <fieldset>
-      <legend>Dane spółki</legend>
-      <div class="field">
-        <label for="company">Pełna nazwa spółki</label>
-        <input id="company" name="company" type="text" required />
+  <section class="category">
+    <div class="category-label">Po rejestracji</div>
+    <h2>Bieżąca działalność spółki</h2>
+    <div class="cards">
+      <a href="wynagrodzenie.html" class="card">
+        <div class="card-icon">💰</div>
+        <h3>Uchwała o wynagrodzeniu zarządu</h3>
+        <p>Uchwała Nadzwyczajnego Zgromadzenia Wspólników w sprawie ustalenia wynagrodzenia dla członka lub członków zarządu spółki, z określeniem kwoty, terminu wypłaty i formy płatności.</p>
+        <span class="card-cta">Wygeneruj →</span>
+      </a>
+      <a href="e-urzad.html" class="card">
+        <div class="card-icon">🏛️</div>
+        <h3>Wniosek do e-Urzędu Skarbowego</h3>
+        <p>Wniosek o przyznanie lub odebranie dostępu do konta organizacji w e-Urzędzie Skarbowym dla wyznaczonej osoby (np. członka zarządu lub księgowej).</p>
+        <span class="card-cta">Wygeneruj →</span>
+      </a>
+      <div class="card disabled">
+        <div class="card-icon">✏️</div>
+        <h3>Kolejne dokumenty</h3>
+        <p>Już wkrótce — uchwały o zmianie składu zarządu, powołaniu prokurenta, zmianie umowy spółki, sprawozdania finansowe i inne.</p>
+        <span class="card-soon">Wkrótce</span>
       </div>
-      <div class="row">
-        <div class="field">
-          <label for="seat">Siedziba</label>
-          <input id="seat" name="seat" type="text" required />
-        </div>
-        <div class="field">
-          <label for="date">Data (na dzień)</label>
-          <input id="date" name="date" type="date" required />
-        </div>
-      </div>
-    </fieldset>
-
-    <fieldset>
-      <legend>Wspólnicy</legend>
-      <div id="wspolnicy"></div>
-      <button type="button" id="addWspolnik" class="add-btn">+ Dodaj kolejnego wspólnika</button>
-    </fieldset>
-
-    <fieldset>
-      <legend>Członkowie zarządu</legend>
-      <div id="zarzad"></div>
-      <button type="button" id="addZarzad" class="add-btn">+ Dodaj kolejnego członka zarządu</button>
-    </fieldset>
-
-    <fieldset>
-      <legend>Status Cudzoziemca</legend>
-      <div class="question">
-        <p>Czy spółka jest Cudzoziemcem w rozumieniu ustawy z dnia 24 marca 1920 r.?</p>
-        <div class="radio-group">
-          <label><input type="radio" name="foreign" value="TAK" required /> TAK</label>
-          <label><input type="radio" name="foreign" value="NIE" required /> NIE</label>
-        </div>
-      </div>
-      <div class="question">
-        <p>Czy spółka jest właścicielem nieruchomości na terenie Rzeczypospolitej Polskiej?</p>
-        <div class="radio-group">
-          <label><input type="radio" name="property" value="TAK" required /> TAK</label>
-          <label><input type="radio" name="property" value="NIE" required /> NIE</label>
-        </div>
-      </div>
-    </fieldset>
-
-    <button type="submit" id="submitBtn">Pobierz dokumenty (ZIP)</button>
-    <div id="status" class="status"></div>
-  </form>
+    </div>
+  </section>
 
   <section class="cta">
     <h2>Potrzebujesz wsparcia?</h2>
     <p class="cta-text">
-      Nie masz pewności, czy dokumenty są wypełnione prawidłowo, albo nie wiesz, jak przeprowadzić rejestrację spółki w S24? Zostaw kontakt — nasi prawnicy oddzwonią i udzielą <strong>bezpłatnej konsultacji oraz wsparcia</strong> przy rejestracji.
+      Nie masz pewności, jaki dokument wybrać albo jak go prawidłowo wypełnić? Zostaw kontakt — nasi prawnicy oddzwonią i udzielą <strong>bezpłatnej konsultacji</strong>.
     </p>
     <p class="cta-text">
       Dodatkowo proponujemy profesjonalną obsługę księgową: <strong>pierwszy miesiąc księgowości na test — gratis</strong>.
     </p>
 
     <form id="leadForm" class="cta-form" action="https://lead-forwarder.leg-pobyt.workers.dev/" method="POST">
-      <input type="hidden" name="_subject" value="Nowe zapytanie z generatora dokumentów" />
-      <input type="hidden" name="_template" value="table" />
-      <input type="hidden" name="_captcha" value="false" />
+      <input type="hidden" name="_subject" value="Nowe zapytanie z portalu (strona główna)" />
       <input type="text" name="_honey" style="display:none" tabindex="-1" autocomplete="off" />
 
       <div class="cta-row">
@@ -365,9 +226,35 @@
   </footer>
 </main>
 
-<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-<script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<script src="app.js"></script>
+<script>
+  // Standalone lead-form handler for portal landing
+  const leadForm = document.getElementById('leadForm');
+  const leadStatus = document.getElementById('leadStatus');
+  const leadSubmit = document.getElementById('leadSubmit');
+  leadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    leadStatus.className = 'status';
+    if (!leadForm.checkValidity()) { leadForm.reportValidity(); return; }
+    const origLabel = leadSubmit.textContent;
+    leadSubmit.disabled = true;
+    leadSubmit.textContent = 'Wysyłanie...';
+    try {
+      const res = await fetch(leadForm.action, {
+        method: 'POST', body: new FormData(leadForm),
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      leadStatus.textContent = 'Dziękujemy! Skontaktujemy się z Państwem najszybciej, jak to możliwe.';
+      leadStatus.className = 'status success';
+      leadForm.reset();
+    } catch (err) {
+      leadStatus.textContent = 'Nie udało się wysłać. Spróbuj ponownie lub napisz na rodo@td-group.pl.';
+      leadStatus.className = 'status error';
+    } finally {
+      leadSubmit.disabled = false;
+      leadSubmit.textContent = origLabel;
+    }
+  });
+</script>
 </body>
 </html>

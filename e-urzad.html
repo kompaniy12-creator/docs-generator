@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Wniosek do e-Urzędu Skarbowego — TD Consulting Group</title>
+<style>
+  :root{
+    --brand-navy:#1B3F7F;
+    --brand-navy-dark:#15315F;
+    --brand-green:#1FA84B;
+    --brand-tint:#EEF3F9;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#fff;color:#111;line-height:1.5;-webkit-font-smoothing:antialiased}
+  main{max-width:760px;margin:0 auto;padding:48px 24px 96px}
+  .back{display:inline-block;margin-bottom:16px;font-size:14px;color:#666;text-decoration:none}
+  .back:hover{color:var(--brand-navy)}
+  .brand{text-align:center;margin:0 0 24px}
+  .brand img{height:80px;width:auto;object-fit:contain}
+  h1{font-size:24px;font-weight:600;margin:0 0 8px;letter-spacing:-0.01em;color:var(--brand-navy)}
+  .lead{color:#666;margin:0 0 32px;font-size:14.5px}
+
+  fieldset{border:1px solid #e5e5e5;border-radius:8px;padding:24px;margin:0 0 20px}
+  legend{padding:0 8px;font-weight:600;font-size:14px;color:var(--brand-navy)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .row.three{grid-template-columns:1fr 1fr 1fr}
+  .row.uneven{grid-template-columns:2fr 1fr 1fr}
+  @media (max-width:560px){.row,.row.three,.row.uneven{grid-template-columns:1fr}}
+  label{display:block;font-size:13px;font-weight:500;margin-bottom:6px;color:#333}
+  input[type="text"],input[type="tel"],textarea,select{
+    width:100%;padding:10px 12px;border:1px solid #d4d4d4;border-radius:6px;
+    font:inherit;font-size:14px;background:#fff;transition:border-color .15s,box-shadow .15s;
+  }
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand-navy);box-shadow:0 0 0 3px rgba(27,63,127,.12)}
+  .field{margin-bottom:14px}
+  .field:last-child{margin-bottom:0}
+  .radio-group{display:flex;gap:24px;margin-top:4px;flex-wrap:wrap}
+  .radio-group label{display:flex;align-items:center;gap:8px;font-weight:500;margin-bottom:0;cursor:pointer}
+  .radio-group input{margin:0;width:18px;height:18px;accent-color:var(--brand-navy)}
+  .subgroup{
+    border:1px solid #ececec;border-radius:6px;padding:16px;margin-bottom:12px;
+    background:#fafafa;position:relative;
+  }
+  .subgroup h3{margin:0 0 12px;font-size:13px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.04em}
+  .remove-btn{
+    position:absolute;top:8px;right:8px;width:26px;height:26px;
+    border:1px solid #d4d4d4;background:#fff;border-radius:50%;
+    cursor:pointer;font-size:18px;line-height:1;color:#666;padding:0;transition:all .15s;
+  }
+  .remove-btn:hover{background:#fee;border-color:#fca5a5;color:#b91c1c}
+  .add-btn{
+    background:#fff;border:1px dashed var(--brand-navy);color:var(--brand-navy);
+    border-radius:6px;padding:10px 16px;font:inherit;font-size:13px;font-weight:500;
+    cursor:pointer;width:100%;transition:all .15s;margin-top:4px;
+  }
+  .add-btn:hover{border-style:solid;background:var(--brand-tint);color:var(--brand-navy-dark)}
+
+  button[type="submit"]{
+    background:var(--brand-navy);color:#fff;border:none;
+    padding:14px 28px;border-radius:8px;font:inherit;font-size:15px;font-weight:600;
+    cursor:pointer;width:100%;transition:background .15s;
+  }
+  button[type="submit"]:hover{background:var(--brand-navy-dark)}
+  button[type="submit"]:disabled{background:#999;cursor:wait}
+  .status{margin-top:16px;padding:12px 14px;border-radius:6px;font-size:14px;display:none}
+  .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+  .status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+  .hint{display:block;color:#888;font-size:11.5px;margin-top:4px;font-weight:400}
+
+  .site-footer{margin-top:48px;padding-top:20px;border-top:1px solid #e5e5e5;text-align:center;font-size:13px}
+  .site-footer a{color:#666;text-decoration:none}
+  .site-footer a:hover{color:var(--brand-navy);text-decoration:underline}
+
+  .access-type-block{display:none}
+  .access-type-block.active{display:block}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Wniosek do e-Urzędu Skarbowego</h1>
+  <p class="lead">Wniosek o przyznanie lub odebranie dostępu do konta organizacji w e-Urzędzie Skarbowym dla wyznaczonej osoby. Wygenerowany PDF będzie gotowy do podpisu i złożenia w urzędzie.</p>
+
+  <form id="form" novalidate>
+
+    <fieldset>
+      <legend>A. Organ podatkowy</legend>
+      <div class="field">
+        <label for="urzad">Naczelnik urzędu skarbowego</label>
+        <input id="urzad" name="urzad" type="text" required placeholder="np. Urząd Skarbowy Poznań - Wilda" />
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>B. Cel złożenia wniosku</legend>
+      <div class="radio-group">
+        <label><input type="radio" name="cel" value="B.1" required checked /> B.1 — Przyznanie dostępu</label>
+        <label><input type="radio" name="cel" value="B.2" required /> B.2 — Odebranie dostępu</label>
+      </div>
+
+      <div id="accessTypeBlock" class="access-type-block active" style="margin-top:18px">
+        <label style="margin-bottom:8px">C.2 Rodzaj przyznawanego dostępu</label>
+        <div class="radio-group">
+          <label><input type="radio" name="rodzaj" value="Podstawowy" checked /> Podstawowy</label>
+          <label><input type="radio" name="rodzaj" value="Rozszerzony" /> Rozszerzony</label>
+        </div>
+        <small class="hint">Rozszerzony pozwala dodatkowo nadawać/odbierać dostęp innym osobom.</small>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>C.1. Dane identyfikacyjne organizacji</legend>
+      <div class="row">
+        <div class="field">
+          <label for="nip">NIP organizacji</label>
+          <input id="nip" name="nip" type="text" required pattern="[0-9]{10}" maxlength="10" inputmode="numeric" title="10 cyfr" />
+        </div>
+        <div class="field">
+          <label for="telefon">Telefon</label>
+          <input id="telefon" name="telefon" type="tel" required placeholder="np. 576 575 517" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="nazwa">Nazwa pełna spółki</label>
+        <input id="nazwa" name="nazwa" type="text" required />
+      </div>
+      <div class="row uneven">
+        <div class="field">
+          <label for="ulica">Ulica</label>
+          <input id="ulica" name="ulica" type="text" required />
+        </div>
+        <div class="field">
+          <label for="nrDomu">Nr domu</label>
+          <input id="nrDomu" name="nrDomu" type="text" required />
+        </div>
+        <div class="field">
+          <label for="nrLokalu">Nr lokalu</label>
+          <input id="nrLokalu" name="nrLokalu" type="text" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="kod">Kod pocztowy</label>
+          <input id="kod" name="kod" type="text" required pattern="[0-9]{2}-[0-9]{3}" maxlength="6" placeholder="00-000" />
+        </div>
+        <div class="field">
+          <label for="miasto">Miejscowość</label>
+          <input id="miasto" name="miasto" type="text" required />
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>D. Dane użytkownika (osoby, której dotyczy dostęp)</legend>
+      <div class="row">
+        <div class="field">
+          <label for="userImie">Imię</label>
+          <input id="userImie" name="userImie" type="text" required />
+        </div>
+        <div class="field">
+          <label for="userNazwisko">Nazwisko</label>
+          <input id="userNazwisko" name="userNazwisko" type="text" required />
+        </div>
+      </div>
+      <div class="field">
+        <label for="userPesel">PESEL</label>
+        <input id="userPesel" name="userPesel" type="text" required pattern="[0-9]{11}" maxlength="11" inputmode="numeric" title="11 cyfr" />
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>E. Osoby reprezentujące organizację</legend>
+      <small class="hint" style="margin-bottom:12px">Do 3 osób uprawnionych do reprezentowania spółki (np. członkowie zarządu).</small>
+      <div id="reps"></div>
+      <button type="button" id="addRep" class="add-btn">+ Dodaj kolejną osobę</button>
+    </fieldset>
+
+    <button type="submit" id="submitBtn">Pobierz wniosek (PDF)</button>
+    <div id="status" class="status"></div>
+  </form>
+
+  <footer class="site-footer">
+    <a href="rodo.html">Informacja o przetwarzaniu danych osobowych (RODO)</a>
+  </footer>
+</main>
+
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+<script src="e-urzad.js"></script>
+</body>
+</html>
