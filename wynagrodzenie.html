@@ -81,6 +81,28 @@
   .site-footer{margin-top:48px;padding-top:20px;border-top:1px solid #e5e5e5;text-align:center;font-size:13px}
   .site-footer a{color:#666;text-decoration:none}
   .site-footer a:hover{color:var(--brand-navy);text-decoration:underline}
+
+  .krs-upload{margin:0 0 24px}
+  .krs-btn{
+    display:flex;align-items:center;gap:14px;
+    width:100%;padding:16px 20px;
+    background:linear-gradient(135deg,var(--brand-tint) 0%,#fff 100%);
+    border:1.5px solid var(--brand-navy);
+    border-radius:10px;cursor:pointer;
+    text-align:left;font:inherit;color:inherit;
+    transition:all .15s;
+  }
+  .krs-btn:hover{background:var(--brand-tint);box-shadow:0 4px 12px rgba(27,63,127,.10);transform:translateY(-1px)}
+  .krs-icon{font-size:24px;flex-shrink:0}
+  .krs-text{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+  .krs-text strong{font-size:14.5px;font-weight:600;color:var(--brand-navy)}
+  .krs-text small{font-size:12px;color:#666;font-weight:400;line-height:1.45}
+  .krs-status{
+    margin-top:10px;padding:0;font-size:13px;display:none;
+  }
+  .krs-status.loading{display:block;color:#666}
+  .krs-status.success{display:block;padding:10px 14px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px}
+  .krs-status.error{display:block;padding:10px 14px;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:6px}
 </style>
 </head>
 <body>
@@ -89,6 +111,18 @@
   <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
   <h1>Uchwała o wynagrodzeniu zarządu</h1>
   <p class="lead">Uchwała Nadzwyczajnego Zgromadzenia Wspólników w sprawie ustalenia wynagrodzenia dla wybranych członków zarządu spółki. Wypełnij dane spółki, wspólników i zarządu — system wygeneruje gotowy do podpisu dokument PDF.</p>
+
+  <div class="krs-upload">
+    <input type="file" id="krsFile" accept="application/pdf" hidden />
+    <button type="button" id="krsUploadBtn" class="krs-btn">
+      <span class="krs-icon">📄</span>
+      <span class="krs-text">
+        <strong>Wczytaj dane z wypisu KRS</strong>
+        <small>Pobierz „Odpis aktualny KRS” z prs.ms.gov.pl i wgraj jako PDF — system automatycznie wypełni dane spółki, wspólników i zarządu.</small>
+      </span>
+    </button>
+    <div id="krsStatus" class="krs-status"></div>
+  </div>
 
   <form id="form" novalidate>
 
@@ -179,6 +213,8 @@
 
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="krs-parser.js"></script>
 <script src="wynagrodzenie.js"></script>
 </body>
 </html>

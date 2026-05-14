@@ -207,6 +207,88 @@ const today = new Date();
 document.getElementById('resDate').valueAsDate = today;
 document.getElementById('resNumber').value = `1/${today.getFullYear()}`;
 
+// ---------------- KRS upload integration ----------------
+const krsFileInput = document.getElementById('krsFile');
+const krsBtn = document.getElementById('krsUploadBtn');
+const krsStatus = document.getElementById('krsStatus');
+
+function setKrsStatus(msg, type) {
+  krsStatus.textContent = msg;
+  krsStatus.className = 'krs-status ' + (type || '');
+}
+
+krsBtn.addEventListener('click', () => krsFileInput.click());
+
+krsFileInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) {
+    setKrsStatus('Plik jest za duży (max 10 MB).', 'error');
+    return;
+  }
+  setKrsStatus('⏳ Analizuję wypis KRS...', 'loading');
+  try {
+    const data = await window.KRSParser.parseFile(file);
+    applyKRSData(data);
+    const wn = data.wspolnicy.length;
+    const zn = data.zarzad.length;
+    setKrsStatus(`✅ Wczytano: ${data.firma || 'spółka'} · ${wn} wspólnik(ów) · ${zn} członek/członkowie zarządu. Sprawdź dane i wprowadź wynagrodzenia.`, 'success');
+  } catch (err) {
+    console.error(err);
+    setKrsStatus('Nie udało się sparsować pliku. Upewnij się, że to oficjalny „Odpis aktualny KRS" w formacie PDF z prs.ms.gov.pl.', 'error');
+  } finally {
+    krsFileInput.value = '';
+  }
+});
+
+function applyKRSData(d) {
+  const setVal = (sel, val) => {
+    if (val == null || val === '') return;
+    const el = document.querySelector(sel);
+    if (!el) return;
+    el.value = val;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  if (d.firma) setVal('#company', d.firma);
+  if (d.seat) setVal('#seat', d.seat);
+  if (d.city) setVal('#city', d.city);
+  if (d.krs) setVal('#krs', d.krs);
+  if (d.nip) setVal('#nip', d.nip);
+  if (d.regon) setVal('#regon', d.regon);
+
+  // Rebuild wspólnicy
+  if (d.wspolnicy && d.wspolnicy.length > 0) {
+    rebuildList('wspolnicy', 'addWspolnik', makeWspolnikGroup, 'w',
+      d.wspolnicy.slice(0, MAX_PEOPLE), (g, w, idx) => {
+        g.querySelector(`[name="w_imie_${idx}"]`).value = w.imie;
+        g.querySelector(`[name="w_nazwisko_${idx}"]`).value = w.nazwisko;
+        if (w.udzialy) g.querySelector(`[name="w_udzialy_${idx}"]`).value = w.udzialy;
+      });
+  }
+
+  // Rebuild zarząd
+  if (d.zarzad && d.zarzad.length > 0) {
+    rebuildList('zarzad', 'addZarzad', makeZarzadGroup, 'z',
+      d.zarzad.slice(0, MAX_PEOPLE), (g, z, idx) => {
+        g.querySelector(`[name="z_imie_${idx}"]`).value = z.imie;
+        g.querySelector(`[name="z_nazwisko_${idx}"]`).value = z.nazwisko;
+        if (z.funkcja) g.querySelector(`[name="z_funkcja_${idx}"]`).value = z.funkcja;
+      });
+  }
+}
+
+function rebuildList(containerId, addBtnId, factory, prefix, items, fillFn) {
+  const c = document.getElementById(containerId);
+  c.innerHTML = '';
+  items.forEach((item, i) => {
+    const g = factory(i + 1);
+    c.appendChild(g);
+    if (fillFn) fillFn(g, item, i + 1);
+  });
+  document.getElementById(addBtnId).style.display =
+    items.length >= MAX_PEOPLE ? 'none' : '';
+}
+
 // Auto-uppercase company name on the fly
 document.getElementById('company').addEventListener('input', (e) => {
   e.target.value = e.target.value.toUpperCase();
