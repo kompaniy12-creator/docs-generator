@@ -521,9 +521,8 @@ async function generateUchwala(data) {
     const name = `${w.imie} ${w.nazwisko}`;
     const nW = font.widthOfTextAtSize(name, sz);
     page.drawText(name, { x: xCenter - nW / 2, y: y - 14, font, size: sz });
-    // Role: if also in zarząd, use that role; else "Wspólnik"
-    const matchedZ = data.zarzad.find(z => z.imie === w.imie && z.nazwisko === w.nazwisko);
-    const role = matchedZ ? matchedZ.funkcja : 'Wspólnik';
+    // Always "Wspólnik" — the salary resolution is always signed by shareholders, not the board
+    const role = 'Wspólnik';
     const rW = font.widthOfTextAtSize(role, sz);
     page.drawText(role, { x: xCenter - rW / 2, y: y - 28, font, size: sz });
   }
