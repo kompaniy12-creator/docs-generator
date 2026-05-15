@@ -81,6 +81,78 @@ document.getElementById('kod').addEventListener('input', (e) => {
   e.target.value = v;
 });
 
+// ---------------- KRS upload integration ----------------
+const krsFileInput = document.getElementById('krsFile');
+const krsBtn = document.getElementById('krsUploadBtn');
+const krsStatus = document.getElementById('krsStatus');
+
+function setKrsStatus(msg, type) {
+  krsStatus.textContent = msg;
+  krsStatus.className = 'krs-status ' + (type || '');
+}
+
+krsBtn.addEventListener('click', () => krsFileInput.click());
+
+krsFileInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) {
+    setKrsStatus('Plik jest za duży (max 10 MB).', 'error');
+    return;
+  }
+  setKrsStatus('⏳ Analizuję wypis KRS...', 'loading');
+  try {
+    const data = await window.KRSParser.parseFile(file);
+    applyKRSData(data);
+    setKrsStatus(`✅ Wczytano: ${data.firma || 'spółka'} · ${(data.zarzad || []).length} osob(y) z zarządu. Sprawdź dane i uzupełnij brakujące pola.`, 'success');
+  } catch (err) {
+    console.error(err);
+    setKrsStatus('Nie udało się sparsować pliku. Upewnij się, że to oficjalny „Odpis aktualny KRS" w formacie PDF z prs.ms.gov.pl.', 'error');
+  } finally {
+    krsFileInput.value = '';
+  }
+});
+
+function applyKRSData(d) {
+  const setVal = (sel, val) => {
+    if (val == null || val === '') return;
+    const el = document.querySelector(sel);
+    if (!el) return;
+    el.value = val;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+
+  // Company core fields
+  if (d.firma) setVal('#nazwa', d.firma);
+  if (d.nip) setVal('#nip', d.nip);
+
+  // Address fields
+  if (d.adres) {
+    if (d.adres.ulica) setVal('#ulica', d.adres.ulica);
+    if (d.adres.nrDomu) setVal('#nrDomu', d.adres.nrDomu);
+    if (d.adres.nrLokalu) setVal('#nrLokalu', d.adres.nrLokalu);
+    if (d.adres.kodPocztowy) setVal('#kod', d.adres.kodPocztowy);
+    if (d.adres.miejscowosc) setVal('#miasto', d.adres.miejscowosc);
+  }
+
+  // Reps (osoby reprezentujące) from zarząd — up to MAX_REPS (3)
+  const reps = (d.zarzad || []).slice(0, MAX_REPS);
+  if (reps.length > 0) {
+    repsContainer.innerHTML = '';
+    reps.forEach((z, i) => {
+      const idx = i + 1;
+      const g = makeRepGroup(idx);
+      repsContainer.appendChild(g);
+      g.querySelector(`[name="rep_imie_${idx}"]`).value = z.imie || '';
+      g.querySelector(`[name="rep_nazwisko_${idx}"]`).value = z.nazwisko || '';
+      if (z.funkcja) {
+        g.querySelector(`[name="rep_stanowisko_${idx}"]`).value = z.funkcja;
+      }
+    });
+    renumberReps();
+  }
+}
+
 // ---------------- Font cache ----------------
 let fontRegular = null, fontBold = null;
 async function loadFonts() {

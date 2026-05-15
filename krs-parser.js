@@ -99,6 +99,30 @@
     return last[1].trim();
   }
 
+  function findAdres(text) {
+    // "2.Adres ul. FRYDERYKA CHOPINA, nr 9, lok. ---, miejsc. LUBOŃ, kod 62-030, poczta LUBOŃ, kraj POLSKA"
+    const m = text.match(/2\.?\s*Adres\s+([^\n]+?)(?:\s+3\.|$)/i);
+    if (!m) return null;
+    const line = m[1];
+    const empty = (v) => !v || /^[-­]+$/.test(v.trim());
+    const get = (re) => {
+      const x = line.match(re);
+      return x ? x[1].trim() : '';
+    };
+    const ulica = get(/\bul\.\s*([^,]+?)(?=,)/i);
+    const nrDomu = get(/\bnr\s+([^,]+?)(?=,)/i);
+    const nrLokaluRaw = get(/\blok\.\s*([^,]+?)(?=,)/i);
+    const miejsc = get(/\bmiejsc\.\s*([^,]+?)(?=,)/i);
+    const kod = get(/\bkod\s+([0-9]{2}-[0-9]{3})/i);
+    return {
+      ulica: empty(ulica) ? '' : ulica,
+      nrDomu: empty(nrDomu) ? '' : nrDomu,
+      nrLokalu: empty(nrLokaluRaw) ? '' : nrLokaluRaw,
+      kodPocztowy: kod,
+      miejscowosc: empty(miejsc) ? '' : miejsc,
+    };
+  }
+
   // Parse list of people from a section.
   // For "Rubryka 7 - Dane wspólników" or "Podrubryka 1 Dane osób wchodzących w skład organu"
   function parseEntries(sectionText, type) {
@@ -167,10 +191,12 @@
     const wspolnicy = findWspolnicy(text);
     const zarzad = findZarzad(text);
 
+    const adres = findAdres(text);
     return {
       krs, nip, regon, firma,
       city: cityNominative ? capitalize(cityNominative) : null, // nominative for top-of-doc
       seat: cityNominative ? toLocative(cityNominative) : null, // locative for "z siedzibą w ..."
+      adres,
       wspolnicy, zarzad,
       raw: text, // for debugging
     };
