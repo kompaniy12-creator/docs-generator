@@ -81,6 +81,20 @@ document.getElementById('kod').addEventListener('input', (e) => {
   e.target.value = v;
 });
 
+// Toggle PESEL <-> alternativnyy nomer
+const noPeselCheck = document.getElementById('userNoPesel');
+const peselInput = document.getElementById('userPesel');
+const peselAltWrap = document.getElementById('userPeselAltWrap');
+const peselAltInput = document.getElementById('userPeselAlt');
+noPeselCheck.addEventListener('change', () => {
+  const off = noPeselCheck.checked;
+  peselInput.disabled = off;
+  peselInput.required = !off;
+  if (off) peselInput.value = '';
+  peselAltWrap.hidden = !off;
+  peselAltInput.required = off;
+});
+
 // ---------------- KRS upload integration ----------------
 const krsFileInput = document.getElementById('krsFile');
 const krsBtn = document.getElementById('krsUploadBtn');
@@ -197,6 +211,8 @@ function collectData() {
     userImie: get('userImie').toUpperCase(),
     userNazwisko: get('userNazwisko').toUpperCase(),
     userPesel: get('userPesel'),
+    userNoPesel: !!fd.get('userNoPesel'),
+    userPeselAlt: get('userPeselAlt'),
     reps,
   };
 }
@@ -420,7 +436,11 @@ async function generateWniosek(data) {
 
   // ----- D. DANE UŻYTKOWNIKA
   y = drawSubHeader(page, 'D', 'DANE UŻYTKOWNIKA, KTÓREMU MA ZOSTAĆ PRZYZNANY / ODEBRANY DOSTĘP', margin, y, innerW, font, bold);
-  y = drawDigitGrid(page, '10. PESEL', data.userPesel, 11, margin, y, innerW, font, bold);
+  if (data.userNoPesel) {
+    y = drawField(page, '10. PESEL — brak / inny nr identyfikacyjny', data.userPeselAlt, margin, y, innerW, font, bold, { height: 28, valueBold: true });
+  } else {
+    y = drawDigitGrid(page, '10. PESEL', data.userPesel, 11, margin, y, innerW, font, bold);
+  }
   // Nazwisko + Imię side by side
   yRow = y;
   drawField(page, '11. Nazwisko', data.userNazwisko, margin, yRow, innerW / 2, font, bold, { height: 28 });

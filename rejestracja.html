@@ -170,6 +170,8 @@
   .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
   .status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
   small.hint{display:block;color:#888;font-size:12px;margin-top:4px}
+  .nopesel-check{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;font-weight:400;color:#444;cursor:pointer}
+  .nopesel-check input[type="checkbox"]{width:auto;margin:0}
   .site-footer{
     margin-top:48px;
     padding-top:20px;
@@ -369,5 +371,7 @@
 <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="rejestracja.js"></script>
+<script>window.AUTOSAVE = { key: 'rejestracja', form: '#form', lists: [['#wspolnicy', '#addWspolnik'], ['#zarzad', '#addZarzad']] };</script>
+<script src="autosave.js"></script>
 </body>
 </html>

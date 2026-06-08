@@ -36,7 +36,9 @@ function makePersonGroup(prefix, idx, kind) {
       </div>
       <div class="field">
         <label>PESEL</label>
-        <input type="text" name="${prefix}_pesel_${idx}" required pattern="[0-9]{11}" title="PESEL musi zawierać 11 cyfr" inputmode="numeric" maxlength="11" />
+        <input type="text" name="${prefix}_pesel_${idx}" class="pesel-input" required pattern="[0-9]{11}" title="PESEL musi zawierać 11 cyfr" inputmode="numeric" maxlength="11" />
+        <label class="nopesel-check"><input type="checkbox" name="${prefix}_nopesel_${idx}" class="nopesel-toggle" /> Brak numeru PESEL</label>
+        <input type="text" name="${prefix}_peselalt_${idx}" class="peselalt-input" maxlength="20" placeholder="Inny numer (np. nr paszportu)" hidden style="margin-top:6px" />
       </div>
     </div>
   ` : '';
@@ -152,6 +154,21 @@ document.getElementById('wspolnicy').addEventListener('input', (e) => {
 // Wire up "copy from wsp" dropdown
 document.getElementById('zarzad').addEventListener('change', handleCopyFromWsp);
 
+// Toggle PESEL <-> alternativnyy nomer per czlonek zarzadu
+document.getElementById('zarzad').addEventListener('change', (e) => {
+  const cb = e.target.closest('.nopesel-toggle');
+  if (!cb) return;
+  const field = cb.closest('.field');
+  const pesel = field.querySelector('.pesel-input');
+  const alt = field.querySelector('.peselalt-input');
+  const off = cb.checked;
+  pesel.disabled = off;
+  pesel.required = !off;
+  if (off) pesel.value = '';
+  alt.hidden = !off;
+  alt.required = off;
+});
+
 refreshCopyFromWspDropdowns();
 
 // Default today's date
@@ -189,7 +206,9 @@ function collectData() {
       const adres = get(`${prefix}_adres_${i}`);
       const miasto = get(`${prefix}_miasto_${i}`);
       const pesel = get(`${prefix}_pesel_${i}`);
-      out.push({ imie, nazwisko, adres, miasto, pesel, empty: !imie && !nazwisko && !adres });
+      const noPesel = !!document.querySelector(`[name="${prefix}_nopesel_${i}"]`)?.checked;
+      const peselAlt = get(`${prefix}_peselalt_${i}`);
+      out.push({ imie, nazwisko, adres, miasto, pesel, noPesel, peselAlt, empty: !imie && !nazwisko && !adres });
     }
     return out;
   };
@@ -514,7 +533,10 @@ async function generateZgoda(data, member) {
   const fullName = `${member.imie} ${member.nazwisko}`.trim();
   page.drawText(fullName, { x: margin, y: cy, font, size }); cy -= lh;
   page.drawText(member.adres || '', { x: margin, y: cy, font, size }); cy -= lh;
-  page.drawText(`PESEL: ${member.pesel || ''}`, { x: margin, y: cy, font, size }); cy -= lh * 2;
+  const peselLine = member.noPesel
+    ? `Nr identyfikacyjny (brak PESEL): ${member.peselAlt || ''}`
+    : `PESEL: ${member.pesel || ''}`;
+  page.drawText(peselLine, { x: margin, y: cy, font, size }); cy -= lh * 2;
 
   // Title (3 lines, centered, bold)
   const titleLines = [

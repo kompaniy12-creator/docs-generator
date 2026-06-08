@@ -68,6 +68,8 @@
   .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
   .status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
   .hint{display:block;color:#888;font-size:11.5px;margin-top:4px;font-weight:400}
+  .nopesel-check{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;font-weight:400;color:#444;cursor:pointer}
+  .nopesel-check input{width:auto;margin:0}
 
   .site-footer{margin-top:48px;padding-top:20px;border-top:1px solid #e5e5e5;text-align:center;font-size:13px}
   .site-footer a{color:#666;text-decoration:none}
@@ -198,6 +200,11 @@
       <div class="field">
         <label for="userPesel">PESEL</label>
         <input id="userPesel" name="userPesel" type="text" required pattern="[0-9]{11}" maxlength="11" inputmode="numeric" title="11 cyfr" />
+        <label class="nopesel-check"><input id="userNoPesel" name="userNoPesel" type="checkbox" /> Brak numeru PESEL</label>
+      </div>
+      <div class="field" id="userPeselAltWrap" hidden>
+        <label for="userPeselAlt">Inny numer identyfikacyjny (np. nr paszportu / dokumentu)</label>
+        <input id="userPeselAlt" name="userPeselAlt" type="text" maxlength="20" />
       </div>
     </fieldset>
 
@@ -222,5 +229,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="krs-parser.js"></script>
 <script src="e-urzad.js"></script>
+<script>window.AUTOSAVE = { key: 'e-urzad', form: '#form', lists: [['#reps', '#addRep']] };</script>
+<script src="autosave.js"></script>
 </body>
 </html>
