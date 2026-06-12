@@ -409,6 +409,14 @@ const LETTERS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 async function generateUchwala(data) {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
+  // Metadane — dokument finalny, gotowy do podpisu (bez pól edytowalnych)
+  const now = new Date();
+  doc.setTitle('Uchwala o wynagrodzeniu zarzadu');
+  doc.setAuthor('TD Consulting Group');
+  doc.setProducer('TD Consulting Group — Portal dokumentów');
+  doc.setCreator('TD Consulting Group — Portal dokumentów');
+  doc.setCreationDate(now);
+  doc.setModificationDate(now);
   const font = await doc.embedFont(fontRegular);
   const bold = await doc.embedFont(fontBold);
 

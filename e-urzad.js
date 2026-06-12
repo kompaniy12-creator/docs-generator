@@ -342,6 +342,14 @@ function drawCheckbox(page, x, y, label, checked, font, bold, size = 9) {
 async function generateWniosek(data) {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
+  // Metadane — dokument finalny, gotowy do podpisu (bez pól edytowalnych)
+  const now = new Date();
+  doc.setTitle('Wniosek o dostep do konta organizacji w e-Urzedzie Skarbowym');
+  doc.setAuthor('TD Consulting Group');
+  doc.setProducer('TD Consulting Group — Portal dokumentów');
+  doc.setCreator('TD Consulting Group — Portal dokumentów');
+  doc.setCreationDate(now);
+  doc.setModificationDate(now);
   const font = await doc.embedFont(fontRegular);
   const bold = await doc.embedFont(fontBold);
 

@@ -281,9 +281,17 @@ function drawCenteredWrapped(page, text, y, maxWidth, size, font) {
   return yy;
 }
 
-async function newPdf() {
+async function newPdf(title) {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
+  // Metadane — dokument finalny, niezawierający pól edytowalnych (gotowy do podpisu)
+  const now = new Date();
+  doc.setTitle(title || 'Dokument rejestracyjny');
+  doc.setAuthor('TD Consulting Group');
+  doc.setProducer('TD Consulting Group — Portal dokumentów');
+  doc.setCreator('TD Consulting Group — Portal dokumentów');
+  doc.setCreationDate(now);
+  doc.setModificationDate(now);
   const font = await doc.embedFont(fontRegularBytes);
   const bold = await doc.embedFont(fontBoldBytes);
   const page = doc.addPage([595.28, 841.89]); // A4
@@ -410,7 +418,7 @@ function drawTable(page, x, y, colWidths, headerLines, rowsData, font, bold, row
 
 // ---------------- PDF generators ----------------
 async function generateWspolnik(data) {
-  const { doc, page, font, bold } = await newPdf();
+  const { doc, page, font, bold } = await newPdf('Lista wspolnikow spolki');
   let y = drawHeader(page, font, bold, data, 'Lista wspólników spółki');
 
   const margin = 60;
@@ -437,7 +445,7 @@ async function generateWspolnik(data) {
 }
 
 async function generateZarzad(data) {
-  const { doc, page, font, bold } = await newPdf();
+  const { doc, page, font, bold } = await newPdf('Lista czlonkow zarzadu spolki');
   let y = drawHeader(page, font, bold, data, 'Lista członków zarządu spółki');
 
   const margin = 60;
@@ -459,7 +467,7 @@ async function generateZarzad(data) {
 }
 
 async function generateCudzoziemiec(data) {
-  const { doc, page, font, bold } = await newPdf();
+  const { doc, page, font, bold } = await newPdf('Oswiadczenie zarzadu spolki');
   let y = drawHeader(page, font, bold, data, 'Oświadczenie zarządu spółki:');
 
   const W = page.getWidth();
@@ -513,7 +521,7 @@ async function generateCudzoziemiec(data) {
 }
 
 async function generateZgoda(data, member) {
-  const { doc, page, font, bold } = await newPdf();
+  const { doc, page, font, bold } = await newPdf('Oswiadczenie o zgodzie na powolanie do zarzadu');
   const W = page.getWidth();
   const margin = 60;
   const innerW = W - margin * 2;
@@ -649,19 +657,20 @@ form.addEventListener('submit', async (e) => {
     ]);
 
     const zip = new JSZip();
-    zip.file('ShareholdersList.pdf', wsp);
-    zip.file('BoardMembersList.pdf', zar);
-    zip.file('ForeignStatusDeclaration.pdf', cud);
+    zip.file('Lista_wspolnikow.pdf', wsp);
+    zip.file('Lista_czlonkow_zarzadu.pdf', zar);
+    zip.file('Oswiadczenie_zarzadu.pdf', cud);
     zgody.forEach((bytes, i) => {
       const m = filledZarzad[i];
-      const safe = toAsciiLetters(`${m.imie}${m.nazwisko}`);
-      zip.file(`Consent${safe}.pdf`, bytes);
+      const safe = [toAsciiLetters(m.imie), toAsciiLetters(m.nazwisko)].filter(Boolean).join('_');
+      const suffix = safe ? `_${safe}` : `_${i + 1}`;
+      zip.file(`Oswiadczenie_zgoda_na_powolanie${suffix}.pdf`, bytes);
     });
     const blob = await zip.generateAsync({ type: 'blob' });
 
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'Documents.zip';
+    a.download = 'Dokumenty_rejestracja_spolki.zip';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
