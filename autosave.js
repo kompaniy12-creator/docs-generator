@@ -99,8 +99,32 @@
     restoring = false;
   }
 
+  function clearForm() {
+    if (!confirm('Wyczyścić formularz? Wprowadzone dane zostaną usunięte.')) return;
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
+    location.reload();
+  }
+
+  function addClearButton() {
+    const submit = form.querySelector('[type="submit"]');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'clearFormBtn';
+    btn.textContent = 'Wyczyść formularz';
+    btn.style.cssText = 'display:block;width:100%;margin-top:10px;padding:12px;' +
+      'background:#fff;color:#991b1b;border:1px solid #fecaca;border-radius:10px;' +
+      'font-size:15px;font-weight:600;cursor:pointer';
+    btn.addEventListener('click', clearForm);
+    if (submit && submit.parentNode) {
+      submit.parentNode.insertBefore(btn, submit.nextSibling);
+    } else {
+      form.appendChild(btn);
+    }
+  }
+
   // Przywróć, a następnie zacznij nasłuchiwać zmian
   restore();
+  addClearButton();
   form.addEventListener('input', scheduleSave);
   form.addEventListener('change', scheduleSave);
   window.addEventListener('beforeunload', save);
