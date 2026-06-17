@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Uchwała o ustanowieniu pełnomocnika — TD Consulting Group</title>
+<style>
+  :root{
+    --brand-navy:#1B3F7F;
+    --brand-navy-dark:#15315F;
+    --brand-green:#1FA84B;
+    --brand-green-dark:#198D3F;
+    --brand-tint:#EEF3F9;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#fff;color:#111;line-height:1.5;-webkit-font-smoothing:antialiased}
+  main{max-width:760px;margin:0 auto;padding:48px 24px 96px}
+  .back{display:inline-block;margin-bottom:16px;font-size:14px;color:#666;text-decoration:none}
+  .back:hover{color:var(--brand-navy)}
+  .brand{text-align:center;margin:0 0 24px}
+  .brand img{height:80px;width:auto;object-fit:contain}
+  h1{font-size:24px;font-weight:600;margin:0 0 8px;letter-spacing:-0.01em;color:var(--brand-navy)}
+  .lead{color:#666;margin:0 0 32px;font-size:14.5px}
+
+  fieldset{border:1px solid #e5e5e5;border-radius:8px;padding:24px;margin:0 0 20px}
+  legend{padding:0 8px;font-weight:600;font-size:14px;color:var(--brand-navy)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .row.three{grid-template-columns:1fr 1fr 1fr}
+  @media (max-width:560px){.row,.row.three{grid-template-columns:1fr}}
+  label{display:block;font-size:13px;font-weight:500;margin-bottom:6px;color:#333}
+  input[type="text"],input[type="date"],input[type="number"],textarea,select{
+    width:100%;padding:10px 12px;border:1px solid #d4d4d4;border-radius:6px;
+    font:inherit;font-size:14px;background:#fff;transition:border-color .15s,box-shadow .15s;
+  }
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand-navy);box-shadow:0 0 0 3px rgba(27,63,127,.12)}
+  .field{margin-bottom:14px}
+  .field:last-child{margin-bottom:0}
+  .subgroup{
+    border:1px solid #ececec;border-radius:6px;padding:16px;margin-bottom:12px;
+    background:#fafafa;position:relative;
+  }
+  .subgroup h3{margin:0 0 12px;font-size:13px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.04em}
+  .remove-btn{
+    position:absolute;top:8px;right:8px;width:26px;height:26px;
+    border:1px solid #d4d4d4;background:#fff;border-radius:50%;
+    cursor:pointer;font-size:18px;line-height:1;color:#666;padding:0;transition:all .15s;
+  }
+  .remove-btn:hover{background:#fee;border-color:#fca5a5;color:#b91c1c}
+  .add-btn{
+    background:#fff;border:1px dashed var(--brand-navy);color:var(--brand-navy);
+    border-radius:6px;padding:10px 16px;font:inherit;font-size:13px;font-weight:500;
+    cursor:pointer;width:100%;transition:all .15s;margin-top:4px;
+  }
+  .add-btn:hover{border-style:solid;background:var(--brand-tint);color:var(--brand-navy-dark)}
+
+  button[type="submit"]{
+    background:var(--brand-navy);color:#fff;border:none;
+    padding:14px 28px;border-radius:8px;font:inherit;font-size:15px;font-weight:600;
+    cursor:pointer;width:100%;transition:background .15s;
+  }
+  button[type="submit"]:hover{background:var(--brand-navy-dark)}
+  button[type="submit"]:disabled{background:#999;cursor:wait}
+
+  .status{margin-top:16px;padding:12px 14px;border-radius:6px;font-size:14px;display:none}
+  .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+  .status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+  .hint{display:block;color:#888;font-size:11.5px;margin-top:4px}
+
+  .site-footer{margin-top:48px;padding-top:20px;border-top:1px solid #e5e5e5;text-align:center;font-size:13px}
+  .site-footer a{color:#666;text-decoration:none}
+  .site-footer a:hover{color:var(--brand-navy);text-decoration:underline}
+
+  .krs-upload{margin:0 0 24px}
+  .krs-btn{
+    display:flex;align-items:center;gap:14px;
+    width:100%;padding:16px 20px;
+    background:linear-gradient(135deg,var(--brand-tint) 0%,#fff 100%);
+    border:1.5px solid var(--brand-navy);
+    border-radius:10px;cursor:pointer;
+    text-align:left;font:inherit;color:inherit;
+    transition:all .15s;
+  }
+  .krs-btn:hover{background:var(--brand-tint);box-shadow:0 4px 12px rgba(27,63,127,.10);transform:translateY(-1px)}
+  .krs-icon{font-size:24px;flex-shrink:0}
+  .krs-text{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+  .krs-text strong{font-size:14.5px;font-weight:600;color:var(--brand-navy)}
+  .krs-text small{font-size:12px;color:#666;font-weight:400;line-height:1.45}
+  .krs-status{margin-top:10px;padding:0;font-size:13px;display:none}
+  .krs-status.loading{display:block;color:#666}
+  .krs-status.success{display:block;padding:10px 14px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px}
+  .krs-status.error{display:block;padding:10px 14px;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:6px}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Uchwała o ustanowieniu pełnomocnika</h1>
+  <p class="lead">Uchwała Zgromadzenia Wspólników w sprawie ustanowienia pełnomocnika Spółki (art. 210 § 1¹ Kodeksu spółek handlowych). Dane spółki i osób podpisujących wczytasz z wypisu KRS, a dane pełnomocnika wprowadzasz ręcznie.</p>
+
+  <div class="krs-upload">
+    <input type="file" id="krsFile" accept="application/pdf" hidden />
+    <button type="button" id="krsUploadBtn" class="krs-btn">
+      <span class="krs-icon">📄</span>
+      <span class="krs-text">
+        <strong>Wczytaj dane z wypisu KRS</strong>
+        <small>Pobierz „Odpis aktualny KRS” z prs.ms.gov.pl i wgraj jako PDF — system automatycznie wypełni dane spółki oraz osoby podpisujące uchwałę.</small>
+      </span>
+    </button>
+    <div id="krsStatus" class="krs-status"></div>
+  </div>
+
+  <form id="form" novalidate>
+
+    <fieldset>
+      <legend>Dane spółki</legend>
+      <div class="field">
+        <label for="company">Pełna nazwa spółki</label>
+        <input id="company" name="company" type="text" required />
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="seat">Siedziba — miejscownik <small style="font-weight:400;color:#888">(np. „Poznaniu”)</small></label>
+          <input id="seat" name="seat" type="text" required placeholder="np. Poznaniu" />
+        </div>
+        <div class="field">
+          <label for="city">Miejscowość uchwały</label>
+          <input id="city" name="city" type="text" required placeholder="np. Poznań" />
+        </div>
+      </div>
+      <div class="row three">
+        <div class="field">
+          <label for="krs">KRS</label>
+          <input id="krs" name="krs" type="text" required pattern="[0-9]{10}" maxlength="10" inputmode="numeric" title="10 cyfr" />
+        </div>
+        <div class="field">
+          <label for="nip">NIP</label>
+          <input id="nip" name="nip" type="text" required pattern="[0-9]{10}" maxlength="10" inputmode="numeric" title="10 cyfr" />
+        </div>
+        <div class="field">
+          <label for="regon">REGON</label>
+          <input id="regon" name="regon" type="text" required pattern="[0-9]{9}([0-9]{5})?" maxlength="14" inputmode="numeric" title="9 lub 14 cyfr" />
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Uchwała</legend>
+      <div class="row">
+        <div class="field">
+          <label for="resNumber">Numer uchwały</label>
+          <input id="resNumber" name="resNumber" type="text" required placeholder="2/2026" />
+        </div>
+        <div class="field">
+          <label for="resDate">Data uchwały</label>
+          <input id="resDate" name="resDate" type="date" required />
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Pełnomocnik (dane wprowadzane ręcznie)</legend>
+      <p class="hint" style="margin:0 0 12px">Osoba ustanawiana pełnomocnikiem Spółki, uprawniona do zawierania umów w imieniu Spółki.</p>
+      <div class="row">
+        <div class="field">
+          <label for="pImie">Imię</label>
+          <input id="pImie" name="pImie" type="text" required />
+        </div>
+        <div class="field">
+          <label for="pNazwisko">Nazwisko</label>
+          <input id="pNazwisko" name="pNazwisko" type="text" required />
+        </div>
+      </div>
+      <div class="field">
+        <label for="pPesel">PESEL</label>
+        <input id="pPesel" name="pPesel" type="text" required pattern="[0-9]{11}" maxlength="11" inputmode="numeric" title="11 cyfr" />
+      </div>
+      <div class="field">
+        <label for="pAdres">Adres korespondencyjny</label>
+        <input id="pAdres" name="pAdres" type="text" required placeholder="np. ul. Stanisława Taczaka 24/301, 61-819 Poznań" />
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Osoby podpisujące uchwałę (Zgromadzenie Wspólników)</legend>
+      <p class="hint" style="margin:0 0 12px">Osoby, które podpisują uchwałę. Wczytane automatycznie z KRS — sprawdź dane i w razie potrzeby popraw funkcję.</p>
+      <div id="podpisujacy"></div>
+      <button type="button" id="addPodpis" class="add-btn">+ Dodaj kolejną osobę podpisującą</button>
+    </fieldset>
+
+    <button type="submit" id="submitBtn">Pobierz uchwałę (PDF)</button>
+    <div id="status" class="status"></div>
+  </form>
+
+  <footer class="site-footer">
+    <a href="rodo.html">Informacja o przetwarzaniu danych osobowych (RODO)</a>
+  </footer>
+</main>
+
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="krs-parser.js"></script>
+<script src="pelnomocnictwo.js"></script>
+<script>window.AUTOSAVE = { key: 'pelnomocnictwo', form: '#form', lists: [['#podpisujacy', '#addPodpis']] };</script>
+<script src="autosave.js"></script>
+</body>
+</html>
