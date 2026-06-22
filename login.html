@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Logowanie — Portal dokumentów spółki</title>
+<style>
+  :root{
+    --brand-navy:#1B3F7F;
+    --brand-navy-dark:#15315F;
+    --brand-green:#1FA84B;
+    --brand-green-dark:#198D3F;
+    --brand-tint:#EEF3F9;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--brand-tint);color:#111;line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    display:flex;align-items:center;justify-content:center;min-height:100%;padding:24px;
+  }
+  .card{
+    width:100%;max-width:400px;background:#fff;border:1px solid #e5e9ef;
+    border-radius:14px;box-shadow:0 12px 40px rgba(27,63,127,.10);
+    padding:36px 32px 32px;
+  }
+  .brand{text-align:center;margin:0 0 22px}
+  .brand img{height:72px;width:auto;object-fit:contain}
+  h1{font-size:21px;font-weight:700;margin:0 0 6px;text-align:center;color:var(--brand-navy);letter-spacing:-0.01em}
+  .sub{font-size:13.5px;color:#666;text-align:center;margin:0 0 26px}
+  label{display:block;font-size:13px;font-weight:500;color:#444;margin:0 0 6px}
+  .field{margin-bottom:16px}
+  input{
+    width:100%;padding:11px 13px;border:1.5px solid #e5e9ef;border-radius:8px;
+    font:inherit;font-size:14.5px;background:#fff;transition:border-color .15s,box-shadow .15s;
+  }
+  input:focus{outline:none;border-color:var(--brand-navy);box-shadow:0 0 0 3px rgba(27,63,127,.12)}
+  button.submit{
+    width:100%;margin-top:6px;background:var(--brand-navy);color:#fff;border:none;
+    padding:13px 24px;border-radius:8px;font:inherit;font-size:15px;font-weight:600;
+    cursor:pointer;transition:background .15s,transform .1s;
+  }
+  button.submit:hover{background:var(--brand-navy-dark)}
+  button.submit:active{transform:translateY(1px)}
+  button.submit:disabled{background:#9aa9c2;cursor:wait}
+  .status{margin-top:16px;padding:11px 13px;border-radius:8px;font-size:13.5px;display:none}
+  .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+  .foot{margin-top:22px;text-align:center;font-size:12px;color:#999}
+</style>
+</head>
+<body>
+  <form class="card" id="loginForm" autocomplete="on">
+    <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+    <h1>Portal dokumentów spółki</h1>
+    <p class="sub">Zaloguj się, aby uzyskać dostęp do generatorów dokumentów.</p>
+
+    <div class="field">
+      <label for="email">E-mail</label>
+      <input id="email" name="email" type="email" required autocomplete="username" />
+    </div>
+    <div class="field">
+      <label for="password">Hasło</label>
+      <input id="password" name="password" type="password" required autocomplete="current-password" />
+    </div>
+    <button type="submit" class="submit" id="submitBtn">Zaloguj się</button>
+    <div id="status" class="status"></div>
+    <p class="foot">TD Consulting Group</p>
+  </form>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+  <script>
+    (function () {
+      var form = document.getElementById('loginForm');
+      var btn = document.getElementById('submitBtn');
+      var status = document.getElementById('status');
+
+      function returnTarget() {
+        var p = new URLSearchParams(location.search).get('return');
+        // only allow same-site relative targets
+        if (p && !/^(https?:)?\/\//.test(p) && !p.startsWith('/')) return p;
+        return 'index.html';
+      }
+
+      function showError(msg) {
+        status.textContent = msg;
+        status.className = 'status error';
+      }
+
+      function hasPortalAccess(user) {
+        return !!(user && user.app_metadata && user.app_metadata.portal === true);
+      }
+
+      var DENIED_MSG = 'To konto nie ma dostępu do portalu dokumentów. Skontaktuj się z administratorem.';
+
+      if (new URLSearchParams(location.search).get('denied')) showError(DENIED_MSG);
+
+      // If already logged in (and authorized), skip the login screen.
+      if (window.sb) {
+        window.sb.auth.getSession().then(function (res) {
+          var session = res && res.data ? res.data.session : null;
+          if (session && hasPortalAccess(session.user)) location.replace(returnTarget());
+          else if (session) window.sb.auth.signOut();
+        });
+      } else {
+        showError('Błąd inicjalizacji. Odśwież stronę.');
+      }
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        status.className = 'status';
+        if (!window.sb) { showError('Błąd inicjalizacji. Odśwież stronę.'); return; }
+        var email = document.getElementById('email').value.trim();
+        var password = document.getElementById('password').value;
+        var orig = btn.textContent;
+        btn.disabled = true; btn.textContent = 'Logowanie...';
+        window.sb.auth.signInWithPassword({ email: email, password: password })
+          .then(function (res) {
+            if (res.error) {
+              showError(res.error.message === 'Invalid login credentials'
+                ? 'Nieprawidłowy e-mail lub hasło.'
+                : res.error.message);
+              btn.disabled = false; btn.textContent = orig;
+              return;
+            }
+            var user = res.data && res.data.user;
+            if (!hasPortalAccess(user)) {
+              window.sb.auth.signOut().then(function () {
+                showError(DENIED_MSG);
+                btn.disabled = false; btn.textContent = orig;
+              });
+              return;
+            }
+            location.replace(returnTarget());
+          })
+          .catch(function () {
+            showError('Nie udało się połączyć. Spróbuj ponownie.');
+            btn.disabled = false; btn.textContent = orig;
+          });
+      });
+    })();
+  </script>
+</body>
+</html>
