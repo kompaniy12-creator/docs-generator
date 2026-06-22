@@ -78,6 +78,20 @@
   <form id="form" novalidate>
 
     <fieldset>
+      <legend>Pracownik z bazy (opcjonalnie)</legend>
+      <div class="row">
+        <div class="field">
+          <label for="workerPicker">Wybierz zapisanego zleceniobiorcę</label>
+          <select id="workerPicker"><option value="">— nowy pracownik —</option></select>
+        </div>
+        <div class="field" style="display:flex;align-items:flex-end">
+          <button type="button" id="workerRefresh" class="add-btn" style="margin:0">Odśwież listę</button>
+        </div>
+      </div>
+      <p class="hint" style="margin:4px 0 0">Dane zleceniobiorcy zapisują się automatycznie po wygenerowaniu kompletu — następnym razem wybierzesz osobę z listy, a pola wypełnią się same.</p>
+    </fieldset>
+
+    <fieldset>
       <legend>Zleceniodawca (pracodawca)</legend>
       <div class="field">
         <label for="z_nazwa">Pełna nazwa firmy</label>
@@ -259,6 +273,7 @@
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
 <script src="history.js"></script>
+<script src="workers.js"></script>
 <script src="umowa-zlecenie.js"></script>
 <script>window.AUTOSAVE = { key: 'umowa-zlecenie', form: '#form' };</script>
 <script src="autosave.js"></script>

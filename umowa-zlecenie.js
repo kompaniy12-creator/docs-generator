@@ -29,6 +29,54 @@ const docRodzina = document.getElementById('doc_rodzina');
 const rodzinaFields = document.getElementById('rodzinaFields');
 docRodzina.addEventListener('change', () => { rodzinaFields.hidden = !docRodzina.checked; });
 
+// ---------------- Worker directory (own Supabase) ----------------
+function setVal(name, val) {
+  const el = document.querySelector('[name="' + name + '"]');
+  if (el && val != null) el.value = val;
+}
+function fillWorker(d) {
+  const p = d.p || {}, a = d.adres || {}, m = d.meld;
+  setVal('p_nazwisko', p.nazwisko); setVal('p_imiona', p.imiona); setVal('p_dataur', p.dataur);
+  setVal('p_miejsceur', p.miejsceur); setVal('p_pesel', p.pesel); setVal('p_dowod', p.dowod);
+  setVal('p_nip', p.nip); setVal('p_telefon', p.telefon); setVal('p_konto', p.konto);
+  setVal('p_us', p.us); setVal('p_nfz', p.nfz);
+  setVal('a_ulica', a.ulica); setVal('a_nrdom', a.nrdom); setVal('a_nrmiesz', a.nrmiesz);
+  setVal('a_kod', a.kod); setVal('a_miejscowosc', a.miejscowosc); setVal('a_gmina', a.gmina);
+  setVal('a_powiat', a.powiat); setVal('a_wojewodztwo', a.woj);
+  if (m) {
+    mSame.checked = false; meldunekFields.hidden = false;
+    setVal('m_ulica', m.ulica); setVal('m_nrdom', m.nrdom); setVal('m_nrmiesz', m.nrmiesz);
+    setVal('m_kod', m.kod); setVal('m_miejscowosc', m.miejscowosc); setVal('m_gmina', m.gmina);
+    setVal('m_powiat', m.powiat); setVal('m_wojewodztwo', m.woj);
+  } else { mSame.checked = true; meldunekFields.hidden = true; }
+}
+async function loadWorkers() {
+  if (!window.Workers) return;
+  const sel = document.getElementById('workerPicker');
+  try {
+    const ws = await window.Workers.list();
+    sel.innerHTML = '<option value="">— nowy pracownik —</option>';
+    ws.forEach((w) => {
+      const o = document.createElement('option');
+      o.value = w.id;
+      o.textContent = ((w.nazwisko || '') + ' ' + (w.imiona || '')).trim() + (w.pesel ? ' · ' + w.pesel : '');
+      sel.appendChild(o);
+    });
+  } catch (e) { console.warn('loadWorkers', e); }
+}
+(function initWorkers() {
+  const sel = document.getElementById('workerPicker');
+  const refresh = document.getElementById('workerRefresh');
+  if (!sel) return;
+  sel.addEventListener('change', async (e) => {
+    if (!e.target.value) return;
+    try { const w = await window.Workers.get(e.target.value); fillWorker(w.data || {}); }
+    catch (err) { console.warn(err); }
+  });
+  if (refresh) refresh.addEventListener('click', loadWorkers);
+  loadWorkers();
+})();
+
 // ---------------- Font cache ----------------
 let fontRegular = null, fontBold = null;
 async function loadFonts() {
@@ -602,6 +650,17 @@ form.addEventListener('submit', async (e) => {
     URL.revokeObjectURL(a.href);
 
     showStatus('Komplet został wygenerowany i pobrany.', 'success');
+
+    // Save / update the worker profile in the portal directory (non-blocking)
+    if (window.Workers && window.Workers.save) {
+      try {
+        await window.Workers.save({
+          nazwisko: data.p.nazwisko, imiona: data.p.imiona, pesel: data.p.pesel,
+          data: { p: data.p, adres: data.adres, meld: data.meld },
+        });
+        loadWorkers();
+      } catch (err) { console.warn('worker save failed:', err); }
+    }
 
     // Save to history (non-blocking — never fails the generation)
     if (window.DocHistory && window.DocHistory.save) {
