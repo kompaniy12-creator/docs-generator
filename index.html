@@ -14,89 +14,80 @@
     --brand-green:#1FA84B;
     --brand-green-dark:#198D3F;
     --brand-tint:#EEF3F9;
+    --sidebar-w:264px;
   }
   *,*::before,*::after{box-sizing:border-box}
   html,body{margin:0;padding:0}
   body{
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    background:#fff;
-    color:#111;
-    line-height:1.55;
-    -webkit-font-smoothing:antialiased;
-  }
-  main{max-width:880px;margin:0 auto;padding:48px 24px 96px}
-  .brand{text-align:center;margin:0 0 28px}
-  .brand img{height:96px;width:auto;object-fit:contain}
-  h1{
-    font-size:28px;font-weight:700;margin:0 0 12px;letter-spacing:-0.01em;
-    color:var(--brand-navy);text-align:center;
-  }
-  .lead{
-    color:#555;font-size:15.5px;margin:0 auto 48px;
-    text-align:center;max-width:640px;
-  }
-  .category{margin:0 0 40px}
-  .category-label{
-    font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
-    color:var(--brand-green);margin:0 0 8px;
-  }
-  .category h2{
-    font-size:20px;font-weight:600;margin:0 0 16px;
-    letter-spacing:-0.005em;color:var(--brand-navy);
-  }
-  .cards{
-    display:grid;
-    grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
-    gap:16px;
-  }
-  .card{
-    display:flex;flex-direction:column;
-    padding:24px 22px;
-    background:#fff;
-    border:1.5px solid #e5e9ef;
-    border-radius:12px;
-    text-decoration:none;
-    color:inherit;
-    transition:all .18s ease;
-  }
-  .card:hover{
-    border-color:var(--brand-navy);
-    transform:translateY(-2px);
-    box-shadow:0 8px 24px rgba(27,63,127,.10);
-  }
-  .card.disabled{opacity:.5;pointer-events:none;cursor:not-allowed}
-  .card-icon{
-    width:42px;height:42px;
-    border-radius:10px;
-    background:var(--brand-tint);
-    color:var(--brand-navy);
-    display:flex;align-items:center;justify-content:center;
-    font-size:20px;font-weight:700;
-    margin-bottom:14px;
-  }
-  .card h3{
-    font-size:16px;font-weight:600;margin:0 0 8px;
-    color:var(--brand-navy);letter-spacing:-0.005em;
-  }
-  .card p{
-    font-size:13px;line-height:1.55;color:#555;
-    margin:0 0 16px;flex:1;
-  }
-  .card-cta{
-    font-size:13px;font-weight:600;color:var(--brand-navy);
-    display:inline-flex;align-items:center;gap:4px;
-  }
-  .card-soon{
-    font-size:11px;font-weight:600;text-transform:uppercase;
-    letter-spacing:.08em;color:#999;
+    background:#fff;color:#111;line-height:1.55;-webkit-font-smoothing:antialiased;
   }
 
-  /* CTA section (re-used pattern) */
-  .cta{
-    margin-top:56px;padding:32px 28px;
-    background:linear-gradient(135deg,var(--brand-navy) 0%,var(--brand-navy-dark) 100%);
-    color:#fff;border-radius:12px;
+  /* ---- Layout ---- */
+  .layout{display:grid;grid-template-columns:var(--sidebar-w) 1fr;min-height:100vh}
+
+  /* ---- Sidebar ---- */
+  .sidebar{
+    position:sticky;top:0;align-self:start;height:100vh;
+    background:var(--brand-tint);border-right:1px solid #e1e7f0;
+    display:flex;flex-direction:column;padding:24px 16px;overflow-y:auto;
   }
+  .sidebar-brand{text-align:center;padding:8px 8px 22px}
+  .sidebar-brand img{height:64px;width:auto;object-fit:contain}
+  .nav-label{
+    font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+    color:#8a97ab;margin:14px 10px 6px;
+  }
+  .nav-item{
+    display:flex;align-items:center;gap:11px;width:100%;
+    padding:11px 12px;margin-bottom:3px;border:none;background:transparent;
+    border-radius:9px;cursor:pointer;text-align:left;
+    font:inherit;font-size:14px;font-weight:500;color:#3a4759;
+    transition:background .15s,color .15s;
+  }
+  .nav-item:hover{background:rgba(27,63,127,.07);color:var(--brand-navy)}
+  .nav-item.active{background:var(--brand-navy);color:#fff;font-weight:600}
+  .nav-item.active .nav-ico{filter:none}
+  .nav-ico{
+    width:26px;height:26px;flex:0 0 26px;display:flex;align-items:center;justify-content:center;
+    font-size:16px;border-radius:7px;background:#fff;
+  }
+  .nav-item.active .nav-ico{background:rgba(255,255,255,.18)}
+  .sidebar-foot{margin-top:auto;padding:18px 10px 4px;font-size:12px}
+  .sidebar-foot a{color:#7a8699;text-decoration:none}
+  .sidebar-foot a:hover{color:var(--brand-navy);text-decoration:underline}
+
+  /* ---- Content ---- */
+  .content{padding:56px 40px 96px;max-width:920px}
+  .content-head{margin:0 0 36px}
+  h1{
+    font-size:26px;font-weight:700;margin:0 0 8px;letter-spacing:-0.01em;color:var(--brand-navy);
+  }
+  .lead{color:#555;font-size:15px;margin:0;max-width:640px}
+
+  .panel{display:none}
+  .panel.active{display:block;animation:fade .2s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+  .card{
+    display:flex;flex-direction:column;padding:24px 22px;background:#fff;
+    border:1.5px solid #e5e9ef;border-radius:12px;text-decoration:none;color:inherit;
+    transition:all .18s ease;
+  }
+  .card:hover{border-color:var(--brand-navy);transform:translateY(-2px);box-shadow:0 8px 24px rgba(27,63,127,.10)}
+  .card.disabled{opacity:.5;pointer-events:none;cursor:not-allowed}
+  .card-icon{
+    width:42px;height:42px;border-radius:10px;background:var(--brand-tint);color:var(--brand-navy);
+    display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;margin-bottom:14px;
+  }
+  .card h3{font-size:16px;font-weight:600;margin:0 0 8px;color:var(--brand-navy);letter-spacing:-0.005em}
+  .card p{font-size:13px;line-height:1.55;color:#555;margin:0 0 16px;flex:1}
+  .card-cta{font-size:13px;font-weight:600;color:var(--brand-navy);display:inline-flex;align-items:center;gap:4px}
+  .card-soon{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#999}
+
+  /* ---- CTA (consultation) ---- */
+  .cta{padding:32px 28px;background:linear-gradient(135deg,var(--brand-navy) 0%,var(--brand-navy-dark) 100%);color:#fff;border-radius:12px;max-width:640px}
   .cta h2{margin:0 0 16px;font-size:22px;font-weight:700;letter-spacing:-0.01em;color:#fff}
   .cta-text{margin:0 0 12px;font-size:14.5px;line-height:1.6;color:#d4d4d4}
   .cta-text strong{color:var(--brand-green);font-weight:600}
@@ -106,22 +97,14 @@
   .cta .field{margin-bottom:12px}
   .cta .field label{color:#bbb;font-size:13px;font-weight:500;margin-bottom:6px;display:block}
   .cta input[type="text"],.cta input[type="email"],.cta input[type="tel"],.cta textarea{
-    width:100%;padding:10px 12px;
-    border:1px solid rgba(255,255,255,.2);border-radius:6px;
-    font:inherit;font-size:14px;
-    background:rgba(255,255,255,.08);color:#fff;
-    transition:border-color .15s,box-shadow .15s;
+    width:100%;padding:10px 12px;border:1px solid rgba(255,255,255,.2);border-radius:6px;
+    font:inherit;font-size:14px;background:rgba(255,255,255,.08);color:#fff;transition:border-color .15s,box-shadow .15s;
   }
-  .cta input:focus,.cta textarea:focus{
-    outline:none;border-color:var(--brand-green);
-    box-shadow:0 0 0 3px rgba(31,168,75,.25);background:rgba(255,255,255,.12);
-  }
+  .cta input:focus,.cta textarea:focus{outline:none;border-color:var(--brand-green);box-shadow:0 0 0 3px rgba(31,168,75,.25);background:rgba(255,255,255,.12)}
   .cta textarea{resize:vertical}
   .cta button.cta-submit{
-    background:var(--brand-green);color:#fff;border:none;
-    padding:14px 24px;border-radius:8px;
-    font:inherit;font-size:15px;font-weight:600;cursor:pointer;
-    width:100%;margin-top:8px;transition:background .15s,transform .1s;
+    background:var(--brand-green);color:#fff;border:none;padding:14px 24px;border-radius:8px;
+    font:inherit;font-size:15px;font-weight:600;cursor:pointer;width:100%;margin-top:8px;transition:background .15s,transform .1s;
   }
   .cta button.cta-submit:hover{background:var(--brand-green-dark)}
   .cta button.cta-submit:active{transform:translateY(1px)}
@@ -133,137 +116,185 @@
   .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
   .status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
 
-  .site-footer{
-    margin-top:48px;padding-top:20px;border-top:1px solid #e5e5e5;
-    text-align:center;font-size:13px;
+  /* ---- Responsive: collapse sidebar to top bar ---- */
+  @media (max-width:820px){
+    .layout{grid-template-columns:1fr}
+    .sidebar{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;
+      border-right:none;border-bottom:1px solid #e1e7f0;padding:12px 14px;gap:6px}
+    .sidebar-brand{padding:0 12px 0 4px}
+    .sidebar-brand img{height:40px}
+    .nav-label{display:none}
+    .nav-item{width:auto;margin:0}
+    .sidebar-foot{margin:0 0 0 auto;padding:0 6px}
+    .content{padding:32px 22px 72px}
   }
-  .site-footer a{color:#666;text-decoration:none}
-  .site-footer a:hover{color:var(--brand-navy);text-decoration:underline}
 </style>
 </head>
 <body>
-<main>
-  <div class="brand">
-    <img src="logo.png" alt="TD Consulting Group" />
-  </div>
-  <h1>Portal generatora dokumentów spółki</h1>
-  <p class="lead">Wygodne narzędzia do tworzenia dokumentów dla Twojej spółki z o.o. — od rejestracji w S24 po bieżącą działalność. Wybierz, jakie dokumenty chcesz wygenerować.</p>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand"><img src="logo.png" alt="TD Consulting Group" /></div>
 
-  <section class="category">
-    <div class="category-label">Rejestracja</div>
-    <h2>Założenie spółki z o.o.</h2>
-    <div class="cards">
-      <a href="rejestracja.html" class="card">
-        <div class="card-icon">📋</div>
-        <h3>Pakiet rejestracyjny S24</h3>
-        <p>4 dokumenty wymagane przy rejestracji spółki przez system S24: lista wspólników, lista członków zarządu, oświadczenie o statusie Cudzoziemca oraz oświadczenia o zgodzie na powołanie do zarządu.</p>
-        <span class="card-cta">Wygeneruj →</span>
-      </a>
+    <div class="nav-label">Dokumenty</div>
+    <button class="nav-item" data-target="rejestracja">
+      <span class="nav-ico">📋</span> Rejestracja spółki
+    </button>
+    <button class="nav-item" data-target="biezaca">
+      <span class="nav-ico">💼</span> Bieżąca działalność
+    </button>
+
+    <div class="nav-label">Pomoc</div>
+    <button class="nav-item" data-target="konsultacja">
+      <span class="nav-ico">💬</span> Bezpłatna konsultacja
+    </button>
+
+    <div class="sidebar-foot">
+      <a href="rodo.html">Informacja RODO</a>
     </div>
-  </section>
+  </aside>
 
-  <section class="category">
-    <div class="category-label">Po rejestracji</div>
-    <h2>Bieżąca działalność spółki</h2>
-    <div class="cards">
-      <a href="wynagrodzenie.html" class="card">
-        <div class="card-icon">💰</div>
-        <h3>Uchwała o wynagrodzeniu zarządu</h3>
-        <p>Uchwała Nadzwyczajnego Zgromadzenia Wspólników w sprawie ustalenia wynagrodzenia dla członka lub członków zarządu spółki, z określeniem kwoty, terminu wypłaty i formy płatności.</p>
-        <span class="card-cta">Wygeneruj →</span>
-      </a>
-      <a href="e-urzad.html" class="card">
-        <div class="card-icon">🏛️</div>
-        <h3>Wniosek do e-Urzędu Skarbowego</h3>
-        <p>Wniosek o przyznanie lub odebranie dostępu do konta organizacji w e-Urzędzie Skarbowym dla wyznaczonej osoby (np. członka zarządu lub księgowej).</p>
-        <span class="card-cta">Wygeneruj →</span>
-      </a>
-      <a href="pelnomocnictwo.html" class="card">
-        <div class="card-icon">🖋️</div>
-        <h3>Uchwała o ustanowieniu pełnomocnika</h3>
-        <p>Uchwała Zgromadzenia Wspólników o ustanowieniu pełnomocnika Spółki uprawnionego do zawierania umów w jej imieniu (art. 210 § 1¹ KSH). Dane spółki z KRS, dane pełnomocnika wprowadzane ręcznie.</p>
-        <span class="card-cta">Wygeneruj →</span>
-      </a>
-      <div class="card disabled">
-        <div class="card-icon">✏️</div>
-        <h3>Kolejne dokumenty</h3>
-        <p>Już wkrótce — uchwały o zmianie składu zarządu, powołaniu prokurenta, zmianie umowy spółki, sprawozdania finansowe i inne.</p>
-        <span class="card-soon">Wkrótce</span>
+  <main class="content">
+    <!-- Rejestracja -->
+    <section class="panel" id="panel-rejestracja" data-panel="rejestracja">
+      <div class="content-head">
+        <h1>Rejestracja spółki z o.o.</h1>
+        <p class="lead">Dokumenty wymagane do założenia spółki z ograniczoną odpowiedzialnością przez system S24.</p>
       </div>
-    </div>
-  </section>
+      <div class="cards">
+        <a href="rejestracja.html" class="card">
+          <div class="card-icon">📋</div>
+          <h3>Pakiet rejestracyjny S24</h3>
+          <p>4 dokumenty wymagane przy rejestracji spółki przez system S24: lista wspólników, lista członków zarządu, oświadczenie o statusie Cudzoziemca oraz oświadczenia o zgodzie na powołanie do zarządu.</p>
+          <span class="card-cta">Wygeneruj →</span>
+        </a>
+      </div>
+    </section>
 
-  <section class="cta">
-    <h2>Potrzebujesz wsparcia?</h2>
-    <p class="cta-text">
-      Nie masz pewności, jaki dokument wybrać albo jak go prawidłowo wypełnić? Zostaw kontakt — nasi prawnicy oddzwonią i udzielą <strong>bezpłatnej konsultacji</strong>.
-    </p>
-    <p class="cta-text">
-      Dodatkowo proponujemy profesjonalną obsługę księgową: <strong>pierwszy miesiąc księgowości na test — gratis</strong>.
-    </p>
-
-    <form id="leadForm" class="cta-form" action="https://lead-forwarder.leg-pobyt.workers.dev/" method="POST">
-      <input type="hidden" name="_subject" value="Nowe zapytanie z portalu (strona główna)" />
-      <input type="text" name="_honey" style="display:none" tabindex="-1" autocomplete="off" />
-
-      <div class="cta-row">
-        <div class="field">
-          <label for="leadName">Imię i Nazwisko</label>
-          <input id="leadName" name="Imię i Nazwisko" type="text" required />
-        </div>
-        <div class="field">
-          <label for="leadPhone">Telefon</label>
-          <input id="leadPhone" name="Telefon" type="tel" required placeholder="+48 ..." />
+    <!-- Bieżąca działalność -->
+    <section class="panel" id="panel-biezaca" data-panel="biezaca">
+      <div class="content-head">
+        <h1>Bieżąca działalność spółki</h1>
+        <p class="lead">Uchwały i wnioski potrzebne w codziennym funkcjonowaniu zarejestrowanej spółki.</p>
+      </div>
+      <div class="cards">
+        <a href="wynagrodzenie.html" class="card">
+          <div class="card-icon">💰</div>
+          <h3>Uchwała o wynagrodzeniu zarządu</h3>
+          <p>Uchwała Nadzwyczajnego Zgromadzenia Wspólników w sprawie ustalenia wynagrodzenia dla członka lub członków zarządu spółki, z określeniem kwoty, terminu wypłaty i formy płatności.</p>
+          <span class="card-cta">Wygeneruj →</span>
+        </a>
+        <a href="e-urzad.html" class="card">
+          <div class="card-icon">🏛️</div>
+          <h3>Wniosek do e-Urzędu Skarbowego</h3>
+          <p>Wniosek o przyznanie lub odebranie dostępu do konta organizacji w e-Urzędzie Skarbowym dla wyznaczonej osoby (np. członka zarządu lub księgowej).</p>
+          <span class="card-cta">Wygeneruj →</span>
+        </a>
+        <a href="pelnomocnictwo.html" class="card">
+          <div class="card-icon">🖋️</div>
+          <h3>Uchwała o ustanowieniu pełnomocnika</h3>
+          <p>Uchwała Zgromadzenia Wspólników o ustanowieniu pełnomocnika Spółki uprawnionego do zawierania umów w jej imieniu (art. 210 § 1¹ KSH). Dane spółki z KRS, dane pełnomocnika wprowadzane ręcznie.</p>
+          <span class="card-cta">Wygeneruj →</span>
+        </a>
+        <div class="card disabled">
+          <div class="card-icon">✏️</div>
+          <h3>Kolejne dokumenty</h3>
+          <p>Już wkrótce — uchwały o zmianie składu zarządu, powołaniu prokurenta, zmianie umowy spółki, sprawozdania finansowe i inne.</p>
+          <span class="card-soon">Wkrótce</span>
         </div>
       </div>
-      <div class="field">
-        <label for="leadEmail">E-mail</label>
-        <input id="leadEmail" name="E-mail" type="email" required />
-      </div>
-      <div class="field">
-        <label for="leadMessage">Wiadomość (opcjonalnie)</label>
-        <textarea id="leadMessage" name="Wiadomość" rows="3"></textarea>
-      </div>
-      <button type="submit" class="cta-submit" id="leadSubmit">Otrzymaj bezpłatną konsultację</button>
-      <div id="leadStatus" class="status"></div>
-      <p class="cta-disclaimer">Wysyłając formularz akceptujesz <a href="rodo.html">zasady przetwarzania danych osobowych (RODO)</a>.</p>
-    </form>
-  </section>
+    </section>
 
-  <footer class="site-footer">
-    <a href="rodo.html">Informacja o przetwarzaniu danych osobowych (RODO)</a>
-  </footer>
-</main>
+    <!-- Konsultacja -->
+    <section class="panel" id="panel-konsultacja" data-panel="konsultacja">
+      <div class="content-head">
+        <h1>Potrzebujesz wsparcia?</h1>
+        <p class="lead">Nie masz pewności, jaki dokument wybrać albo jak go wypełnić? Zostaw kontakt — oddzwonimy.</p>
+      </div>
+      <section class="cta">
+        <h2>Bezpłatna konsultacja</h2>
+        <p class="cta-text">Nasi prawnicy oddzwonią i udzielą <strong>bezpłatnej konsultacji</strong>.</p>
+        <p class="cta-text">Dodatkowo proponujemy profesjonalną obsługę księgową: <strong>pierwszy miesiąc księgowości na test — gratis</strong>.</p>
+
+        <form id="leadForm" class="cta-form" action="https://lead-forwarder.leg-pobyt.workers.dev/" method="POST">
+          <input type="hidden" name="_subject" value="Nowe zapytanie z portalu (strona główna)" />
+          <input type="text" name="_honey" style="display:none" tabindex="-1" autocomplete="off" />
+          <div class="cta-row">
+            <div class="field">
+              <label for="leadName">Imię i Nazwisko</label>
+              <input id="leadName" name="Imię i Nazwisko" type="text" required />
+            </div>
+            <div class="field">
+              <label for="leadPhone">Telefon</label>
+              <input id="leadPhone" name="Telefon" type="tel" required placeholder="+48 ..." />
+            </div>
+          </div>
+          <div class="field">
+            <label for="leadEmail">E-mail</label>
+            <input id="leadEmail" name="E-mail" type="email" required />
+          </div>
+          <div class="field">
+            <label for="leadMessage">Wiadomość (opcjonalnie)</label>
+            <textarea id="leadMessage" name="Wiadomość" rows="3"></textarea>
+          </div>
+          <button type="submit" class="cta-submit" id="leadSubmit">Otrzymaj bezpłatną konsultację</button>
+          <div id="leadStatus" class="status"></div>
+          <p class="cta-disclaimer">Wysyłając formularz akceptujesz <a href="rodo.html">zasady przetwarzania danych osobowych (RODO)</a>.</p>
+        </form>
+      </section>
+    </section>
+  </main>
+</div>
 
 <script>
-  // Standalone lead-form handler for portal landing
-  const leadForm = document.getElementById('leadForm');
-  const leadStatus = document.getElementById('leadStatus');
-  const leadSubmit = document.getElementById('leadSubmit');
-  leadForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    leadStatus.className = 'status';
-    if (!leadForm.checkValidity()) { leadForm.reportValidity(); return; }
-    const origLabel = leadSubmit.textContent;
-    leadSubmit.disabled = true;
-    leadSubmit.textContent = 'Wysyłanie...';
-    try {
-      const res = await fetch(leadForm.action, {
-        method: 'POST', body: new FormData(leadForm),
-        headers: { Accept: 'application/json' },
-      });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      leadStatus.textContent = 'Dziękujemy! Skontaktujemy się z Państwem najszybciej, jak to możliwe.';
-      leadStatus.className = 'status success';
-      leadForm.reset();
-    } catch (err) {
-      leadStatus.textContent = 'Nie udało się wysłać. Spróbuj ponownie lub napisz na rodo@td-group.pl.';
-      leadStatus.className = 'status error';
-    } finally {
-      leadSubmit.disabled = false;
-      leadSubmit.textContent = origLabel;
+  // ---- Sidebar tab switching (hash-based) ----
+  (function () {
+    var navItems = Array.prototype.slice.call(document.querySelectorAll('.nav-item'));
+    var panels = Array.prototype.slice.call(document.querySelectorAll('.panel'));
+    var valid = panels.map(function (p) { return p.getAttribute('data-panel'); });
+    var DEFAULT = 'rejestracja';
+
+    function activate(target) {
+      if (valid.indexOf(target) === -1) target = DEFAULT;
+      navItems.forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-target') === target); });
+      panels.forEach(function (p) { p.classList.toggle('active', p.getAttribute('data-panel') === target); });
     }
-  });
+
+    navItems.forEach(function (b) {
+      b.addEventListener('click', function () {
+        var t = b.getAttribute('data-target');
+        if (location.hash !== '#' + t) location.hash = t; // triggers hashchange
+        else activate(t);
+      });
+    });
+    window.addEventListener('hashchange', function () { activate(location.hash.replace('#', '')); });
+    activate(location.hash.replace('#', '') || DEFAULT);
+  })();
+
+  // ---- Lead form handler ----
+  (function () {
+    var leadForm = document.getElementById('leadForm');
+    var leadStatus = document.getElementById('leadStatus');
+    var leadSubmit = document.getElementById('leadSubmit');
+    leadForm.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      leadStatus.className = 'status';
+      if (!leadForm.checkValidity()) { leadForm.reportValidity(); return; }
+      var origLabel = leadSubmit.textContent;
+      leadSubmit.disabled = true; leadSubmit.textContent = 'Wysyłanie...';
+      try {
+        var res = await fetch(leadForm.action, { method: 'POST', body: new FormData(leadForm), headers: { Accept: 'application/json' } });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        leadStatus.textContent = 'Dziękujemy! Skontaktujemy się z Państwem najszybciej, jak to możliwe.';
+        leadStatus.className = 'status success';
+        leadForm.reset();
+      } catch (err) {
+        leadStatus.textContent = 'Nie udało się wysłać. Spróbuj ponownie lub napisz na rodo@td-group.pl.';
+        leadStatus.className = 'status error';
+      } finally {
+        leadSubmit.disabled = false; leadSubmit.textContent = origLabel;
+      }
+    });
+  })();
 </script>
 </body>
 </html>
