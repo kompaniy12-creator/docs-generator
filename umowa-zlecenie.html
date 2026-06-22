@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>Umowa zlecenie — komplet dokumentów — TD Consulting Group</title>
+<style>
+  :root{
+    --brand-navy:#1B3F7F;
+    --brand-navy-dark:#15315F;
+    --brand-green:#1FA84B;
+    --brand-green-dark:#198D3F;
+    --brand-tint:#EEF3F9;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#fff;color:#111;line-height:1.5;-webkit-font-smoothing:antialiased}
+  main{max-width:760px;margin:0 auto;padding:48px 24px 96px}
+  .back{display:inline-block;margin-bottom:16px;font-size:14px;color:#666;text-decoration:none}
+  .back:hover{color:var(--brand-navy)}
+  .brand{text-align:center;margin:0 0 24px}
+  .brand img{height:80px;width:auto;object-fit:contain}
+  h1{font-size:24px;font-weight:600;margin:0 0 8px;letter-spacing:-0.01em;color:var(--brand-navy)}
+  .lead{color:#666;margin:0 0 32px;font-size:14.5px}
+
+  fieldset{border:1px solid #e5e5e5;border-radius:8px;padding:24px;margin:0 0 20px}
+  legend{padding:0 8px;font-weight:600;font-size:14px;color:var(--brand-navy)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .row.three{grid-template-columns:1fr 1fr 1fr}
+  .row.addr{grid-template-columns:2fr 1fr 1fr}
+  @media (max-width:560px){.row,.row.three,.row.addr{grid-template-columns:1fr}}
+  label{display:block;font-size:13px;font-weight:500;margin-bottom:6px;color:#333}
+  input[type="text"],input[type="date"],input[type="number"],input[type="email"],textarea,select{
+    width:100%;padding:10px 12px;border:1px solid #d4d4d4;border-radius:6px;
+    font:inherit;font-size:14px;background:#fff;transition:border-color .15s,box-shadow .15s;
+  }
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand-navy);box-shadow:0 0 0 3px rgba(27,63,127,.12)}
+  .field{margin-bottom:14px}
+  .field:last-child{margin-bottom:0}
+  .hint{display:block;color:#888;font-size:11.5px;margin-top:4px}
+  .opt{font-weight:400;color:#999;font-size:12px}
+
+  .checks{display:flex;flex-direction:column;gap:11px}
+  .check{display:flex;align-items:flex-start;gap:11px;font-size:14px;color:#222;cursor:pointer;padding:2px 0}
+  .check input{width:18px;height:18px;margin:1px 0 0;accent-color:var(--brand-navy);cursor:pointer;flex:0 0 18px}
+  .check .ct{display:flex;flex-direction:column;gap:1px}
+  .check .ct small{color:#888;font-size:12px;font-weight:400}
+  .check.locked{opacity:.7}
+
+  button[type="submit"]{
+    background:var(--brand-navy);color:#fff;border:none;
+    padding:14px 28px;border-radius:8px;font:inherit;font-size:15px;font-weight:600;
+    cursor:pointer;width:100%;transition:background .15s;
+  }
+  button[type="submit"]:hover{background:var(--brand-navy-dark)}
+  button[type="submit"]:disabled{background:#999;cursor:wait}
+
+  .status{margin-top:16px;padding:12px 14px;border-radius:6px;font-size:14px;display:none}
+  .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+  .status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+
+  .site-footer{margin-top:48px;padding-top:20px;border-top:1px solid #e5e5e5;text-align:center;font-size:13px}
+  .site-footer a{color:#666;text-decoration:none}
+  .site-footer a:hover{color:var(--brand-navy);text-decoration:underline}
+  #rodzinaFields[hidden],#meldunekFields[hidden]{display:none}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Umowa zlecenie — komplet dokumentów</h1>
+  <p class="lead">Wprowadź dane Zleceniodawcy i Zleceniobiorcy, zaznacz dokumenty do wygenerowania — system złoży gotowy komplet w jednym pliku PDF do wydruku i podpisu.</p>
+
+  <form id="form" novalidate>
+
+    <fieldset>
+      <legend>Zleceniodawca (pracodawca)</legend>
+      <div class="field">
+        <label for="z_nazwa">Pełna nazwa firmy</label>
+        <input id="z_nazwa" name="z_nazwa" type="text" required placeholder="np. NORD REY Sp. z o. o." />
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="z_miasto">Siedziba — miejscowość</label>
+          <input id="z_miasto" name="z_miasto" type="text" required placeholder="np. Wrocław" />
+        </div>
+        <div class="field">
+          <label for="z_ulica">Ulica i numer siedziby</label>
+          <input id="z_ulica" name="z_ulica" type="text" required placeholder="np. ul. gen. Romualda Traugutta 107" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="z_iod_adres">Adres korespondencyjny IOD <span class="opt">(do klauzuli RODO)</span></label>
+          <input id="z_iod_adres" name="z_iod_adres" type="text" placeholder="np. ul. ... , 00-000 Wrocław" />
+        </div>
+        <div class="field">
+          <label for="z_iod_email">E-mail IOD <span class="opt">(do klauzuli RODO)</span></label>
+          <input id="z_iod_email" name="z_iod_email" type="email" placeholder="np. iod@firma.pl" />
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Zleceniobiorca — dane osobowe</legend>
+      <div class="row">
+        <div class="field">
+          <label for="p_nazwisko">Nazwisko</label>
+          <input id="p_nazwisko" name="p_nazwisko" type="text" required />
+        </div>
+        <div class="field">
+          <label for="p_imiona">Imię (imiona)</label>
+          <input id="p_imiona" name="p_imiona" type="text" required />
+        </div>
+      </div>
+      <div class="row three">
+        <div class="field">
+          <label for="p_dataur">Data urodzenia</label>
+          <input id="p_dataur" name="p_dataur" type="date" />
+        </div>
+        <div class="field">
+          <label for="p_miejsceur">Miejsce urodzenia</label>
+          <input id="p_miejsceur" name="p_miejsceur" type="text" />
+        </div>
+        <div class="field">
+          <label for="p_pesel">PESEL</label>
+          <input id="p_pesel" name="p_pesel" type="text" pattern="[0-9]{11}" maxlength="11" inputmode="numeric" title="11 cyfr" />
+        </div>
+      </div>
+      <div class="row three">
+        <div class="field">
+          <label for="p_dowod">Seria i nr dowodu / paszportu</label>
+          <input id="p_dowod" name="p_dowod" type="text" />
+        </div>
+        <div class="field">
+          <label for="p_nip">NIP <span class="opt">(opcjonalnie)</span></label>
+          <input id="p_nip" name="p_nip" type="text" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="p_telefon">Telefon kontaktowy</label>
+          <input id="p_telefon" name="p_telefon" type="text" inputmode="tel" />
+        </div>
+      </div>
+      <div class="row three">
+        <div class="field">
+          <label for="p_konto">Numer konta bankowego</label>
+          <input id="p_konto" name="p_konto" type="text" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="p_us">Urząd Skarbowy</label>
+          <input id="p_us" name="p_us" type="text" placeholder="np. US Poznań-Nowe Miasto" />
+        </div>
+        <div class="field">
+          <label for="p_nfz">Oddział NFZ</label>
+          <input id="p_nfz" name="p_nfz" type="text" placeholder="np. 15R" />
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Adres zamieszkania</legend>
+      <div class="row addr">
+        <div class="field"><label for="a_ulica">Ulica</label><input id="a_ulica" name="a_ulica" type="text" required /></div>
+        <div class="field"><label for="a_nrdom">Nr domu</label><input id="a_nrdom" name="a_nrdom" type="text" /></div>
+        <div class="field"><label for="a_nrmiesz">Nr mieszkania</label><input id="a_nrmiesz" name="a_nrmiesz" type="text" /></div>
+      </div>
+      <div class="row three">
+        <div class="field"><label for="a_kod">Kod pocztowy</label><input id="a_kod" name="a_kod" type="text" placeholder="00-000" /></div>
+        <div class="field" style="grid-column:span 2"><label for="a_miejscowosc">Miejscowość</label><input id="a_miejscowosc" name="a_miejscowosc" type="text" required /></div>
+      </div>
+      <div class="row three">
+        <div class="field"><label for="a_gmina">Gmina</label><input id="a_gmina" name="a_gmina" type="text" /></div>
+        <div class="field"><label for="a_powiat">Powiat</label><input id="a_powiat" name="a_powiat" type="text" /></div>
+        <div class="field"><label for="a_wojewodztwo">Województwo</label><input id="a_wojewodztwo" name="a_wojewodztwo" type="text" /></div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Adres zameldowania</legend>
+      <label class="check" style="margin-bottom:8px">
+        <input type="checkbox" id="m_same" name="m_same" checked />
+        <span class="ct"><span>Taki sam jak adres zamieszkania</span>
+        <small>Odznacz, jeśli adres zameldowania jest inny (zostanie ujęty na rocznej deklaracji PIT).</small></span>
+      </label>
+      <div id="meldunekFields" hidden>
+        <div class="row addr">
+          <div class="field"><label for="m_ulica">Ulica</label><input id="m_ulica" name="m_ulica" type="text" /></div>
+          <div class="field"><label for="m_nrdom">Nr domu</label><input id="m_nrdom" name="m_nrdom" type="text" /></div>
+          <div class="field"><label for="m_nrmiesz">Nr mieszkania</label><input id="m_nrmiesz" name="m_nrmiesz" type="text" /></div>
+        </div>
+        <div class="row three">
+          <div class="field"><label for="m_kod">Kod pocztowy</label><input id="m_kod" name="m_kod" type="text" placeholder="00-000" /></div>
+          <div class="field" style="grid-column:span 2"><label for="m_miejscowosc">Miejscowość</label><input id="m_miejscowosc" name="m_miejscowosc" type="text" /></div>
+        </div>
+        <div class="row three">
+          <div class="field"><label for="m_gmina">Gmina</label><input id="m_gmina" name="m_gmina" type="text" /></div>
+          <div class="field"><label for="m_powiat">Powiat</label><input id="m_powiat" name="m_powiat" type="text" /></div>
+          <div class="field"><label for="m_wojewodztwo">Województwo</label><input id="m_wojewodztwo" name="m_wojewodztwo" type="text" /></div>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Miejscowość i data podpisania</legend>
+      <div class="row">
+        <div class="field">
+          <label for="d_miejscowosc">Miejscowość</label>
+          <input id="d_miejscowosc" name="d_miejscowosc" type="text" required placeholder="np. Poznań" />
+        </div>
+        <div class="field">
+          <label for="d_data">Data</label>
+          <input id="d_data" name="d_data" type="date" required />
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Dokumenty w komplecie</legend>
+      <div class="checks">
+        <label class="check"><input type="checkbox" name="doc_kwest" checked /><span class="ct"><span>Kwestionariusz osobowy</span></span></label>
+        <label class="check"><input type="checkbox" name="doc_zus" checked /><span class="ct"><span>Oświadczenie zleceniobiorcy (cele podatkowe i ZUS)</span><small>Pola tożsamości wypełnione, warianty „Nie jestem/Jestem” do skreślenia ręcznie.</small></span></label>
+        <label class="check"><input type="checkbox" name="doc_wykonawca" checked /><span class="ct"><span>Oświadczenie wykonawcy dla celów podatkowych</span></span></label>
+        <label class="check"><input type="checkbox" name="doc_ppk_info" checked /><span class="ct"><span>Informacja dotycząca PPK</span></span></label>
+        <label class="check"><input type="checkbox" name="doc_wybor" checked /><span class="ct"><span>Oświadczenie o dobrowolnym wyborze umowy zlecenia</span></span></label>
+        <label class="check"><input type="checkbox" name="doc_rodo" checked /><span class="ct"><span>Klauzula informacyjna RODO</span></span></label>
+        <label class="check"><input type="checkbox" name="doc_ppk_rez" /><span class="ct"><span>Deklaracja o rezygnacji z wpłat do PPK</span><small>Dołącz, jeśli zleceniobiorca rezygnuje z PPK.</small></span></label>
+        <label class="check"><input type="checkbox" name="doc_gotowka" /><span class="ct"><span>Wniosek o wypłatę wynagrodzenia w gotówce</span></span></label>
+        <label class="check"><input type="checkbox" name="doc_rodzina" id="doc_rodzina" /><span class="ct"><span>Wniosek o zgłoszenie członków rodziny do ubezpieczenia</span></span></label>
+      </div>
+    </fieldset>
+
+    <fieldset id="rodzinaFields" hidden>
+      <legend>Członek rodziny do ubezpieczenia zdrowotnego</legend>
+      <p class="hint" style="margin:0 0 12px">Dane członka rodziny. Pola wyboru (pokrewieństwo, wspólne gospodarstwo itd.) na wydruku pozostaną do zaznaczenia ręcznie.</p>
+      <div class="row">
+        <div class="field"><label for="r_od">Zgłoszenie od dnia</label><input id="r_od" name="r_od" type="date" /></div>
+        <div class="field"><label for="r_imienazwisko">Imię i nazwisko</label><input id="r_imienazwisko" name="r_imienazwisko" type="text" /></div>
+      </div>
+      <div class="row three">
+        <div class="field"><label for="r_pesel">PESEL</label><input id="r_pesel" name="r_pesel" type="text" maxlength="11" inputmode="numeric" /></div>
+        <div class="field"><label for="r_dataur">Data urodzenia</label><input id="r_dataur" name="r_dataur" type="date" /></div>
+        <div class="field"><label for="r_adres">Adres zamieszkania</label><input id="r_adres" name="r_adres" type="text" /></div>
+      </div>
+    </fieldset>
+
+    <button type="submit" id="submitBtn">Pobierz komplet (PDF)</button>
+    <div id="status" class="status"></div>
+  </form>
+
+  <footer class="site-footer">
+    <a href="rodo.html">Informacja o przetwarzaniu danych osobowych (RODO)</a>
+  </footer>
+</main>
+
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+<script src="history.js"></script>
+<script src="umowa-zlecenie.js"></script>
+<script>window.AUTOSAVE = { key: 'umowa-zlecenie', form: '#form' };</script>
+<script src="autosave.js"></script>
+</body>
+</html>

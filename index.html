@@ -143,6 +143,14 @@
       <span class="nav-ico">💼</span> Bieżąca działalność
     </button>
 
+    <div class="nav-label">Kadry</div>
+    <button class="nav-item" data-target="kadry">
+      <span class="nav-ico">🧑‍💼</span> Umowy i zatrudnienie
+    </button>
+    <a class="nav-item" href="historia.html">
+      <span class="nav-ico">🕘</span> Historia dokumentów
+    </a>
+
     <div class="nav-label">Pomoc</div>
     <button class="nav-item" data-target="konsultacja">
       <span class="nav-ico">💬</span> Bezpłatna konsultacja
@@ -204,6 +212,28 @@
       </div>
     </section>
 
+    <!-- Kadry -->
+    <section class="panel" id="panel-kadry" data-panel="kadry">
+      <div class="content-head">
+        <h1>Kadry — umowy i zatrudnienie</h1>
+        <p class="lead">Dokumenty kadrowe dla zleceniobiorców i pracowników. Komplety zapisują się w <a href="historia.html" style="color:var(--brand-navy)">Historii dokumentów</a>.</p>
+      </div>
+      <div class="cards">
+        <a href="umowa-zlecenie.html" class="card">
+          <div class="card-icon">🧑‍💼</div>
+          <h3>Umowa zlecenie — komplet dokumentów</h3>
+          <p>Pełny pakiet onboardingowy zleceniobiorcy w jednym PDF: kwestionariusz osobowy, oświadczenia podatkowe i ZUS, informacja i rezygnacja z PPK, klauzula RODO, wniosek gotówkowy, zgłoszenie członków rodziny i oświadczenie o wyborze umowy zlecenia.</p>
+          <span class="card-cta">Wygeneruj →</span>
+        </a>
+        <a href="historia.html" class="card">
+          <div class="card-icon">🕘</div>
+          <h3>Historia dokumentów</h3>
+          <p>Przeglądaj, pobieraj ponownie i zarządzaj wcześniej wygenerowanymi kompletami dokumentów.</p>
+          <span class="card-cta">Otwórz →</span>
+        </a>
+      </div>
+    </section>
+
     <!-- Konsultacja -->
     <section class="panel" id="panel-konsultacja" data-panel="konsultacja">
       <div class="content-head">
@@ -248,7 +278,7 @@
 <script>
   // ---- Sidebar tab switching (hash-based) ----
   (function () {
-    var navItems = Array.prototype.slice.call(document.querySelectorAll('.nav-item'));
+    var navItems = Array.prototype.slice.call(document.querySelectorAll('.nav-item[data-target]'));
     var panels = Array.prototype.slice.call(document.querySelectorAll('.panel'));
     var valid = panels.map(function (p) { return p.getAttribute('data-panel'); });
     var DEFAULT = 'rejestracja';

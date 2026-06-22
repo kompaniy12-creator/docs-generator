@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>Historia dokumentów — TD Consulting Group</title>
+<style>
+  :root{--brand-navy:#1B3F7F;--brand-navy-dark:#15315F;--brand-green:#1FA84B;--brand-tint:#EEF3F9}
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#fff;color:#111;line-height:1.5;-webkit-font-smoothing:antialiased}
+  main{max-width:920px;margin:0 auto;padding:48px 24px 96px}
+  .back{display:inline-block;margin-bottom:16px;font-size:14px;color:#666;text-decoration:none}
+  .back:hover{color:var(--brand-navy)}
+  .brand{text-align:center;margin:0 0 24px}
+  .brand img{height:72px;width:auto;object-fit:contain}
+  h1{font-size:24px;font-weight:600;margin:0 0 8px;letter-spacing:-0.01em;color:var(--brand-navy);text-align:center}
+  .lead{color:#666;margin:0 0 28px;font-size:14.5px;text-align:center}
+
+  .toolbar{display:flex;gap:12px;align-items:center;margin:0 0 16px;flex-wrap:wrap}
+  .toolbar input[type="search"]{flex:1;min-width:180px;padding:10px 12px;border:1px solid #d4d4d4;border-radius:8px;font:inherit;font-size:14px}
+  .toolbar input:focus{outline:none;border-color:var(--brand-navy);box-shadow:0 0 0 3px rgba(27,63,127,.12)}
+  .refresh{background:#fff;border:1px solid #d4d4d4;border-radius:8px;padding:10px 14px;font:inherit;font-size:13px;font-weight:500;cursor:pointer;color:#444}
+  .refresh:hover{border-color:var(--brand-navy);color:var(--brand-navy)}
+
+  .list{display:flex;flex-direction:column;gap:10px}
+  .item{display:flex;align-items:center;gap:16px;padding:14px 18px;border:1px solid #e5e9ef;border-radius:10px;transition:border-color .15s,box-shadow .15s}
+  .item:hover{border-color:#cdd6e4;box-shadow:0 2px 10px rgba(27,63,127,.06)}
+  .item .ico{width:40px;height:40px;border-radius:9px;background:var(--brand-tint);color:var(--brand-navy);display:flex;align-items:center;justify-content:center;font-size:19px;flex:0 0 40px}
+  .item .meta{flex:1;min-width:0}
+  .item .meta .t{font-size:15px;font-weight:600;color:var(--brand-navy)}
+  .item .meta .s{font-size:13px;color:#333;margin-top:1px}
+  .item .meta .d{font-size:12px;color:#8a97ab;margin-top:2px}
+  .item .acts{display:flex;gap:8px;flex:0 0 auto}
+  .btn{border:none;border-radius:7px;padding:8px 14px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s}
+  .btn.dl{background:var(--brand-navy);color:#fff}
+  .btn.dl:hover{background:var(--brand-navy-dark)}
+  .btn.rm{background:#fff;border:1px solid #e5c2c2;color:#b91c1c}
+  .btn.rm:hover{background:#fef2f2}
+  .empty,.loading{text-align:center;color:#888;font-size:14px;padding:48px 0}
+  .err{display:none;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:8px;padding:12px 14px;font-size:14px;margin-bottom:16px}
+  @media (max-width:560px){.item{flex-wrap:wrap}.item .acts{width:100%;justify-content:flex-end}}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Historia dokumentów</h1>
+  <p class="lead">Wygenerowane komplety dokumentów. Możesz pobrać je ponownie lub usunąć z historii.</p>
+
+  <div id="err" class="err"></div>
+  <div class="toolbar">
+    <input type="search" id="search" placeholder="Szukaj po osobie, dokumencie, autorze..." />
+    <button class="refresh" id="refresh">Odśwież</button>
+  </div>
+
+  <div id="list" class="list"></div>
+  <div id="loading" class="loading">Ładowanie historii...</div>
+  <div id="empty" class="empty" style="display:none">Brak zapisanych dokumentów. Wygeneruj pierwszy komplet w module Kadry.</div>
+</main>
+
+<script src="history.js"></script>
+<script src="historia.js"></script>
+</body>
+</html>
