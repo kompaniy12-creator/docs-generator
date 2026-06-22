@@ -93,6 +93,12 @@
 
     <fieldset>
       <legend>Zleceniodawca (pracodawca)</legend>
+      <button type="button" id="wfBtn" style="display:inline-flex;align-items:center;gap:8px;margin:0 0 14px;padding:11px 16px;background:#fff;border:1.5px solid var(--brand-navy);color:var(--brand-navy);border-radius:8px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer">📥 Wczytaj firmę z wFirma</button>
+      <div id="wfPick" class="field" style="display:none">
+        <label for="wfCompanies">Wybierz firmę z wFirma</label>
+        <select id="wfCompanies"><option value="">— wybierz —</option></select>
+      </div>
+      <div id="wfStatus" class="hint" style="margin:0 0 12px"></div>
       <div class="field">
         <label for="z_nazwa">Pełna nazwa firmy</label>
         <input id="z_nazwa" name="z_nazwa" type="text" required placeholder="np. NORD REY Sp. z o. o." />
@@ -274,6 +280,7 @@
 <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
 <script src="history.js"></script>
 <script src="workers.js"></script>
+<script src="wfirma.js"></script>
 <script src="umowa-zlecenie.js"></script>
 <script>window.AUTOSAVE = { key: 'umowa-zlecenie', form: '#form' };</script>
 <script src="autosave.js"></script>

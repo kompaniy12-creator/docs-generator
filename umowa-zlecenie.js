@@ -77,6 +77,56 @@ async function loadWorkers() {
   loadWorkers();
 })();
 
+// ---------------- wFirma: load company (zleceniodawca) ----------------
+(function initWFirma() {
+  const btn = document.getElementById('wfBtn');
+  const pick = document.getElementById('wfPick');
+  const sel = document.getElementById('wfCompanies');
+  const status = document.getElementById('wfStatus');
+  if (!btn || !window.WFirma) return;
+  const setStatus = (m) => { status.textContent = m || ''; };
+
+  btn.addEventListener('click', async () => {
+    setStatus('Łączenie z wFirma...');
+    btn.disabled = true;
+    try {
+      const data = await window.WFirma.companies();
+      const list = (data && data.companies) || [];
+      if (!list.length) { setStatus('Nie znaleziono firm w wFirma.'); return; }
+      sel.innerHTML = '<option value="">— wybierz —</option>';
+      list.forEach((c) => {
+        const o = document.createElement('option');
+        o.value = c.id;
+        o.textContent = c.name + (c.nip ? ' · NIP ' + c.nip : '');
+        sel.appendChild(o);
+      });
+      pick.style.display = 'block';
+      setStatus('Wybierz firmę z listy.');
+    } catch (e) {
+      if (e.status === 503) setStatus('Integracja wFirma będzie aktywna po dodaniu klucza appKey.');
+      else setStatus('Błąd: ' + (e.message || e));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  if (sel) sel.addEventListener('change', async () => {
+    if (!sel.value) return;
+    setStatus('Pobieranie danych firmy...');
+    try {
+      const data = await window.WFirma.company(sel.value);
+      const c = data && data.company;
+      if (!c) { setStatus('Brak danych firmy.'); return; }
+      setVal('z_nazwa', c.name);
+      setVal('z_miasto', c.city);
+      setVal('z_ulica', c.street);
+      setStatus('Dane Zleceniodawcy wczytane z wFirma.');
+    } catch (e) {
+      setStatus('Błąd: ' + (e.message || e));
+    }
+  });
+})();
+
 // ---------------- Font cache ----------------
 let fontRegular = null, fontBold = null;
 async function loadFonts() {
