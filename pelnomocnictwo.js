@@ -386,16 +386,13 @@ form.addEventListener('submit', async (e) => {
     await loadFonts();
     const data = collectData();
     const bytes = await generateUchwala(data);
-    const blob = new Blob([bytes], { type: 'application/pdf' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
     const safe = toAsciiLetters(data.company.split(' ')[0]).toLowerCase();
-    a.download = `Uchwala_pelnomocnictwo_${safe || 'spolka'}_${data.resDate}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(a.href);
-    showStatus('Uchwała została wygenerowana i pobrana.', 'success');
+    const res = await saveAndDownload({
+      docType: 'pelnomocnictwo', title: 'Uchwała o ustanowieniu pełnomocnika',
+      subject: data.company, filename: `Uchwala_pelnomocnictwo_${safe || 'spolka'}_${data.resDate}.pdf`,
+      bytes, payload: data,
+    });
+    showStatus(res.saved ? 'Uchwała została wygenerowana, pobrana i zapisana w historii.' : 'Uchwała została wygenerowana i pobrana.', 'success');
   } catch (err) {
     console.error(err);
     showStatus('Błąd: ' + (err.message || err), 'error');

@@ -18,10 +18,11 @@
 
     var datePart = new Date().toISOString().slice(0, 10);
     var rand = (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Math.round(performance.now() * 1000));
-    var path = (rec.docType || 'dok') + '/' + datePart + '/' + rand + '.pdf';
+    var blob = rec.blob || new Blob([rec.pdfBytes], { type: rec.mime || 'application/pdf' });
+    var ext = (rec.filename && rec.filename.indexOf('.') !== -1) ? rec.filename.split('.').pop().toLowerCase() : 'pdf';
+    var path = (rec.docType || 'dok') + '/' + datePart + '/' + rand + '.' + ext;
 
-    var blob = new Blob([rec.pdfBytes], { type: 'application/pdf' });
-    var up = await sb.storage.from(BUCKET).upload(path, blob, { contentType: 'application/pdf', upsert: false });
+    var up = await sb.storage.from(BUCKET).upload(path, blob, { contentType: blob.type || 'application/octet-stream', upsert: false });
     if (up.error) throw up.error;
 
     var ins = await sb.from(TABLE).insert({
@@ -69,5 +70,32 @@
     return true;
   }
 
-  window.DocHistory = { save: save, list: list, downloadUrl: downloadUrl, remove: remove };
+  // Download a generated document to the user AND save it to history.
+  // The single entry point every generator should use so nothing is lost.
+  // opts: { docType, title, subject, filename, payload, mime, and either bytes or blob }
+  async function download(opts) {
+    var mime = opts.mime || 'application/pdf';
+    var blob = opts.blob || new Blob([opts.bytes], { type: mime });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = opts.filename || 'dokument';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    try {
+      await save({
+        docType: opts.docType, title: opts.title, subject: opts.subject,
+        filename: opts.filename, payload: opts.payload, blob: blob,
+      });
+      return { saved: true };
+    } catch (e) {
+      console.warn('Zapis do historii nie powiódł się:', e);
+      return { saved: false, error: e };
+    }
+  }
+
+  window.DocHistory = { save: save, list: list, downloadUrl: downloadUrl, remove: remove, download: download };
+  // Convenience global so every generator can do: await saveAndDownload({...})
+  window.saveAndDownload = download;
 })();

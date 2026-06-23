@@ -21,8 +21,11 @@
   function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
 
   function iconFor(docType) {
-    if (docType === 'umowa-zlecenie') return '📄';
-    return '🗂️';
+    var map = {
+      'umowa-zlecenie': '📄', 'rejestracja-s24': '🏢', 'wynagrodzenie': '💰',
+      'e-urzad': '🏛️', 'pelnomocnictwo': '🖋️',
+    };
+    return map[docType] || '🗂️';
   }
 
   function render() {

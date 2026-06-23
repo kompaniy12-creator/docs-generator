@@ -667,16 +667,12 @@ form.addEventListener('submit', async (e) => {
       zip.file(`Oswiadczenie_zgoda_na_powolanie${suffix}.pdf`, bytes);
     });
     const blob = await zip.generateAsync({ type: 'blob' });
-
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'Dokumenty_rejestracja_spolki.zip';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(a.href);
-
-    showStatus('Dokumenty zostały pobrane.', 'success');
+    const res = await saveAndDownload({
+      docType: 'rejestracja-s24', title: 'Pakiet rejestracyjny S24 (rejestracja spółki)',
+      subject: data.company, filename: 'Dokumenty_rejestracja_spolki.zip',
+      blob: blob, mime: 'application/zip', payload: data,
+    });
+    showStatus(res.saved ? 'Dokumenty zostały pobrane i zapisane w historii.' : 'Dokumenty zostały pobrane.', 'success');
   } catch (err) {
     console.error(err);
     showStatus('Błąd: ' + (err.message || err), 'error');

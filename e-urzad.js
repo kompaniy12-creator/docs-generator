@@ -550,16 +550,13 @@ form.addEventListener('submit', async (e) => {
     await loadFonts();
     const data = collectData();
     const bytes = await generateWniosek(data);
-    const blob = new Blob([bytes], { type: 'application/pdf' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
     const safe = data.userNazwisko.toLowerCase().replace(/[^a-z]/g, '');
-    a.download = `Wniosek_eUS_${safe || 'uzytkownik'}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(a.href);
-    showStatus('Wniosek został wygenerowany i pobrany.', 'success');
+    const res = await saveAndDownload({
+      docType: 'e-urzad', title: 'Wniosek do e-Urzędu Skarbowego',
+      subject: data.nazwa || `${data.userImie} ${data.userNazwisko}`.trim(),
+      filename: `Wniosek_eUS_${safe || 'uzytkownik'}.pdf`, bytes, payload: data,
+    });
+    showStatus(res.saved ? 'Wniosek został wygenerowany, pobrany i zapisany w historii.' : 'Wniosek został wygenerowany i pobrany.', 'success');
   } catch (err) {
     console.error(err);
     showStatus('Błąd: ' + (err.message || err), 'error');
