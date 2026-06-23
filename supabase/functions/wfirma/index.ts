@@ -7,7 +7,11 @@
 //   companies   -> list companies available to the keys
 //   company     -> &id=  full firma data (name, nip, regon, address)
 //   contractors -> &q=   search contractors (kontrahenci)
+//   staff       -> discover employees + e-akta folders via documents(set=staff)
 //   raw         -> &module=&act=&id=  debug passthrough (portal-only)
+// TODO e-akta upload: documents/add with set=staff + folder.id + staff_employee.id;
+//   the file-content transport for type=file is undocumented — confirm with wFirma
+//   support before implementing the upload action.
 
 const WF_BASE = "https://api2.wfirma.pl";
 const ACCESS = Deno.env.get("WFIRMA_ACCESS_KEY") ?? "";
@@ -165,6 +169,38 @@ Deno.serve(async (req) => {
         account: c?.account_number ?? "",
       })).filter((c: any) => c.id);
       return json({ contractors }, 200, origin);
+    }
+
+    if (action === "staff") {
+      // Discover employees + e-akta folders by mining existing staff documents.
+      // (wFirma has no employees read endpoint; documents(set=staff) is the only route.)
+      const companyId = param("company_id") ?? "";
+      const body = {
+        documents: {
+          parameters: {
+            conditions: { "0": { condition: { field: "set", operator: "eq", value: "staff" } } },
+            limit: 200,
+          },
+        },
+      };
+      const r = await wf("documents", "find", { companyId, body });
+      const docs = extractRecords(r.data, "documents", "document");
+      const byEmployee: Record<string, any> = {};
+      for (const d of docs) {
+        const emp = d?.staff_employee ?? {};
+        const eid = emp?.id;
+        if (!eid) continue;
+        if (!byEmployee[eid]) byEmployee[eid] = { id: eid, name: emp?.name ?? "", folders: {} };
+        const f = d?.folder;
+        if (f?.id) byEmployee[eid].folders[f.id] = f?.name ?? "";
+      }
+      return json({
+        employees: Object.values(byEmployee).map((e: any) => ({
+          id: e.id, name: e.name,
+          folders: Object.keys(e.folders).map((fid) => ({ id: fid, name: e.folders[fid] })),
+        })),
+        _count: docs.length,
+      }, 200, origin);
     }
 
     if (action === "raw") {
