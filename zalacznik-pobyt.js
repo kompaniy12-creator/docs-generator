@@ -275,14 +275,14 @@ function drawDateCells(page, iso, yBaseline, yearXs, monthXs, dayXs, size, font)
   for (let i = 0; i < 2 && i < monthXs.length; i++) drawCell(page, m[i], monthXs[i], yBaseline, size, font);
   for (let i = 0; i < 2 && i < dayXs.length; i++) drawCell(page, d[i], dayXs[i], yBaseline, size, font);
 }
-// Date-box cell centres (pt, x) measured from the official template.
-const DATE_OD = { y: [167.4, 182.1, 196.9, 211.6], m: [241.0, 255.0], d: [269.5, 284.5] };
-const DATE_DO = { y: [169.0, 185.1, 201.2, 217.3], m: [247.1, 262.2], d: [277.5, 292.6] };
+// Date-box cell centres (pt, x) measured from the 6-page continuous template.
+const DATE_OD = { y: [152.6, 167.3, 182.1, 196.9], m: [226.8, 241.0], d: [268.8, 284.6] };
+const DATE_DO = { y: [366.1, 382.2, 398.4, 414.4], m: [445.1, 460.2], d: [490.5, 505.6] };
 const DATE_SIGN = { y: [362.9, 379.7, 396.7, 413.6], m: [447.4, 464.3], d: [497.9, 515.2] };
 
-// Declaration "a" checkbox centres (page index 4). x≈75.5pt, y_pt of box centre.
+// Declaration "a" checkbox centres on page 3 (idx 2). x≈75.5pt; pdf-lib y of box centre.
 const DECL_BOX_X = 75.5;
-const DECL_BOX_YPT = [135, 168, 201, 267, 284, 309, 342, 375];
+const DECL_BOX_Y = [266.6, 233.6, 200.6, 134.6, 117.6, 92.6, 59.6, 26.6];
 
 // ---------------- PDF generation ----------------
 async function generate(data) {
@@ -295,55 +295,52 @@ async function generate(data) {
   const font = await doc.embedFont(fontRegular);
   const bold = await doc.embedFont(fontBold);
   const pages = doc.getPages();
-  const Y = (ypt) => PAGE_H - ypt; // top-left y_pt -> pdf-lib baseline-ish
+  // All coordinates below are pdf-lib user space (origin bottom-left), measured
+  // directly from the 6-page continuous template (zalacznik-pobyt-template.pdf).
 
-  // ---- Page 1 (idx 0): I.1 Nazwa ----
-  drawFit(pages[0], data.company, 203, Y(704.5), 328, 9, font);
+  // ---- Page 1 (idx 0): I.1 Nazwa, I.2 Adres (both grids at page bottom) ----
+  drawFit(pages[0], data.company, 203, 137, 328, 9, font);
+  drawFit(pages[0], data.address, 200, 46, 328, 9, font);
 
-  // ---- Page 2 (idx 1): I.2 Adres, I.3 Podstawa prawna, REGON ----
-  drawFit(pages[1], data.address, 200, Y(131), 328, 9, font);
+  // ---- Page 2 (idx 1): I.3 Podstawa prawna, REGON, III.1 Stanowisko (bottom) ----
   const podstawaPodmiotu = `Krajowy Rejestr Sądowy – Rejestr Przedsiębiorców, nr KRS ${data.krs}`
     + (data.nip ? `; NIP ${data.nip}` : '');
-  drawWrapAcross(pages[1], podstawaPodmiotu, 95, [Y(224.5), Y(236.5), Y(248.5)], 432, 8.5, font);
-  if (data.regon) drawFit(pages[1], data.regon, 200, Y(389.5), 140, 9, font);
+  drawWrapAcross(pages[1], podstawaPodmiotu, 95, [675, 663, 651], 432, 8.5, font);
+  if (data.regon) drawFit(pages[1], data.regon, 200, 510, 140, 9, font);
+  drawWrapAcross(pages[1], data.stanowisko, 96, [19.8, 7.8], 426, 9, font);
 
-  // ---- Page 3 (idx 2): III. praca ----
+  // ---- Page 3 (idx 2): III.2-8 praca + okres + declaration ----
   const p3 = pages[2];
-  drawWrapAcross(p3, data.stanowisko, 96, [Y(286.5), Y(298.5)], 426, 9, font);
   const zawodTxt = data.zawod + (data.kodZawodu ? ` (kod ${data.kodZawodu})` : '');
-  drawWrapAcross(p3, zawodTxt, 96, [Y(343.5), Y(355.5)], 426, 9, font);
-  drawWrapAcross(p3, data.miejscePracy, 96, [Y(392), Y(404)], 426, 9, font);
-  drawWrapAcross(p3, data.podstawaPracy, 96, [Y(472.5), Y(484.5)], 426, 8.5, font);
-  drawWrapAcross(p3, data.wymiar, 96, [Y(539), Y(551)], 426, 9, font);
+  drawWrapAcross(p3, zawodTxt, 96, [719.8, 707.8], 426, 9, font);
+  drawWrapAcross(p3, data.miejscePracy, 96, [671.1, 659.2], 426, 9, font);
+  drawWrapAcross(p3, data.podstawaPracy, 96, [590.6, 578.7], 426, 8.5, font);
+  drawWrapAcross(p3, data.wymiar, 96, [524.2, 512.2], 426, 9, font);
   // wynagrodzenie
   if (data.kwota) {
     const amount = `${formatAmountZL(data.kwota)} miesięcznie brutto`;
-    drawFit(p3, amount, 96, Y(596), 426, 9, font);
+    drawFit(p3, amount, 96, 467.4, 426, 9, font);
     const slownie = `(słownie: ${amountInWords(data.kwota)} miesięcznie brutto)`;
-    drawFit(p3, slownie, 300, Y(607), 225, 8, font);
+    drawFit(p3, slownie, 300, 458, 225, 8, font);
   }
-  drawWrapAcross(p3, data.obowiazki, 96, [Y(646.5), Y(660), Y(672)], 430, 8.5, font);
-  // okres od (bottom of page 3): yyyy / mm / dd
-  drawDateCells(p3, data.okresOd, Y(740), DATE_OD.y, DATE_OD.m, DATE_OD.d, 9, font);
-
-  // ---- Page 4 (idx 3): okres do ----
-  drawDateCells(pages[3], data.okresDo, Y(108), DATE_DO.y, DATE_DO.m, DATE_DO.d, 9, font);
-
-  // ---- Page 5 (idx 4): declaration X marks (variant "a") ----
+  drawWrapAcross(p3, data.obowiazki, 96, [416.7, 403.0, 391.0], 430, 8.5, font);
+  // okres od / do — both on one line (yyyy / mm / dd, one digit per cell)
+  drawDateCells(p3, data.okresOd, 324.5, DATE_OD.y, DATE_OD.m, DATE_OD.d, 9, font);
+  drawDateCells(p3, data.okresDo, 321.3, DATE_DO.y, DATE_DO.m, DATE_DO.d, 9, font);
+  // declaration X marks (variant "a") — 8 checkboxes, page 3
   if (data.niekaralnosc) {
-    for (const ypt of DECL_BOX_YPT) {
-      pages[4].drawText('X', { x: DECL_BOX_X - 3, y: Y(ypt) - 3.2, size: 9.5, font: bold, color: rgb(0, 0, 0) });
+    for (const c of DECL_BOX_Y) {
+      p3.drawText('X', { x: DECL_BOX_X - 3, y: c - 3, size: 9.5, font: bold, color: rgb(0, 0, 0) });
     }
   }
 
-  // ---- Page 8 (idx 7): data i podpis ----
-  const p8 = pages[7];
-  drawDateCells(p8, data.dataPodpisu, Y(166), DATE_SIGN.y, DATE_SIGN.m, DATE_SIGN.d, 9, font);
+  // ---- Page 5 (idx 4): data i podpis ----
+  const p5 = pages[4];
+  drawDateCells(p5, data.dataPodpisu, 406.4, DATE_SIGN.y, DATE_SIGN.m, DATE_SIGN.d, 9, font);
   if (data.printName && (data.signer.imie || data.signer.nazwisko)) {
     const name = `${data.signer.imie} ${data.signer.nazwisko}`.trim();
     const w = widthOf(name, font, 9);
-    const cx = (358 + 523) / 2;
-    p8.drawText(name, { x: cx - w / 2, y: Y(204), size: 9, font, color: rgb(0, 0, 0) });
+    p5.drawText(name, { x: 440 - w / 2, y: 366, size: 9, font, color: rgb(0, 0, 0) });
   }
 
   // Metadata
