@@ -35,7 +35,7 @@ function makePodpisGroup(idx) {
       </div>
       <div class="field">
         <label>Funkcja</label>
-        <input type="text" name="s_funkcja_${idx}" ${idx === 1 ? 'required' : ''} placeholder="Prezes Zarządu" value="${idx === 1 ? 'Prezes Zarządu' : 'Członek Zarządu'}" />
+        <input type="text" name="s_funkcja_${idx}" ${idx === 1 ? 'required' : ''} placeholder="Wspólnik" value="Wspólnik" />
       </div>
     </div>
   `;
@@ -107,8 +107,8 @@ krsFileInput.addEventListener('change', async (e) => {
   try {
     const data = await window.KRSParser.parseFile(file);
     applyKRSData(data);
-    const zn = data.zarzad.length;
-    setKrsStatus(`✅ Wczytano: ${data.firma || 'spółka'} · ${zn} osoba/osoby do podpisu. Sprawdź dane i wprowadź pełnomocnika.`, 'success');
+    const wn = (data.wspolnicy || []).length;
+    setKrsStatus(`✅ Wczytano: ${data.firma || 'spółka'} · ${wn} wspólnik(ów) do podpisu. Sprawdź dane i wprowadź pełnomocnika.`, 'success');
   } catch (err) {
     console.error(err);
     setKrsStatus('Nie udało się sparsować pliku. Upewnij się, że to oficjalny „Odpis aktualny KRS" w formacie PDF z prs.ms.gov.pl.', 'error');
@@ -132,13 +132,14 @@ function applyKRSData(d) {
   if (d.nip) setVal('#nip', d.nip);
   if (d.regon) setVal('#regon', d.regon);
 
-  // Rebuild signatories from zarząd
-  if (d.zarzad && d.zarzad.length > 0) {
+  // Rebuild signatories from wspólnicy — an uchwała of the Zgromadzenie
+  // Wspólników is signed by the shareholders, not the management board.
+  if (d.wspolnicy && d.wspolnicy.length > 0) {
     rebuildList('podpisujacy', 'addPodpis', makePodpisGroup,
-      d.zarzad.slice(0, MAX_PEOPLE), (g, z, idx) => {
-        g.querySelector(`[name="s_imie_${idx}"]`).value = z.imie;
-        g.querySelector(`[name="s_nazwisko_${idx}"]`).value = z.nazwisko;
-        if (z.funkcja) g.querySelector(`[name="s_funkcja_${idx}"]`).value = z.funkcja;
+      d.wspolnicy.slice(0, MAX_PEOPLE), (g, w, idx) => {
+        g.querySelector(`[name="s_imie_${idx}"]`).value = w.imie;
+        g.querySelector(`[name="s_nazwisko_${idx}"]`).value = w.nazwisko;
+        g.querySelector(`[name="s_funkcja_${idx}"]`).value = 'Wspólnik';
       });
   }
 }
