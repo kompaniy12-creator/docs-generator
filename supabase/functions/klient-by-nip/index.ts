@@ -78,20 +78,22 @@ Deno.serve(async (req) => {
   if (nip.length !== 10) return json({ error: "Nieprawidłowy NIP (10 cyfr)." }, 400, origin);
 
   // 1) find the client in the sheet
-  let client: { nazwa: string; miasto: string } | null = null;
+  let client: { nazwa: string; miasto: string; adres: string } | null = null;
   try {
     const res = await fetch(SHEET_CSV, { redirect: "follow" });
     const csv = await res.text();
     const rows = parseCSV(csv);
     if (rows.length) {
       const headers = rows[0];
-      const iNip = col(headers, "nip"), iNazwa = col(headers, "nazwa"), iMiasto = col(headers, "miasto");
+      const iNip = col(headers, "nip"), iNazwa = col(headers, "nazwa"),
+        iMiasto = col(headers, "miasto"), iAdres = col(headers, "adres");
       for (let r = 1; r < rows.length; r++) {
         const cell = (iNip >= 0 ? rows[r][iNip] : "") || "";
         if (cell.replace(/[^0-9]/g, "") === nip) {
           client = {
             nazwa: (iNazwa >= 0 ? rows[r][iNazwa] : "") || "",
             miasto: (iMiasto >= 0 ? rows[r][iMiasto] : "") || "",
+            adres: (iAdres >= 0 ? rows[r][iAdres] : "") || "",
           };
           break;
         }
@@ -104,9 +106,17 @@ Deno.serve(async (req) => {
 
   if (!client) return json({ found: false, nip }, 200, origin);
 
-  // 2) best-effort enrich the registered street/regon from GUS (sheet has no ulica)
   let ulica = "", regon = "", kod = "";
-  if (DATAPORT_KEY) {
+
+  // 2a) prefer the address from the sheet
+  if (client.adres && client.adres.trim()) {
+    const a = parseAdres(client.adres);
+    ulica = a.ulica; kod = a.kod;
+    if (!client.miasto && a.miasto) client.miasto = a.miasto;
+  }
+
+  // 2b) only if the sheet has no street, best-effort enrich from GUS
+  if (!ulica && DATAPORT_KEY) {
     try {
       const g = await fetch("https://dataport.pl/api/v1/company/" + nip, {
         headers: { "X-API-Key": DATAPORT_KEY, "Accept": "application/json" },
