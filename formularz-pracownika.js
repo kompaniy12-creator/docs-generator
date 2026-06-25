@@ -202,7 +202,8 @@
   // map of extractable field -> input id
   var EXTRACT_FIELDS = ['p_imiona', 'p_nazwisko', 'p_pesel', 'p_dataur', 'p_miejsceur',
     'p_obywatelstwo', 'p_doc_typ', 'p_dowod',
-    'a_ulica', 'a_nrdom', 'a_nrmiesz', 'a_kod', 'a_miejscowosc', 'a_gmina', 'a_powiat', 'a_wojewodztwo'];
+    'a_ulica', 'a_nrdom', 'a_nrmiesz', 'a_kod', 'a_miejscowosc', 'a_gmina', 'a_powiat', 'a_wojewodztwo',
+    'p_karta_do', 'p_paszport_do', 'p_zezwolenie_do', 'p_badania_do'];
 
   function applyExtracted(fields) {
     var count = 0;

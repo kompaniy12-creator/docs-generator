@@ -50,6 +50,11 @@
   table.flat tr:last-child td{border-bottom:none}
   .muted{color:#94a3b8}
   .loading{text-align:center;color:#8a97ab;padding:30px}
+  .term-pill{font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
+  .term-exp{background:#fee2e2;color:#991b1b}
+  .term-soon{background:#ffedd5;color:#9a3412}
+  .term-warn{background:#fef9c3;color:#854d0e}
+  .term-ok{background:#dcfce7;color:#166534}
 </style>
 </head>
 <body>
@@ -62,11 +67,13 @@
   <div class="tabs" id="tabs">
     <button data-t="firmy" class="active">🏢 Firmy</button>
     <button data-t="pracownicy">🧑‍💼 Pracownicy</button>
+    <button data-t="terminy">⏰ Terminy</button>
   </div>
   <input type="search" id="search" class="search" placeholder="Szukaj: firma, NIP, pracownik…" />
 
   <div class="panel active" id="panel-firmy"><div class="loading">Ładowanie…</div></div>
   <div class="panel" id="panel-pracownicy"><div class="loading">Ładowanie…</div></div>
+  <div class="panel" id="panel-terminy"><div class="loading">Ładowanie…</div></div>
 </main>
 <script src="rejestr.js"></script>
 </body>

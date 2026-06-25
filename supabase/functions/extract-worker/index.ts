@@ -33,6 +33,8 @@ const FIELDS = [
   "p_imiona", "p_nazwisko", "p_pesel", "p_dataur", "p_miejsceur",
   "p_obywatelstwo", "p_doc_typ", "p_dowod",
   "a_ulica", "a_nrdom", "a_nrmiesz", "a_kod", "a_miejscowosc", "a_gmina", "a_powiat", "a_wojewodztwo",
+  // document validity end dates (ISO yyyy-mm-dd) — for expiry monitoring
+  "p_karta_do", "p_paszport_do", "p_zezwolenie_do", "p_badania_do",
 ];
 const SCHEMA = {
   type: "object",
@@ -55,6 +57,12 @@ Zasady:
 - p_obywatelstwo: po polsku (np. "polskie", "ukraińskie").
 - Adres (a_*) wypełnij tylko jeśli jest na dokumencie (dowód osobisty czasem nie zawiera adresu).
 - imiona/nazwisko/miejscowości zapisz poprawną polską pisownią z polskimi znakami.
+- DATY WAŻNOŚCI (format ISO RRRR-MM-DD), odczytaj jeśli widoczne na dokumentach:
+  • p_karta_do — data ważności karty pobytu ("ważna do" / "termin ważności"),
+  • p_paszport_do — data ważności paszportu ("date of expiry" / "data ważności"),
+  • p_zezwolenie_do — data końca zezwolenia na pracę / wizy / decyzji / oświadczenia o powierzeniu pracy,
+  • p_badania_do — data ważności orzeczenia lekarskiego / badań (medkomisja / BHP).
+  Pozostaw "" jeśli dany dokument lub data nie występuje.
 - Do "warnings" dodaj uwagi o nieczytelnych lub niespójnych danych (np. PESEL nie zgadza się z datą urodzenia).`;
 
 Deno.serve(async (req) => {

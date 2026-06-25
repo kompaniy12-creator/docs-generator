@@ -59,6 +59,40 @@
   function render() {
     renderFirmy();
     renderPracownicy();
+    renderTerminy();
+  }
+
+  var EXP = [
+    { k: 'p_karta_do', label: 'Karta pobytu' },
+    { k: 'p_paszport_do', label: 'Paszport' },
+    { k: 'p_zezwolenie_do', label: 'Zezwolenie/wiza' },
+    { k: 'p_badania_do', label: 'Badania (medkomisja)' },
+  ];
+  function daysLeft(iso) { return Math.floor((new Date(iso + 'T00:00:00') - new Date()) / 86400000); }
+  function termClass(d) { return d < 0 ? 'term-exp' : d <= 30 ? 'term-soon' : d <= 60 ? 'term-warn' : 'term-ok'; }
+  function termText(d) { return d < 0 ? 'po terminie (' + (-d) + ' dni)' : 'za ' + d + ' dni'; }
+
+  function renderTerminy() {
+    var el = $('panel-terminy');
+    var items = [];
+    workers.forEach(function (w) {
+      var p = w.payload || {};
+      EXP.forEach(function (e) {
+        var v = p[e.k];
+        if (v && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+          items.push({ name: w.worker_name || '(bez nazwy)', firma: p.z_nazwa || '—', doc: e.label, date: v, d: daysLeft(v) });
+        }
+      });
+    });
+    if (q) items = items.filter(function (it) { return (it.name + ' ' + it.firma + ' ' + it.doc).toLowerCase().indexOf(q) !== -1; });
+    items.sort(function (a, b) { return a.d - b.d; });
+    if (!items.length) { el.innerHTML = '<div class="empty">Brak wczytanych terminów ważności. Pojawią się po przesłaniu dokumentów ze zgłoszenia.</div>'; return; }
+    var rows = items.map(function (it) {
+      return '<tr><td>' + esc(it.name) + '</td><td>' + esc(it.firma) + '</td><td>' + esc(it.doc) + '</td>' +
+        '<td>' + esc(it.date) + '</td>' +
+        '<td><span class="term-pill ' + termClass(it.d) + '">' + termText(it.d) + '</span></td></tr>';
+    }).join('');
+    el.innerHTML = '<table class="flat"><thead><tr><th>Pracownik</th><th>Firma</th><th>Dokument</th><th>Ważny do</th><th>Status</th></tr></thead><tbody>' + rows + '</tbody></table>';
   }
 
   function renderFirmy() {
