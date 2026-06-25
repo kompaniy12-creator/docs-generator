@@ -8,6 +8,7 @@
   // anon (publishable) key — public by design; lets the call pass the functions gateway.
   var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRwZnh3a3hwenFxanRtZ3F3b3p3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxODksImV4cCI6MjA4ODgzMDE4OX0.sUFX90FKNuxM7u8ftOlDKdf1iD4gsfq2T3S0FDzRdC0';
   var EXTRACT_FN = SUPABASE_URL + '/functions/v1/extract-worker';
+  var GUS_FN = SUPABASE_URL + '/functions/v1/gus-company';
   var BUCKET = 'zatrudnienie-dokumenty';
   var TABLE = 'zatrudnienie_zgloszenia';
 
@@ -102,6 +103,35 @@
     });
     return miss;
   }
+
+  // ---------------- GUS company lookup by NIP ----------------
+  var gusBtn = $('gusBtn');
+  var gusStatus = $('gusStatus');
+  function setGus(msg, type) { gusStatus.textContent = msg; gusStatus.className = 'ai-status ' + (type || ''); }
+  gusBtn.addEventListener('click', async function () {
+    var nip = ($('z_nip').value || '').replace(/[^0-9]/g, '');
+    if (nip.length !== 10) { setGus('Wpisz poprawny NIP (10 cyfr).', 'error'); return; }
+    gusBtn.disabled = true; setGus('⏳ Pobieram dane z GUS…', 'loading');
+    try {
+      var res = await fetch(GUS_FN + '?nip=' + nip, {
+        headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
+      });
+      var out = await res.json();
+      if (!res.ok || !out.success) throw new Error(out.error || ('HTTP ' + res.status));
+      if (out.nazwa) $('z_nazwa').value = out.nazwa;
+      if (out.miasto) $('z_miasto').value = out.miasto;
+      if (out.ulica) $('z_ulica').value = out.ulica;
+      if (out.nip) $('z_nip').value = out.nip;
+      $('z_regon').value = out.regon || '';
+      $('z_kod').value = out.kod || '';
+      clearErr($('z_nip'));
+      setGus('✅ Wczytano: ' + (out.nazwa || ''), 'success');
+    } catch (err) {
+      setGus('Nie udało się pobrać danych: ' + (err.message || err), 'error');
+    } finally {
+      gusBtn.disabled = false;
+    }
+  });
 
   // Optional: prefill the employer from the invite link (?firma=&nip=&miasto=&ulica=).
   (function prefillEmployer() {

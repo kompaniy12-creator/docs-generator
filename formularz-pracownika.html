@@ -65,6 +65,9 @@
   .ai-btn{margin-top:14px;background:var(--brand-navy);color:#fff;border:none;padding:13px 20px;border-radius:8px;font:inherit;font-size:14.5px;font-weight:600;cursor:pointer;width:100%;transition:background .15s}
   .ai-btn:hover{background:var(--brand-navy-dark)}
   .ai-btn:disabled{background:#9aa7bd;cursor:wait}
+  .gus-btn{background:var(--brand-navy);color:#fff;border:none;padding:11px 16px;border-radius:8px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s}
+  .gus-btn:hover{background:var(--brand-navy-dark)}
+  .gus-btn:disabled{background:#9aa7bd;cursor:wait}
   .ai-status{margin-top:12px;font-size:13px;display:none;padding:10px 14px;border-radius:8px}
   .ai-status.loading{display:block;background:#eef2f8;color:#445}
   .ai-status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
@@ -113,26 +116,34 @@
 
     <fieldset>
       <legend>Pracodawca (firma zatrudniająca)</legend>
-      <p class="hint" style="margin:0 0 12px">Firma, do której pracownik jest zatrudniany.</p>
+      <p class="hint" style="margin:0 0 12px">Wpisz NIP i pobierz dane z GUS, albo uzupełnij ręcznie. Firma, do której pracownik jest zatrudniany.</p>
+      <div class="row" style="grid-template-columns:1fr auto;align-items:end;gap:12px">
+        <div class="field">
+          <label for="z_nip">NIP firmy</label>
+          <input id="z_nip" name="z_nip" type="text" inputmode="numeric" maxlength="10" placeholder="10 cyfr" />
+          <span class="err" data-for="z_nip"></span>
+        </div>
+        <div class="field">
+          <button type="button" id="gusBtn" class="gus-btn">🔎 Pobierz z GUS</button>
+        </div>
+      </div>
+      <div id="gusStatus" class="ai-status"></div>
       <div class="field">
         <label for="z_nazwa">Nazwa firmy <span class="req">*</span></label>
         <input id="z_nazwa" name="z_nazwa" type="text" required placeholder="np. AURISS Sp. z o.o." />
       </div>
       <div class="row">
         <div class="field">
-          <label for="z_nip">NIP</label>
-          <input id="z_nip" name="z_nip" type="text" inputmode="numeric" maxlength="10" />
-          <span class="err" data-for="z_nip"></span>
-        </div>
-        <div class="field">
           <label for="z_miasto">Miejscowość</label>
           <input id="z_miasto" name="z_miasto" type="text" />
         </div>
+        <div class="field">
+          <label for="z_ulica">Ulica i nr</label>
+          <input id="z_ulica" name="z_ulica" type="text" placeholder="np. ul. Garbary 71/9" />
+        </div>
       </div>
-      <div class="field">
-        <label for="z_ulica">Ulica i nr</label>
-        <input id="z_ulica" name="z_ulica" type="text" placeholder="np. ul. Garbary 71/9" />
-      </div>
+      <input type="hidden" id="z_regon" name="z_regon" />
+      <input type="hidden" id="z_kod" name="z_kod" />
     </fieldset>
 
     <fieldset>
