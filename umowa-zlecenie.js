@@ -82,9 +82,10 @@ async function loadWorkers() {
 // this generator with ?from=zgloszenie. Field names already match (p_/a_/m_/r_/z_).
 (function importFromZgloszenie() {
   try {
-    const raw = sessionStorage.getItem('tdcg_zlecenie_import');
+    // localStorage (shared across tabs) — the portal opens this page in a new tab.
+    const raw = localStorage.getItem('tdcg_zlecenie_import');
     if (!raw) return;
-    sessionStorage.removeItem('tdcg_zlecenie_import');
+    localStorage.removeItem('tdcg_zlecenie_import');
     // prevent autosave.restore() (runs after this script) from overwriting the import
     try { localStorage.removeItem('tdcg_autosave_umowa-zlecenie'); } catch (e2) { /* ignore */ }
     const d = JSON.parse(raw);
@@ -104,10 +105,16 @@ async function loadWorkers() {
     const h1 = document.querySelector('h1');
     if (h1) {
       const note = document.createElement('div');
-      note.textContent = '✓ Dane wczytane ze zgłoszenia — sprawdź i wygeneruj komplet.';
+      note.textContent = '✓ Dane wczytane ze zgłoszenia — generuję komplet dokumentów…';
       note.style.cssText = 'margin:10px auto 0;max-width:640px;padding:10px 14px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:8px;font-size:13.5px;text-align:center';
       h1.parentNode.insertBefore(note, h1.nextSibling);
     }
+    // auto-generate the packet from the submitted data (the form submit handler is
+    // attached later in this file, so defer until it — and the fonts — are ready)
+    setTimeout(function () {
+      const btn = document.getElementById('submitBtn');
+      if (btn) btn.click();
+    }, 400);
   } catch (e) { console.warn('import zgloszenie', e); }
 })();
 

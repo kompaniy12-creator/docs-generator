@@ -150,7 +150,8 @@
   async function onAction(r, act, card) {
     if (act === 'generuj') {
       // hand the submission off to the umowa-zlecenie generator, prefilled.
-      try { sessionStorage.setItem('tdcg_zlecenie_import', JSON.stringify(r.payload || {})); } catch (e) {}
+      // localStorage (not sessionStorage) so the new tab can read it.
+      try { localStorage.setItem('tdcg_zlecenie_import', JSON.stringify(r.payload || {})); } catch (e) {}
       window.open('umowa-zlecenie.html?from=zgloszenie', '_blank', 'noopener');
       return;
     }
