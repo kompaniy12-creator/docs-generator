@@ -83,6 +83,9 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(a.href);
+    // Sygnał dla autosave: dokument wygenerowany — wyczyść zapamiętane dane formularza,
+    // aby po powrocie na stronę formularz był pusty.
+    try { window.dispatchEvent(new Event('tdcg:generated')); } catch (e) { /* ignore */ }
     try {
       await save({
         docType: opts.docType, title: opts.title, subject: opts.subject,

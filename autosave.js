@@ -15,6 +15,7 @@
   const lists = cfg.lists || [];
   let restoring = false;
   let saveTimer = null;
+  let cleared = false; // po wygenerowaniu dokumentu blokujemy zapis aż do kolejnej edycji
 
   function snapshot() {
     const fields = [];
@@ -31,7 +32,7 @@
   }
 
   function save() {
-    if (restoring) return;
+    if (restoring || cleared) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot()));
     } catch (e) { /* quota / brak dostępu — ignorujemy */ }
@@ -39,6 +40,7 @@
 
   function scheduleSave() {
     if (restoring) return;
+    cleared = false; // użytkownik znów edytuje — wznawiamy zapis
     clearTimeout(saveTimer);
     saveTimer = setTimeout(save, 300);
   }
@@ -121,6 +123,14 @@
       form.appendChild(btn);
     }
   }
+
+  // Po wygenerowaniu dokumentu: wyczyść zapamiętane dane i zablokuj ponowny zapis,
+  // aby po powrocie na stronę formularz był pusty.
+  window.addEventListener('tdcg:generated', function () {
+    cleared = true;
+    clearTimeout(saveTimer);
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
+  });
 
   // Przywróć, a następnie zacznij nasłuchiwać zmian
   restore();
