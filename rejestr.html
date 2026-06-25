@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>Rejestr — firmy i pracownicy — TD Consulting Group</title>
+<style>
+  :root{--brand-navy:#1B3F7F;--brand-navy-dark:#15315F;--brand-green:#1FA84B;--brand-tint:#EEF3F9;}
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f6f8fb;color:#111;line-height:1.5}
+  main{max-width:1100px;margin:0 auto;padding:36px 20px 96px}
+  .back{display:inline-block;margin-bottom:14px;font-size:14px;color:#666;text-decoration:none}
+  .back:hover{color:var(--brand-navy)}
+  .brand{text-align:center;margin:0 0 14px}.brand img{height:60px}
+  h1{font-size:23px;font-weight:700;margin:0 0 6px;color:var(--brand-navy);text-align:center}
+  .lead{color:#666;margin:0 auto 22px;font-size:14px;text-align:center}
+  .tabs{display:flex;gap:8px;justify-content:center;margin:0 0 18px;flex-wrap:wrap}
+  .tabs button{border:1px solid #d4dbe6;background:#fff;color:#3a4759;border-radius:999px;padding:8px 18px;font:inherit;font-size:13.5px;cursor:pointer}
+  .tabs button.active{background:var(--brand-navy);color:#fff;border-color:var(--brand-navy)}
+  .search{display:block;width:100%;max-width:420px;margin:0 auto 18px;padding:10px 14px;border:1px solid #d4dbe6;border-radius:10px;font:inherit;font-size:14px}
+  .panel{display:none}.panel.active{display:block}
+  .empty{text-align:center;color:#888;padding:36px;background:#fff;border:1px solid #e5e9ef;border-radius:12px}
+
+  .firm{background:#fff;border:1px solid #e5e9ef;border-radius:12px;margin:0 0 10px;overflow:hidden}
+  .firm-head{display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer}
+  .firm-head:hover{background:#fafbfd}
+  .firm-main{flex:1;min-width:0}
+  .firm-main strong{display:block;font-size:15px;color:#1b2434}
+  .firm-main small{color:#8a97ab;font-size:12.5px}
+  .pill{font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--brand-tint);color:var(--brand-navy);white-space:nowrap}
+  .pill.zero{background:#f1f5f9;color:#94a3b8}
+  .chev{color:#b8c4d8;font-size:18px;transition:transform .15s}.firm.open .chev{transform:rotate(90deg)}
+  .firm-body{display:none;border-top:1px solid #eef1f6;padding:14px 16px;background:#fbfcfe}
+  .firm.open .firm-body{display:block}
+  .kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:4px 18px;margin-bottom:12px}
+  .kv div{font-size:13px;padding:2px 0}.kv b{color:#5a6577;font-weight:500}
+  .wlist{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
+  .wlist li{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff;border:1px solid #e8edf4;border-radius:8px;font-size:13.5px}
+  .wlist .nm{flex:1}
+  .badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px}
+  .b-nowe{background:#fef3c7;color:#92400e}.b-sprawdzone{background:#dbeafe;color:#1e40af}.b-wyslane{background:#dcfce7;color:#166534}
+  .tlink{color:var(--brand-navy);text-decoration:none;font-size:12.5px}.tlink:hover{text-decoration:underline}
+  table.flat{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e5e9ef;border-radius:12px;overflow:hidden;font-size:13.5px}
+  table.flat th,table.flat td{text-align:left;padding:10px 12px;border-bottom:1px solid #eef1f6}
+  table.flat th{background:#f4f7fb;color:#5a6577;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+  table.flat tr:last-child td{border-bottom:none}
+  .muted{color:#94a3b8}
+  .loading{text-align:center;color:#8a97ab;padding:30px}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Rejestr — firmy i pracownicy</h1>
+  <p class="lead">Wszyscy klienci i ich pracownicy w jednym miejscu.</p>
+
+  <div class="tabs" id="tabs">
+    <button data-t="firmy" class="active">🏢 Firmy</button>
+    <button data-t="pracownicy">🧑‍💼 Pracownicy</button>
+  </div>
+  <input type="search" id="search" class="search" placeholder="Szukaj: firma, NIP, pracownik…" />
+
+  <div class="panel active" id="panel-firmy"><div class="loading">Ładowanie…</div></div>
+  <div class="panel" id="panel-pracownicy"><div class="loading">Ładowanie…</div></div>
+</main>
+<script src="rejestr.js"></script>
+</body>
+</html>
