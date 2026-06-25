@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>Załącznik nr 1 do wniosku o pobyt czasowy — TD Consulting Group</title>
+<style>
+  :root{
+    --brand-navy:#1B3F7F;
+    --brand-navy-dark:#15315F;
+    --brand-green:#1FA84B;
+    --brand-tint:#EEF3F9;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#fff;color:#111;line-height:1.5;-webkit-font-smoothing:antialiased}
+  main{max-width:760px;margin:0 auto;padding:48px 24px 96px}
+  .back{display:inline-block;margin-bottom:16px;font-size:14px;color:#666;text-decoration:none}
+  .back:hover{color:var(--brand-navy)}
+  .brand{text-align:center;margin:0 0 24px}
+  .brand img{height:80px;width:auto;object-fit:contain}
+  h1{font-size:24px;font-weight:600;margin:0 0 8px;letter-spacing:-0.01em;color:var(--brand-navy)}
+  .lead{color:#666;margin:0 0 32px;font-size:14.5px}
+
+  fieldset{border:1px solid #e5e5e5;border-radius:8px;padding:24px;margin:0 0 20px}
+  legend{padding:0 8px;font-weight:600;font-size:14px;color:var(--brand-navy)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .row.three{grid-template-columns:1fr 1fr 1fr}
+  .row.uneven{grid-template-columns:2fr 1fr 1fr}
+  @media (max-width:560px){.row,.row.three,.row.uneven{grid-template-columns:1fr}}
+  label{display:block;font-size:13px;font-weight:500;margin-bottom:6px;color:#333}
+  input[type="text"],input[type="tel"],input[type="date"],input[type="number"],textarea,select{
+    width:100%;padding:10px 12px;border:1px solid #d4d4d4;border-radius:6px;
+    font:inherit;font-size:14px;background:#fff;transition:border-color .15s,box-shadow .15s;
+  }
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand-navy);box-shadow:0 0 0 3px rgba(27,63,127,.12)}
+  textarea{resize:vertical;min-height:74px}
+  .field{margin-bottom:14px}
+  .field:last-child{margin-bottom:0}
+  .hint{display:block;color:#888;font-size:11.5px;margin-top:4px;font-weight:400}
+  .check-row{display:flex;align-items:flex-start;gap:8px;margin-top:6px;font-size:13.5px;font-weight:400;color:#444;cursor:pointer}
+  .check-row input{width:18px;height:18px;margin:1px 0 0;accent-color:var(--brand-navy);flex:0 0 18px}
+
+  button[type="submit"]{
+    background:var(--brand-navy);color:#fff;border:none;
+    padding:14px 28px;border-radius:8px;font:inherit;font-size:15px;font-weight:600;
+    cursor:pointer;width:100%;transition:background .15s;
+  }
+  button[type="submit"]:hover{background:var(--brand-navy-dark)}
+  button[type="submit"]:disabled{background:#999;cursor:wait}
+  .status{margin-top:16px;padding:12px 14px;border-radius:6px;font-size:14px;display:none}
+  .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+  .status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+
+  .site-footer{margin-top:48px;padding-top:20px;border-top:1px solid #e5e5e5;text-align:center;font-size:13px}
+  .site-footer a{color:#666;text-decoration:none}
+  .site-footer a:hover{color:var(--brand-navy);text-decoration:underline}
+
+  .krs-upload{margin:0 0 24px}
+  .krs-btn{
+    display:flex;align-items:center;gap:14px;width:100%;padding:16px 20px;
+    background:linear-gradient(135deg,var(--brand-tint) 0%,#fff 100%);
+    border:1.5px solid var(--brand-navy);
+    border-radius:10px;cursor:pointer;text-align:left;font:inherit;color:inherit;
+    transition:all .15s;
+  }
+  .krs-btn:hover{background:var(--brand-tint);box-shadow:0 4px 12px rgba(27,63,127,.10);transform:translateY(-1px)}
+  .krs-icon{font-size:24px;flex-shrink:0}
+  .krs-text{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+  .krs-text strong{font-size:14.5px;font-weight:600;color:var(--brand-navy)}
+  .krs-text small{font-size:12px;color:#666;font-weight:400;line-height:1.45}
+  .krs-status{margin-top:10px;padding:0;font-size:13px;display:none}
+  .krs-status.loading{display:block;color:#666}
+  .krs-status.success{display:block;padding:10px 14px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px}
+  .krs-status.error{display:block;padding:10px 14px;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:6px}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Załącznik nr 1 do wniosku o pobyt czasowy</h1>
+  <p class="lead">Załącznik wypełniany przez spółkę (podmiot powierzający pracę) dla cudzoziemca pełniącego funkcję w zarządzie — do wniosku o zezwolenie na pobyt czasowy i pracę. Dane spółki wczytasz z odpisu KRS; pola dotyczące pracy uzupełnij ręcznie. Wygenerowany PDF to oficjalny wzór gotowy do podpisu.</p>
+
+  <div class="krs-upload">
+    <input type="file" id="krsFile" accept="application/pdf" hidden />
+    <button type="button" id="krsUploadBtn" class="krs-btn">
+      <span class="krs-icon">📄</span>
+      <span class="krs-text">
+        <strong>Wczytaj dane z wypisu KRS</strong>
+        <small>Pobierz „Odpis aktualny KRS” z prs.ms.gov.pl i wgraj jako PDF — system automatycznie wypełni nazwę, adres, KRS, NIP, REGON oraz listę członków zarządu.</small>
+      </span>
+    </button>
+    <div id="krsStatus" class="krs-status"></div>
+  </div>
+
+  <form id="form" novalidate>
+
+    <fieldset>
+      <legend>I. Podmiot powierzający pracę (spółka)</legend>
+      <div class="field">
+        <label for="company">Nazwa spółki</label>
+        <input id="company" name="company" type="text" required />
+      </div>
+      <div class="row uneven">
+        <div class="field">
+          <label for="ulica">Ulica</label>
+          <input id="ulica" name="ulica" type="text" required />
+        </div>
+        <div class="field">
+          <label for="nrDomu">Nr domu</label>
+          <input id="nrDomu" name="nrDomu" type="text" required />
+        </div>
+        <div class="field">
+          <label for="nrLokalu">Nr lokalu</label>
+          <input id="nrLokalu" name="nrLokalu" type="text" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="kod">Kod pocztowy</label>
+          <input id="kod" name="kod" type="text" required pattern="[0-9]{2}-[0-9]{3}" maxlength="6" placeholder="00-000" />
+        </div>
+        <div class="field">
+          <label for="miasto">Miejscowość</label>
+          <input id="miasto" name="miasto" type="text" required />
+        </div>
+      </div>
+      <div class="row three">
+        <div class="field">
+          <label for="krs">Numer KRS</label>
+          <input id="krs" name="krs" type="text" required pattern="[0-9]{10}" maxlength="10" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="nip">NIP</label>
+          <input id="nip" name="nip" type="text" pattern="[0-9]{10}" maxlength="10" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="regon">REGON</label>
+          <input id="regon" name="regon" type="text" inputmode="numeric" />
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>III. Informacje na temat pracy</legend>
+      <div class="field">
+        <label for="stanowisko">Stanowisko / rodzaj pracy</label>
+        <input id="stanowisko" name="stanowisko" type="text" required placeholder="np. Prezes Zarządu" value="Prezes Zarządu" />
+      </div>
+      <div class="row uneven">
+        <div class="field">
+          <label for="zawod">Zawód (klasyfikacja zawodów)</label>
+          <input id="zawod" name="zawod" type="text" required value="Dyrektor generalny" />
+        </div>
+        <div class="field">
+          <label for="kodZawodu">Kod zawodu</label>
+          <input id="kodZawodu" name="kodZawodu" type="text" value="112004" />
+        </div>
+        <div class="field">
+          <label for="wymiar">Wymiar czasu pracy</label>
+          <input id="wymiar" name="wymiar" type="text" value="nie dotyczy" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="miejscePracy">Miejsce wykonywania pracy</label>
+        <input id="miejscePracy" name="miejscePracy" type="text" required />
+        <small class="hint">Domyślnie adres siedziby spółki — można zmienić.</small>
+      </div>
+      <div class="field">
+        <label for="podstawaPracy">Podstawa prawna wykonywania pracy</label>
+        <input id="podstawaPracy" name="podstawaPracy" type="text" required value="Powołanie na funkcję członka zarządu (uchwała zgromadzenia wspólników)" />
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="kwota">Wynagrodzenie brutto (zł / miesiąc)</label>
+          <input id="kwota" name="kwota" type="text" inputmode="decimal" required placeholder="np. 5000 lub 5000,50" />
+          <small class="hint">Kwota słownie zostanie wygenerowana automatycznie.</small>
+        </div>
+        <div class="field">
+          <label for="okresOd">Okres pracy — od</label>
+          <input id="okresOd" name="okresOd" type="date" required />
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="okresDo">Okres pracy — do</label>
+          <input id="okresDo" name="okresDo" type="date" required />
+        </div>
+      </div>
+      <div class="field">
+        <label for="obowiazki">Zakres podstawowych obowiązków</label>
+        <textarea id="obowiazki" name="obowiazki" required>Prowadzenie spraw spółki i jej reprezentowanie, zarządzanie bieżącą działalnością spółki, podejmowanie decyzji gospodarczych i organizacyjnych oraz nadzór nad realizacją celów spółki.</textarea>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Oświadczenie o niekaralności (część III)</legend>
+      <label class="check-row">
+        <input id="niekaralnosc" name="niekaralnosc" type="checkbox" checked />
+        <span>Zaznacz wszystkie oświadczenia jako wariant „a” (niekaralność — kartoteka czysta). Odznacz, aby pozostawić puste i zaznaczyć ręcznie.</span>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Data i podpis podmiotu</legend>
+      <div class="field">
+        <label for="signer">Osoba podpisująca (w imieniu spółki)</label>
+        <select id="signer" name="signer" required></select>
+        <small class="hint">Lista członków zarządu z KRS. Wybierz „— wpisz ręcznie —", aby podać inne dane.</small>
+      </div>
+      <div class="row" id="signerManualWrap" hidden>
+        <div class="field">
+          <label for="signerImie">Imię</label>
+          <input id="signerImie" name="signerImie" type="text" />
+        </div>
+        <div class="field">
+          <label for="signerNazwisko">Nazwisko</label>
+          <input id="signerNazwisko" name="signerNazwisko" type="text" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="dataPodpisu">Data podpisu</label>
+          <input id="dataPodpisu" name="dataPodpisu" type="date" required />
+        </div>
+        <div class="field">
+          <label class="check-row" style="margin-top:30px">
+            <input id="printName" name="printName" type="checkbox" checked />
+            <span>Wpisz imię i nazwisko nad linią podpisu</span>
+          </label>
+        </div>
+      </div>
+    </fieldset>
+
+    <button type="submit" id="submitBtn">Pobierz załącznik (PDF)</button>
+    <div id="status" class="status"></div>
+  </form>
+
+  <footer class="site-footer">
+    <a href="rodo.html">Informacja o przetwarzaniu danych osobowych (RODO)</a>
+  </footer>
+</main>
+
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="krs-parser.js"></script>
+<script src="history.js"></script>
+<script src="zalacznik-pobyt.js"></script>
+<script>window.AUTOSAVE = { key: 'zalacznik-pobyt', form: '#form', lists: [] };</script>
+<script src="autosave.js"></script>
+</body>
+</html>
