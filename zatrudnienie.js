@@ -101,19 +101,45 @@
     });
   }
 
+  async function signedLink(path, text) {
+    var s = await window.sb.storage.from(BUCKET).createSignedUrl(path, 300);
+    var a = document.createElement('a');
+    a.href = s && s.data ? s.data.signedUrl : '#';
+    a.target = '_blank'; a.rel = 'noopener';
+    a.textContent = text;
+    return a;
+  }
+
   async function loadDocs(card, r) {
     var wrap = card.querySelector('[data-docs]');
     if (!wrap || wrap.dataset.loaded) return;
     wrap.dataset.loaded = '1';
+    wrap.innerHTML = '';
+    var docs = (r.payload && Array.isArray(r.payload.documents)) ? r.payload.documents : null;
+    if (docs && docs.length) {
+      // group by category label, preserving order
+      var order = [], groups = {};
+      docs.forEach(function (d) {
+        var l = d.label || 'Dokument';
+        if (!groups[l]) { groups[l] = []; order.push(l); }
+        groups[l].push(d);
+      });
+      for (var gi = 0; gi < order.length; gi++) {
+        var label = order[gi];
+        var head = document.createElement('div');
+        head.className = 'doc-group-label'; head.textContent = label;
+        wrap.appendChild(head);
+        for (var j = 0; j < groups[label].length; j++) {
+          wrap.appendChild(await signedLink(groups[label][j].path, '📎 ' + (groups[label][j].name || 'plik')));
+        }
+      }
+      return;
+    }
+    // fallback: flat list (older submissions)
     var paths = r.doc_paths || [];
     if (!paths.length) { wrap.innerHTML = '<small style="color:#999">brak</small>'; return; }
     for (var i = 0; i < paths.length; i++) {
-      var s = await window.sb.storage.from(BUCKET).createSignedUrl(paths[i], 300);
-      var a = document.createElement('a');
-      a.href = s && s.data ? s.data.signedUrl : '#';
-      a.target = '_blank'; a.rel = 'noopener';
-      a.textContent = '📎 dokument ' + (i + 1);
-      wrap.appendChild(a);
+      wrap.appendChild(await signedLink(paths[i], '📎 dokument ' + (i + 1)));
     }
   }
 

@@ -14,34 +14,56 @@
   var form = document.getElementById('form');
   var $ = function (id) { return document.getElementById(id); };
 
-  // ---------------- File handling ----------------
-  var files = []; // { file, url }
-  var fileInput = $('docFiles');
-  var drop = $('drop');
-  var fileList = $('fileList');
+  // ---------------- Documents (categorised, required validation) ----------------
+  var DOC_CATS = [
+    { key: 'tozsamosc', label: 'Dokument tożsamości', hint: 'paszport / dowód osobisty / karta pobytu', required: true, ai: true },
+    { key: 'pobyt', label: 'Tytuł pobytowy', hint: 'karta pobytu / wiza / stempel w paszporcie', required: true, ai: true },
+    { key: 'praca', label: 'Podstawa legalnej pracy', hint: 'zezwolenie na pracę / oświadczenie o powierzeniu pracy', required: true, ai: true },
+    { key: 'konto', label: 'Potwierdzenie nr konta', hint: 'opcjonalnie', required: false },
+    { key: 'inne', label: 'Inne załączniki', hint: 'opcjonalnie', required: false },
+  ];
+  var docFiles = {}; // key -> [{file, url}]
+  var catEls = {};
+  DOC_CATS.forEach(function (c) { docFiles[c.key] = []; });
+
   var aiBtn = $('aiBtn');
+  var catsWrap = $('docCats');
 
-  drop.addEventListener('click', function () { fileInput.click(); });
-  ['dragenter', 'dragover'].forEach(function (e) {
-    drop.addEventListener(e, function (ev) { ev.preventDefault(); drop.classList.add('drag'); });
+  DOC_CATS.forEach(function (c) {
+    var el = document.createElement('div');
+    el.className = 'doc-cat';
+    el.dataset.key = c.key;
+    el.innerHTML =
+      '<div class="doc-cat-head">' +
+        '<span class="doc-cat-label">' + c.label + (c.required ? ' <span class="req">*</span>' : '') + '</span>' +
+        '<small>' + c.hint + '</small>' +
+      '</div>' +
+      '<input type="file" accept="image/*,application/pdf" multiple hidden />' +
+      '<button type="button" class="doc-add">+ Dodaj plik</button>' +
+      '<ul class="files"></ul>';
+    var input = el.querySelector('input');
+    el.querySelector('.doc-add').addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function () { addFiles(c.key, input.files); input.value = ''; });
+    ['dragenter', 'dragover'].forEach(function (e) { el.addEventListener(e, function (ev) { ev.preventDefault(); el.classList.add('drag'); }); });
+    ['dragleave', 'drop'].forEach(function (e) { el.addEventListener(e, function (ev) { ev.preventDefault(); el.classList.remove('drag'); }); });
+    el.addEventListener('drop', function (ev) { addFiles(c.key, ev.dataTransfer.files); });
+    catsWrap.appendChild(el);
+    catEls[c.key] = el;
   });
-  ['dragleave', 'drop'].forEach(function (e) {
-    drop.addEventListener(e, function (ev) { ev.preventDefault(); drop.classList.remove('drag'); });
-  });
-  drop.addEventListener('drop', function (ev) { addFiles(ev.dataTransfer.files); });
-  fileInput.addEventListener('change', function () { addFiles(fileInput.files); fileInput.value = ''; });
 
-  function addFiles(fl) {
+  function addFiles(catKey, fl) {
     Array.prototype.forEach.call(fl, function (f) {
       if (f.size > 15 * 1024 * 1024) { alert('Plik „' + f.name + '" jest za duży (max 15 MB).'); return; }
-      var rec = { file: f, url: f.type.indexOf('image/') === 0 ? URL.createObjectURL(f) : null };
-      files.push(rec);
+      docFiles[catKey].push({ file: f, url: f.type.indexOf('image/') === 0 ? URL.createObjectURL(f) : null });
     });
-    renderFiles();
+    renderCat(catKey);
   }
-  function renderFiles() {
-    fileList.innerHTML = '';
-    files.forEach(function (rec, i) {
+
+  function renderCat(catKey) {
+    var el = catEls[catKey];
+    var ul = el.querySelector('.files');
+    ul.innerHTML = '';
+    docFiles[catKey].forEach(function (rec, i) {
       var li = document.createElement('li');
       var thumb = rec.url
         ? '<img class="thumb" src="' + rec.url + '" alt="" />'
@@ -50,11 +72,35 @@
       li.querySelector('.nm').textContent = rec.file.name;
       li.querySelector('button').addEventListener('click', function () {
         if (rec.url) URL.revokeObjectURL(rec.url);
-        files.splice(i, 1); renderFiles();
+        docFiles[catKey].splice(i, 1); renderCat(catKey);
       });
-      fileList.appendChild(li);
+      ul.appendChild(li);
     });
-    aiBtn.disabled = files.length === 0;
+    var has = docFiles[catKey].length > 0;
+    el.classList.toggle('filled', has);
+    if (has) el.classList.remove('missing');
+    aiBtn.disabled = !DOC_CATS.some(function (c) { return c.ai && docFiles[c.key].length; });
+  }
+
+  // Files sent to AI extraction (identity-bearing categories, capped).
+  function aiSourceFiles() {
+    var out = [];
+    DOC_CATS.forEach(function (c) { if (c.ai) docFiles[c.key].forEach(function (r) { out.push(r.file); }); });
+    return out.slice(0, 6);
+  }
+  // All uploaded docs flattened, with their category.
+  function allDocs() {
+    var out = [];
+    DOC_CATS.forEach(function (c) { docFiles[c.key].forEach(function (r) { out.push({ cat: c.key, label: c.label, file: r.file }); }); });
+    return out;
+  }
+  // Required categories with no file. Marks slots and returns the missing list.
+  function missingRequiredDocs() {
+    var miss = [];
+    DOC_CATS.forEach(function (c) {
+      if (c.required && docFiles[c.key].length === 0) { catEls[c.key].classList.add('missing'); miss.push(c); }
+    });
+    return miss;
   }
 
   function fileToBase64(file) {
@@ -71,14 +117,15 @@
   function setAi(msg, type) { aiStatus.textContent = msg; aiStatus.className = 'ai-status ' + (type || ''); }
 
   aiBtn.addEventListener('click', async function () {
-    if (!files.length) return;
+    var src = aiSourceFiles();
+    if (!src.length) return;
     aiBtn.disabled = true;
     setAi('⏳ Odczytuję dane z dokumentów…', 'loading');
     try {
       var payload = {
         docType: $('p_doc_typ').value,
-        files: await Promise.all(files.map(async function (rec) {
-          return { mime: rec.file.type || 'image/jpeg', data: await fileToBase64(rec.file) };
+        files: await Promise.all(src.map(async function (f) {
+          return { mime: f.type || 'image/jpeg', data: await fileToBase64(f) };
         })),
       };
       var res = await fetch(EXTRACT_FN, {
@@ -250,6 +297,14 @@
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     statusEl.className = 'status';
+
+    var missing = missingRequiredDocs();
+    if (missing.length) {
+      showStatus('Dodaj wymagane dokumenty: ' + missing.map(function (c) { return c.label; }).join(', ') + '.', 'error');
+      catEls[missing[0].key].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
     var problems = validate();
     if (problems.length) {
       showStatus('Popraw zaznaczone pola (' + problems.length + ').', 'error');
@@ -265,17 +320,21 @@
       if (!window.sb) throw new Error('Brak połączenia z serwerem.');
       var data = collect();
 
-      // 1) upload documents to a per-submission folder
+      // 1) upload documents to a per-submission folder, grouped by category
       var folder = (crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+      var allFiles = allDocs();
       var docPaths = [];
-      for (var i = 0; i < files.length; i++) {
-        var f = files[i].file;
-        var ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
-        var path = folder + '/' + (i + 1) + '.' + ext;
-        var up = await window.sb.storage.from(BUCKET).upload(path, f, { contentType: f.type || 'application/octet-stream', upsert: false });
+      var documents = []; // [{cat, label, path, name}]
+      for (var i = 0; i < allFiles.length; i++) {
+        var d = allFiles[i];
+        var ext = (d.file.name.split('.').pop() || 'jpg').toLowerCase();
+        var path = folder + '/' + d.cat + '/' + (i + 1) + '.' + ext;
+        var up = await window.sb.storage.from(BUCKET).upload(path, d.file, { contentType: d.file.type || 'application/octet-stream', upsert: false });
         if (up.error) throw up.error;
         docPaths.push(path);
+        documents.push({ cat: d.cat, label: d.label, path: path, name: d.file.name });
       }
+      data.documents = documents;
 
       // 2) insert the request row
       var ins = await window.sb.from(TABLE).insert({

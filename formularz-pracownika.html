@@ -48,11 +48,16 @@
   .ai-box{border:1.5px solid var(--brand-navy);border-radius:12px;padding:20px;background:linear-gradient(135deg,var(--brand-tint) 0%,#fff 100%);margin:0 0 20px}
   .ai-box h2{margin:0 0 6px;font-size:16px;color:var(--brand-navy);display:flex;align-items:center;gap:8px}
   .ai-box p{margin:0 0 14px;font-size:13px;color:#555}
-  .drop{border:2px dashed #b8c4d8;border-radius:10px;padding:22px;text-align:center;background:#fff;cursor:pointer;transition:all .15s}
-  .drop:hover,.drop.drag{border-color:var(--brand-navy);background:var(--brand-tint)}
-  .drop .ic{font-size:30px}
-  .drop small{display:block;color:#888;font-size:12px;margin-top:4px}
-  .files{list-style:none;padding:0;margin:12px 0 0;display:flex;flex-direction:column;gap:8px}
+  .doc-cat{border:1px solid #e2e8f2;border-radius:10px;padding:12px 14px;margin:0 0 10px;background:#fff;transition:border-color .15s,background .15s}
+  .doc-cat.drag{border-color:var(--brand-navy);background:var(--brand-tint)}
+  .doc-cat.filled{border-color:#bbf7d0;background:#f6fef9}
+  .doc-cat.missing{border-color:#fca5a5;background:#fff7f7}
+  .doc-cat-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .doc-cat-label{font-size:14px;font-weight:600;color:#1b2434}
+  .doc-cat-head small{color:#8a97ab;font-size:12px}
+  .doc-add{margin-top:8px;border:1px dashed var(--brand-navy);background:#fff;color:var(--brand-navy);border-radius:8px;padding:8px 14px;font:inherit;font-size:13px;font-weight:500;cursor:pointer}
+  .doc-add:hover{background:var(--brand-tint)}
+  .files{list-style:none;padding:0;margin:10px 0 0;display:flex;flex-direction:column;gap:8px}
   .files li{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff;border:1px solid #e5e9ef;border-radius:8px;font-size:13px}
   .files li .thumb{width:40px;height:40px;border-radius:6px;object-fit:cover;flex:0 0 40px;background:#eee}
   .files li .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -97,17 +102,11 @@
 
   <form id="form" novalidate>
 
-    <!-- AI document reader -->
+    <!-- Required documents + AI document reader -->
     <div class="ai-box">
-      <h2>🪪 Dokumenty pracownika</h2>
-      <p>Dodaj zdjęcia lub skany: dowód osobisty / paszport / karta pobytu (obie strony). System odczyta dane i wypełni formularz.</p>
-      <input type="file" id="docFiles" accept="image/*,application/pdf" multiple hidden />
-      <div class="drop" id="drop">
-        <div class="ic">📤</div>
-        <strong>Kliknij lub przeciągnij pliki tutaj</strong>
-        <small>JPG, PNG lub PDF · można dodać kilka plików</small>
-      </div>
-      <ul class="files" id="fileList"></ul>
+      <h2>🪪 Dokumenty do zatrudnienia</h2>
+      <p>Dodaj wymagane dokumenty (oznaczone <span class="req">*</span>). Z dokumentu tożsamości / karty pobytu dane odczytają się automatycznie po kliknięciu poniżej.</p>
+      <div id="docCats"></div>
       <button type="button" id="aiBtn" class="ai-btn" disabled>✨ Odczytaj dane z dokumentów</button>
       <div id="aiStatus" class="ai-status"></div>
     </div>
