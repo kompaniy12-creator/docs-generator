@@ -97,6 +97,9 @@ async function loadWorkers() {
     else { mSame.checked = true; meldunekFields.hidden = true; }
     // family-member toggle
     if (d.r_has === true || d.r_imienazwisko) { docRodzina.checked = true; rodzinaFields.hidden = false; }
+    // signing place (required, not collected on intake) — default to employer/worker city
+    const dm = document.querySelector('[name="d_miejscowosc"]');
+    if (dm && !dm.value) setVal('d_miejscowosc', d.z_miasto || d.a_miejscowosc || '');
     // visual confirmation
     const h1 = document.querySelector('h1');
     if (h1) {
