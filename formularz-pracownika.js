@@ -8,7 +8,7 @@
   // anon (publishable) key — public by design; lets the call pass the functions gateway.
   var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRwZnh3a3hwenFxanRtZ3F3b3p3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxODksImV4cCI6MjA4ODgzMDE4OX0.sUFX90FKNuxM7u8ftOlDKdf1iD4gsfq2T3S0FDzRdC0';
   var EXTRACT_FN = SUPABASE_URL + '/functions/v1/extract-worker';
-  var GUS_FN = SUPABASE_URL + '/functions/v1/gus-company';
+  var KLIENT_FN = SUPABASE_URL + '/functions/v1/klient-by-nip';
   var BUCKET = 'zatrudnienie-dokumenty';
   var TABLE = 'zatrudnienie_zgloszenia';
 
@@ -114,13 +114,17 @@
   gusBtn.addEventListener('click', async function () {
     var nip = ($('z_nip').value || '').replace(/[^0-9]/g, '');
     if (nip.length !== 10) { setGus('Wpisz poprawny NIP (10 cyfr).', 'error'); return; }
-    gusBtn.disabled = true; setGus('⏳ Pobieram dane z GUS…', 'loading');
+    gusBtn.disabled = true; setGus('⏳ Szukam firmy w bazie klientów…', 'loading');
     try {
-      var res = await fetch(GUS_FN + '?nip=' + nip, {
+      var res = await fetch(KLIENT_FN + '?nip=' + nip, {
         headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
       });
       var out = await res.json();
-      if (!res.ok || !out.success) throw new Error(out.error || ('HTTP ' + res.status));
+      if (!res.ok) throw new Error(out.error || ('HTTP ' + res.status));
+      if (!out.found) {
+        setGus('Firma o NIP ' + nip + ' nie jest naszym klientem. Skontaktuj się z biurem.', 'error');
+        return;
+      }
       if (out.nazwa) $('z_nazwa').value = out.nazwa;
       if (out.miasto) $('z_miasto').value = out.miasto;
       if (out.ulica) $('z_ulica').value = out.ulica;
