@@ -112,6 +112,30 @@
     </div>
 
     <fieldset>
+      <legend>Pracodawca (firma zatrudniająca)</legend>
+      <p class="hint" style="margin:0 0 12px">Firma, do której pracownik jest zatrudniany.</p>
+      <div class="field">
+        <label for="z_nazwa">Nazwa firmy <span class="req">*</span></label>
+        <input id="z_nazwa" name="z_nazwa" type="text" required placeholder="np. AURISS Sp. z o.o." />
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="z_nip">NIP</label>
+          <input id="z_nip" name="z_nip" type="text" inputmode="numeric" maxlength="10" />
+          <span class="err" data-for="z_nip"></span>
+        </div>
+        <div class="field">
+          <label for="z_miasto">Miejscowość</label>
+          <input id="z_miasto" name="z_miasto" type="text" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="z_ulica">Ulica i nr</label>
+        <input id="z_ulica" name="z_ulica" type="text" placeholder="np. ul. Garbary 71/9" />
+      </div>
+    </fieldset>
+
+    <fieldset>
       <legend>Dane osobowe</legend>
       <div class="row">
         <div class="field">

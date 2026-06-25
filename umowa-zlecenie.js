@@ -77,6 +77,37 @@ async function loadWorkers() {
   loadWorkers();
 })();
 
+// ---------------- Import from a zatrudnienie task (AI-kadry) ----------------
+// The portal task list stores the submission payload in sessionStorage and opens
+// this generator with ?from=zgloszenie. Field names already match (p_/a_/m_/r_/z_).
+(function importFromZgloszenie() {
+  try {
+    const raw = sessionStorage.getItem('tdcg_zlecenie_import');
+    if (!raw) return;
+    sessionStorage.removeItem('tdcg_zlecenie_import');
+    // prevent autosave.restore() (runs after this script) from overwriting the import
+    try { localStorage.removeItem('tdcg_autosave_umowa-zlecenie'); } catch (e2) { /* ignore */ }
+    const d = JSON.parse(raw);
+    Object.keys(d).forEach((k) => {
+      const v = d[k];
+      if (typeof v === 'string' && v !== '') setVal(k, v);
+    });
+    // meldunek toggle (intake stores m_same as a boolean)
+    if (d.m_same === false) { mSame.checked = false; meldunekFields.hidden = false; }
+    else { mSame.checked = true; meldunekFields.hidden = true; }
+    // family-member toggle
+    if (d.r_has === true || d.r_imienazwisko) { docRodzina.checked = true; rodzinaFields.hidden = false; }
+    // visual confirmation
+    const h1 = document.querySelector('h1');
+    if (h1) {
+      const note = document.createElement('div');
+      note.textContent = '✓ Dane wczytane ze zgłoszenia — sprawdź i wygeneruj komplet.';
+      note.style.cssText = 'margin:10px auto 0;max-width:640px;padding:10px 14px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:8px;font-size:13.5px;text-align:center';
+      h1.parentNode.insertBefore(note, h1.nextSibling);
+    }
+  } catch (e) { console.warn('import zgloszenie', e); }
+})();
+
 // ---------------- wFirma: load company (zleceniodawca) ----------------
 (function initWFirma() {
   const btn = document.getElementById('wfBtn');

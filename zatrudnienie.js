@@ -38,6 +38,7 @@
 
   // human-friendly labels for payload keys
   var LABELS = {
+    z_nazwa: 'Firma', z_nip: 'NIP', z_miasto: 'Miejscowość', z_ulica: 'Ulica i nr',
     p_imiona: 'Imię', p_nazwisko: 'Nazwisko', p_pesel: 'PESEL', p_dataur: 'Data ur.',
     p_miejsceur: 'Miejsce ur.', p_obywatelstwo: 'Obywatelstwo', p_doc_typ: 'Dokument',
     p_dowod: 'Seria i nr', p_telefon: 'Telefon', p_email: 'E-mail', p_nfz: 'NFZ',
@@ -46,6 +47,7 @@
     a_gmina: 'Gmina', a_powiat: 'Powiat', a_wojewodztwo: 'Województwo',
   };
   var GROUPS = [
+    { title: 'Pracodawca', keys: ['z_nazwa', 'z_nip', 'z_miasto', 'z_ulica'] },
     { title: 'Dane osobowe', keys: ['p_imiona', 'p_nazwisko', 'p_pesel', 'p_dataur', 'p_miejsceur', 'p_obywatelstwo', 'p_doc_typ', 'p_dowod'] },
     { title: 'Adres', keys: ['a_ulica', 'a_nrdom', 'a_nrmiesz', 'a_kod', 'a_miejscowosc', 'a_gmina', 'a_powiat', 'a_wojewodztwo'] },
     { title: 'Do zatrudnienia', keys: ['p_telefon', 'p_email', 'p_nfz', 'p_us', 'p_nip', 'p_konto'] },
@@ -64,8 +66,8 @@
     });
     var docs = r.doc_paths || [];
     html += '<div class="sec">Dokumenty (' + docs.length + ')</div><div class="docs" data-docs></div>';
-    var dis = r.status === 'wyslane' ? '' : '';
     html += '<div class="actions">';
+    html += '<button class="btn-gen" data-act="generuj">🧾 Generuj komplet (umowa zlecenie)</button>';
     if (r.status === 'nowe') html += '<button class="btn-rev" data-act="sprawdzone">✔ Oznacz jako sprawdzone</button>';
     if (r.status !== 'wyslane') html += '<button class="btn-send" data-act="wyslane">📤 Wyślij klientowi do podpisu</button>';
     html += '<button class="btn-del" data-act="delete">Usuń</button>';
@@ -81,10 +83,12 @@
       var card = document.createElement('div');
       card.className = 'card';
       var st = r.status || 'nowe';
+      var emp = (r.payload && r.payload.z_nazwa) ? r.payload.z_nazwa : '';
       card.innerHTML =
         '<div class="card-head">' +
           '<div class="who"><strong>' + esc(r.worker_name || '(bez nazwy)') + '</strong>' +
-            '<small>' + fmtDate(r.created_at) + ' · ' + (r.doc_paths ? r.doc_paths.length : 0) + ' dok.</small></div>' +
+            '<small>' + fmtDate(r.created_at) + ' · ' + (r.doc_paths ? r.doc_paths.length : 0) + ' dok.' +
+            (emp ? ' · → ' + esc(emp) : '') + '</small></div>' +
           '<span class="badge b-' + st + '">' + esc(STATUS_LABEL[st] || st) + '</span>' +
           '<span class="chev">›</span>' +
         '</div>' +
@@ -144,6 +148,12 @@
   }
 
   async function onAction(r, act, card) {
+    if (act === 'generuj') {
+      // hand the submission off to the umowa-zlecenie generator, prefilled.
+      try { sessionStorage.setItem('tdcg_zlecenie_import', JSON.stringify(r.payload || {})); } catch (e) {}
+      window.open('umowa-zlecenie.html?from=zgloszenie', '_blank', 'noopener');
+      return;
+    }
     if (act === 'delete') {
       if (!confirm('Usunąć zgłoszenie ' + (r.worker_name || '') + '?')) return;
       if (r.doc_paths && r.doc_paths.length) {

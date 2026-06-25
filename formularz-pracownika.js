@@ -103,6 +103,18 @@
     return miss;
   }
 
+  // Optional: prefill the employer from the invite link (?firma=&nip=&miasto=&ulica=).
+  (function prefillEmployer() {
+    try {
+      var p = new URLSearchParams(location.search);
+      var map = { firma: 'z_nazwa', nip: 'z_nip', miasto: 'z_miasto', ulica: 'z_ulica' };
+      Object.keys(map).forEach(function (k) {
+        var v = p.get(k);
+        if (v) { var el = $(map[k]); if (el) el.value = v; }
+      });
+    } catch (e) { /* ignore */ }
+  })();
+
   function fileToBase64(file) {
     return new Promise(function (resolve, reject) {
       var r = new FileReader();
@@ -272,6 +284,9 @@
 
     var nip = $('p_nip');
     if (nip.value && !nipValid(nip.value)) { setErr(nip, 'Nieprawidłowy NIP'); problems.push(nip); }
+
+    var znip = $('z_nip');
+    if (znip.value && !nipValid(znip.value)) { setErr(znip, 'Nieprawidłowy NIP'); problems.push(znip); }
 
     var email = $('p_email');
     if (email.value && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.value)) { setErr(email, 'Nieprawidłowy e-mail'); problems.push(email); }
