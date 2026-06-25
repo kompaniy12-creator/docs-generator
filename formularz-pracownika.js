@@ -17,9 +17,11 @@
 
   // ---------------- Documents (categorised, required validation) ----------------
   var DOC_CATS = [
-    { key: 'tozsamosc', label: 'Dokument tożsamości', hint: 'paszport / dowód osobisty / karta pobytu', required: true, ai: true },
-    { key: 'pobyt', label: 'Tytuł pobytowy', hint: 'karta pobytu / wiza / stempel w paszporcie', required: true, ai: true },
-    { key: 'praca', label: 'Podstawa legalnej pracy', hint: 'zezwolenie na pracę / oświadczenie o powierzeniu pracy', required: true, ai: true },
+    { key: 'tozsamosc', label: 'Dokument tożsamości (paszport)', hint: 'paszport / dowód osobisty / karta pobytu', required: true, ai: true },
+    { key: 'pobyt', label: 'Tytuł pobytowy', hint: 'karta pobytu / decyzja / wiza', required: false, ai: true },
+    { key: 'praca', label: 'Podstawa legalnej pracy', hint: 'zezwolenie na pracę / oświadczenie o powierzeniu pracy', required: false, ai: true },
+    { key: 'bhp', label: 'BHP — badanie i skierowanie', hint: 'badanie lekarskie / skierowanie', required: false },
+    { key: 'student', label: 'Dla studenta — legitymacja i zaświadczenie', hint: 'legitymacja studencka / zaświadczenie z uczelni', required: false },
     { key: 'konto', label: 'Potwierdzenie nr konta', hint: 'opcjonalnie', required: false },
     { key: 'inne', label: 'Inne załączniki', hint: 'opcjonalnie', required: false },
   ];
@@ -36,7 +38,8 @@
     el.dataset.key = c.key;
     el.innerHTML =
       '<div class="doc-cat-head">' +
-        '<span class="doc-cat-label">' + c.label + (c.required ? ' <span class="req">*</span>' : '') + '</span>' +
+        '<span class="doc-cat-label">' + c.label + (c.required ? ' <span class="req">*</span>' : '') +
+          ' <span class="doc-check">✓ dodano</span></span>' +
         '<small>' + c.hint + '</small>' +
       '</div>' +
       '<input type="file" accept="image/*,application/pdf" multiple hidden />' +
