@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>Zatrudnienie — zadania (AI-kadry) — TD Consulting Group</title>
+<style>
+  :root{--brand-navy:#1B3F7F;--brand-navy-dark:#15315F;--brand-green:#1FA84B;--brand-green-dark:#198D3F;--brand-tint:#EEF3F9;}
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f6f8fb;color:#111;line-height:1.5}
+  main{max-width:980px;margin:0 auto;padding:40px 22px 96px}
+  .back{display:inline-block;margin-bottom:16px;font-size:14px;color:#666;text-decoration:none}
+  .back:hover{color:var(--brand-navy)}
+  .brand{text-align:center;margin:0 0 18px}
+  .brand img{height:64px}
+  h1{font-size:24px;font-weight:700;margin:0 0 6px;color:var(--brand-navy);text-align:center}
+  .lead{color:#666;margin:0 auto 24px;font-size:14.5px;text-align:center;max-width:620px}
+  .filters{display:flex;gap:8px;justify-content:center;margin:0 0 20px;flex-wrap:wrap}
+  .filters button{border:1px solid #d4dbe6;background:#fff;color:#3a4759;border-radius:999px;padding:7px 16px;font:inherit;font-size:13px;cursor:pointer}
+  .filters button.active{background:var(--brand-navy);color:#fff;border-color:var(--brand-navy)}
+  .empty{text-align:center;color:#888;padding:40px;background:#fff;border:1px solid #e5e9ef;border-radius:12px}
+
+  .card{background:#fff;border:1px solid #e5e9ef;border-radius:12px;margin:0 0 12px;overflow:hidden}
+  .card-head{display:flex;align-items:center;gap:14px;padding:16px 18px;cursor:pointer}
+  .card-head:hover{background:#fafbfd}
+  .who{flex:1;min-width:0}
+  .who strong{display:block;font-size:15px;color:#1b2434}
+  .who small{color:#8a97ab;font-size:12.5px}
+  .badge{font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:999px;white-space:nowrap}
+  .b-nowe{background:#fef3c7;color:#92400e}
+  .b-sprawdzone{background:#dbeafe;color:#1e40af}
+  .b-wyslane{background:#dcfce7;color:#166534}
+  .chev{color:#b8c4d8;font-size:18px;transition:transform .15s}
+  .card.open .chev{transform:rotate(90deg)}
+
+  .detail{display:none;border-top:1px solid #eef1f6;padding:18px;background:#fbfcfe}
+  .card.open .detail{display:block}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 22px}
+  @media(max-width:620px){.grid{grid-template-columns:1fr}}
+  .grid div{font-size:13.5px;padding:3px 0;border-bottom:1px dashed #eef1f6}
+  .grid div b{color:#5a6577;font-weight:500;display:inline-block;min-width:150px}
+  .sec{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--brand-navy);margin:16px 0 6px}
+  .docs{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+  .docs a{font-size:13px;color:var(--brand-navy);text-decoration:none;border:1px solid #d4dbe6;border-radius:8px;padding:6px 12px;background:#fff}
+  .docs a:hover{background:var(--brand-tint)}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+  .actions button{border:none;border-radius:8px;padding:10px 16px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
+  .btn-rev{background:#dbeafe;color:#1e40af}
+  .btn-send{background:var(--brand-green);color:#fff}
+  .btn-send:hover{background:var(--brand-green-dark)}
+  .btn-del{background:#fff;color:#b91c1c;border:1px solid #fecaca}
+  .actions button:disabled{opacity:.5;cursor:default}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#1b2434;color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;display:none;z-index:50}
+  .toast.show{display:block}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Zatrudnienie — zadania</h1>
+  <p class="lead">Zgłoszenia pracowników od klientów. Sprawdź dane, a następnie wyślij komplet dokumentów do podpisu.</p>
+
+  <div class="filters" id="filters">
+    <button data-f="all" class="active">Wszystkie</button>
+    <button data-f="nowe">Nowe</button>
+    <button data-f="sprawdzone">Sprawdzone</button>
+    <button data-f="wyslane">Wysłane</button>
+  </div>
+
+  <div id="list"></div>
+  <div id="empty" class="empty" style="display:none">Brak zgłoszeń.</div>
+</main>
+<div id="toast" class="toast"></div>
+
+<script src="zatrudnienie.js"></script>
+</body>
+</html>

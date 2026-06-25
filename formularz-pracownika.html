@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Zgłoszenie pracownika do zatrudnienia — TD Consulting Group</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<style>
+  :root{
+    --brand-navy:#1B3F7F;
+    --brand-navy-dark:#15315F;
+    --brand-green:#1FA84B;
+    --brand-green-dark:#198D3F;
+    --brand-tint:#EEF3F9;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f6f8fb;color:#111;line-height:1.5;-webkit-font-smoothing:antialiased}
+  main{max-width:780px;margin:0 auto;padding:40px 22px 96px}
+  .brand{text-align:center;margin:0 0 20px}
+  .brand img{height:72px;width:auto;object-fit:contain}
+  h1{font-size:24px;font-weight:700;margin:0 0 8px;letter-spacing:-0.01em;color:var(--brand-navy);text-align:center}
+  .lead{color:#555;margin:0 auto 28px;font-size:14.5px;text-align:center;max-width:560px}
+
+  fieldset{border:1px solid #e5e9ef;border-radius:10px;padding:22px;margin:0 0 18px;background:#fff}
+  legend{padding:0 8px;font-weight:600;font-size:14px;color:var(--brand-navy)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .row.three{grid-template-columns:1fr 1fr 1fr}
+  .row.uneven{grid-template-columns:2fr 1fr 1fr}
+  @media (max-width:560px){.row,.row.three,.row.uneven{grid-template-columns:1fr}}
+  label{display:block;font-size:13px;font-weight:500;margin-bottom:6px;color:#333}
+  input[type="text"],input[type="tel"],input[type="email"],input[type="date"],select{
+    width:100%;padding:10px 12px;border:1px solid #d4d4d4;border-radius:6px;
+    font:inherit;font-size:14px;background:#fff;transition:border-color .15s,box-shadow .15s;
+  }
+  input:focus,select:focus{outline:none;border-color:var(--brand-navy);box-shadow:0 0 0 3px rgba(27,63,127,.12)}
+  input.invalid{border-color:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.12)}
+  .field{margin-bottom:14px}
+  .field:last-child{margin-bottom:0}
+  .hint{display:block;color:#888;font-size:11.5px;margin-top:4px;font-weight:400}
+  .err{display:none;color:#b91c1c;font-size:11.5px;margin-top:4px;font-weight:500}
+  .err.show{display:block}
+  .check-row{display:flex;align-items:flex-start;gap:8px;margin-top:4px;font-size:13.5px;font-weight:400;color:#444;cursor:pointer}
+  .check-row input{width:18px;height:18px;margin:1px 0 0;accent-color:var(--brand-navy);flex:0 0 18px}
+
+  /* AI upload box */
+  .ai-box{border:1.5px solid var(--brand-navy);border-radius:12px;padding:20px;background:linear-gradient(135deg,var(--brand-tint) 0%,#fff 100%);margin:0 0 20px}
+  .ai-box h2{margin:0 0 6px;font-size:16px;color:var(--brand-navy);display:flex;align-items:center;gap:8px}
+  .ai-box p{margin:0 0 14px;font-size:13px;color:#555}
+  .drop{border:2px dashed #b8c4d8;border-radius:10px;padding:22px;text-align:center;background:#fff;cursor:pointer;transition:all .15s}
+  .drop:hover,.drop.drag{border-color:var(--brand-navy);background:var(--brand-tint)}
+  .drop .ic{font-size:30px}
+  .drop small{display:block;color:#888;font-size:12px;margin-top:4px}
+  .files{list-style:none;padding:0;margin:12px 0 0;display:flex;flex-direction:column;gap:8px}
+  .files li{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff;border:1px solid #e5e9ef;border-radius:8px;font-size:13px}
+  .files li .thumb{width:40px;height:40px;border-radius:6px;object-fit:cover;flex:0 0 40px;background:#eee}
+  .files li .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .files li button{border:none;background:none;color:#b91c1c;cursor:pointer;font-size:18px;line-height:1;padding:0}
+  .ai-btn{margin-top:14px;background:var(--brand-navy);color:#fff;border:none;padding:13px 20px;border-radius:8px;font:inherit;font-size:14.5px;font-weight:600;cursor:pointer;width:100%;transition:background .15s}
+  .ai-btn:hover{background:var(--brand-navy-dark)}
+  .ai-btn:disabled{background:#9aa7bd;cursor:wait}
+  .ai-status{margin-top:12px;font-size:13px;display:none;padding:10px 14px;border-radius:8px}
+  .ai-status.loading{display:block;background:#eef2f8;color:#445}
+  .ai-status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+  .ai-status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+  .filled-flag{display:inline-block;margin-left:6px;font-size:11px;color:var(--brand-green-dark);font-weight:600}
+
+  button[type="submit"]{
+    background:var(--brand-green);color:#fff;border:none;
+    padding:15px 28px;border-radius:10px;font:inherit;font-size:15.5px;font-weight:700;
+    cursor:pointer;width:100%;transition:background .15s;
+  }
+  button[type="submit"]:hover{background:var(--brand-green-dark)}
+  button[type="submit"]:disabled{background:#9aa7bd;cursor:wait}
+  .status{margin-top:16px;padding:12px 14px;border-radius:8px;font-size:14px;display:none}
+  .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+  .status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+
+  .done{display:none;text-align:center;padding:40px 20px;background:#fff;border:1px solid #e5e9ef;border-radius:12px}
+  .done.show{display:block}
+  .done .ic{font-size:54px}
+  .done h2{color:var(--brand-navy);margin:10px 0 6px}
+  .done p{color:#555;margin:0}
+
+  .site-footer{margin-top:40px;padding-top:18px;border-top:1px solid #e5e9ef;text-align:center;font-size:12.5px;color:#888}
+  .site-footer a{color:#777;text-decoration:none}
+  .site-footer a:hover{color:var(--brand-navy);text-decoration:underline}
+  .req{color:#dc2626}
+</style>
+</head>
+<body>
+<main>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Zgłoszenie pracownika do zatrudnienia</h1>
+  <p class="lead">Prześlij zdjęcia dokumentów pracownika — dane odczytają się automatycznie. Uzupełnij brakujące pola i wyślij zgłoszenie. Resztą zajmie się nasz dział kadr.</p>
+
+  <form id="form" novalidate>
+
+    <!-- AI document reader -->
+    <div class="ai-box">
+      <h2>🪪 Dokumenty pracownika</h2>
+      <p>Dodaj zdjęcia lub skany: dowód osobisty / paszport / karta pobytu (obie strony). System odczyta dane i wypełni formularz.</p>
+      <input type="file" id="docFiles" accept="image/*,application/pdf" multiple hidden />
+      <div class="drop" id="drop">
+        <div class="ic">📤</div>
+        <strong>Kliknij lub przeciągnij pliki tutaj</strong>
+        <small>JPG, PNG lub PDF · można dodać kilka plików</small>
+      </div>
+      <ul class="files" id="fileList"></ul>
+      <button type="button" id="aiBtn" class="ai-btn" disabled>✨ Odczytaj dane z dokumentów</button>
+      <div id="aiStatus" class="ai-status"></div>
+    </div>
+
+    <fieldset>
+      <legend>Dane osobowe</legend>
+      <div class="row">
+        <div class="field">
+          <label for="p_imiona">Imię / imiona <span class="req">*</span></label>
+          <input id="p_imiona" name="p_imiona" type="text" required />
+          <span class="err" data-for="p_imiona"></span>
+        </div>
+        <div class="field">
+          <label for="p_nazwisko">Nazwisko <span class="req">*</span></label>
+          <input id="p_nazwisko" name="p_nazwisko" type="text" required />
+          <span class="err" data-for="p_nazwisko"></span>
+        </div>
+      </div>
+      <div class="row three">
+        <div class="field">
+          <label for="p_pesel">PESEL <span class="req">*</span></label>
+          <input id="p_pesel" name="p_pesel" type="text" inputmode="numeric" maxlength="11" required />
+          <span class="err" data-for="p_pesel"></span>
+          <label class="check-row"><input type="checkbox" id="p_nopesel" name="p_nopesel" /> Brak numeru PESEL (cudzoziemiec)</label>
+        </div>
+        <div class="field">
+          <label for="p_dataur">Data urodzenia <span class="req">*</span></label>
+          <input id="p_dataur" name="p_dataur" type="date" required />
+          <span class="err" data-for="p_dataur"></span>
+        </div>
+        <div class="field">
+          <label for="p_miejsceur">Miejsce urodzenia <span class="req">*</span></label>
+          <input id="p_miejsceur" name="p_miejsceur" type="text" required />
+        </div>
+      </div>
+      <div class="row three">
+        <div class="field">
+          <label for="p_obywatelstwo">Obywatelstwo <span class="req">*</span></label>
+          <input id="p_obywatelstwo" name="p_obywatelstwo" type="text" required placeholder="np. polskie / ukraińskie" />
+        </div>
+        <div class="field">
+          <label for="p_doc_typ">Rodzaj dokumentu</label>
+          <select id="p_doc_typ" name="p_doc_typ">
+            <option value="dowód osobisty">Dowód osobisty</option>
+            <option value="paszport">Paszport</option>
+            <option value="karta pobytu">Karta pobytu</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="p_dowod">Seria i numer dokumentu <span class="req">*</span></label>
+          <input id="p_dowod" name="p_dowod" type="text" required placeholder="np. ABC 123456" />
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Adres zamieszkania</legend>
+      <div class="row uneven">
+        <div class="field">
+          <label for="a_ulica">Ulica <span class="req">*</span></label>
+          <input id="a_ulica" name="a_ulica" type="text" required />
+        </div>
+        <div class="field">
+          <label for="a_nrdom">Nr domu <span class="req">*</span></label>
+          <input id="a_nrdom" name="a_nrdom" type="text" required />
+        </div>
+        <div class="field">
+          <label for="a_nrmiesz">Nr mieszkania</label>
+          <input id="a_nrmiesz" name="a_nrmiesz" type="text" />
+        </div>
+      </div>
+      <div class="row three">
+        <div class="field">
+          <label for="a_kod">Kod pocztowy <span class="req">*</span></label>
+          <input id="a_kod" name="a_kod" type="text" maxlength="6" placeholder="00-000" required />
+          <span class="err" data-for="a_kod"></span>
+        </div>
+        <div class="field">
+          <label for="a_miejscowosc">Miejscowość <span class="req">*</span></label>
+          <input id="a_miejscowosc" name="a_miejscowosc" type="text" required />
+        </div>
+        <div class="field">
+          <label for="a_gmina">Gmina</label>
+          <input id="a_gmina" name="a_gmina" type="text" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="a_powiat">Powiat</label>
+          <input id="a_powiat" name="a_powiat" type="text" />
+        </div>
+        <div class="field">
+          <label for="a_wojewodztwo">Województwo</label>
+          <input id="a_wojewodztwo" name="a_wojewodztwo" type="text" />
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Adres zameldowania</legend>
+      <label class="check-row" style="margin-bottom:12px"><input type="checkbox" id="m_same" name="m_same" checked /> Taki sam jak adres zamieszkania</label>
+      <div id="meldBlock" hidden>
+        <div class="row uneven">
+          <div class="field"><label for="m_ulica">Ulica</label><input id="m_ulica" name="m_ulica" type="text" /></div>
+          <div class="field"><label for="m_nrdom">Nr domu</label><input id="m_nrdom" name="m_nrdom" type="text" /></div>
+          <div class="field"><label for="m_nrmiesz">Nr mieszkania</label><input id="m_nrmiesz" name="m_nrmiesz" type="text" /></div>
+        </div>
+        <div class="row three">
+          <div class="field"><label for="m_kod">Kod pocztowy</label><input id="m_kod" name="m_kod" type="text" maxlength="6" placeholder="00-000" /></div>
+          <div class="field"><label for="m_miejscowosc">Miejscowość</label><input id="m_miejscowosc" name="m_miejscowosc" type="text" /></div>
+          <div class="field"><label for="m_gmina">Gmina</label><input id="m_gmina" name="m_gmina" type="text" /></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="m_powiat">Powiat</label><input id="m_powiat" name="m_powiat" type="text" /></div>
+          <div class="field"><label for="m_wojewodztwo">Województwo</label><input id="m_wojewodztwo" name="m_wojewodztwo" type="text" /></div>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Dane do zatrudnienia</legend>
+      <div class="row">
+        <div class="field">
+          <label for="p_telefon">Telefon <span class="req">*</span></label>
+          <input id="p_telefon" name="p_telefon" type="tel" required placeholder="+48 ..." />
+        </div>
+        <div class="field">
+          <label for="p_email">E-mail</label>
+          <input id="p_email" name="p_email" type="email" />
+          <span class="err" data-for="p_email"></span>
+        </div>
+      </div>
+      <div class="row three">
+        <div class="field">
+          <label for="p_nfz">Oddział NFZ <span class="req">*</span></label>
+          <input id="p_nfz" name="p_nfz" type="text" required placeholder="np. Wielkopolski OW NFZ" />
+        </div>
+        <div class="field">
+          <label for="p_us">Urząd skarbowy <span class="req">*</span></label>
+          <input id="p_us" name="p_us" type="text" required placeholder="np. US Poznań-Grunwald" />
+        </div>
+        <div class="field">
+          <label for="p_nip">NIP (jeśli posiada)</label>
+          <input id="p_nip" name="p_nip" type="text" inputmode="numeric" maxlength="10" />
+          <span class="err" data-for="p_nip"></span>
+        </div>
+      </div>
+      <div class="field">
+        <label for="p_konto">Numer konta bankowego <span class="req">*</span></label>
+        <input id="p_konto" name="p_konto" type="text" required placeholder="PL00 0000 0000 0000 0000 0000 0000" />
+        <span class="err" data-for="p_konto"></span>
+        <span class="hint">26 cyfr (numer rachunku w Polsce).</span>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Członek rodziny do ubezpieczenia zdrowotnego</legend>
+      <label class="check-row" style="margin-bottom:12px"><input type="checkbox" id="r_has" name="r_has" /> Zgłaszam członka rodziny do ubezpieczenia (NFZ)</label>
+      <div id="rodzinaBlock" hidden>
+        <div class="row">
+          <div class="field"><label for="r_imienazwisko">Imię i nazwisko</label><input id="r_imienazwisko" name="r_imienazwisko" type="text" /></div>
+          <div class="field"><label for="r_pesel">PESEL</label><input id="r_pesel" name="r_pesel" type="text" inputmode="numeric" maxlength="11" /><span class="err" data-for="r_pesel"></span></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="r_dataur">Data urodzenia</label><input id="r_dataur" name="r_dataur" type="date" /></div>
+          <div class="field"><label for="r_od">Pokrewieństwo</label><input id="r_od" name="r_od" type="text" placeholder="np. dziecko / małżonek" /></div>
+        </div>
+        <div class="field"><label for="r_adres">Adres zamieszkania</label><input id="r_adres" name="r_adres" type="text" /></div>
+      </div>
+    </fieldset>
+
+    <button type="submit" id="submitBtn">Wyślij zgłoszenie</button>
+    <div id="status" class="status"></div>
+  </form>
+
+  <div class="done" id="done">
+    <div class="ic">✅</div>
+    <h2>Zgłoszenie wysłane!</h2>
+    <p>Dziękujemy. Nasz dział kadr otrzymał dane i przygotuje dokumenty. Skontaktujemy się w razie pytań.</p>
+  </div>
+
+  <footer class="site-footer">
+    TD Consulting Group · <a href="rodo.html">Informacja o przetwarzaniu danych (RODO)</a>
+  </footer>
+</main>
+
+<script src="formularz-pracownika.js"></script>
+</body>
+</html>
