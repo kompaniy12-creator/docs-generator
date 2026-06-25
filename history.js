@@ -70,12 +70,33 @@
     return true;
   }
 
+  // Snapshot the current form in autosave's format, so "Edytuj" in Historia can
+  // restore it (including dynamic lists) by writing it back to the autosave key.
+  function captureFormSnapshot() {
+    try {
+      var cfg = window.AUTOSAVE;
+      if (!cfg || !cfg.key) return null;
+      var form = document.querySelector(cfg.form || '#form');
+      if (!form) return null;
+      var fields = [];
+      new FormData(form).forEach(function (v, k) { if (typeof v === 'string') fields.push([k, v]); });
+      var lists = {};
+      (cfg.lists || []).forEach(function (pair) {
+        var c = document.querySelector(pair[0]);
+        if (c) lists[pair[1]] = c.querySelectorAll('.subgroup').length;
+      });
+      return { v: 1, key: cfg.key, fields: fields, lists: lists };
+    } catch (e) { return null; }
+  }
+
   // Download a generated document to the user AND save it to history.
   // The single entry point every generator should use so nothing is lost.
   // opts: { docType, title, subject, filename, payload, mime, and either bytes or blob }
   async function download(opts) {
     var mime = opts.mime || 'application/pdf';
     var blob = opts.blob || new Blob([opts.bytes], { type: mime });
+    // capture BEFORE the 'tdcg:generated' event clears the form's autosave
+    var formSnap = captureFormSnapshot();
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = opts.filename || 'dokument';
@@ -86,10 +107,12 @@
     // Sygnał dla autosave: dokument wygenerowany — wyczyść zapamiętane dane formularza,
     // aby po powrocie na stronę formularz był pusty.
     try { window.dispatchEvent(new Event('tdcg:generated')); } catch (e) { /* ignore */ }
+    var payload = opts.payload;
+    if (formSnap) payload = Object.assign({}, opts.payload || {}, { _autosave: formSnap });
     try {
       await save({
         docType: opts.docType, title: opts.title, subject: opts.subject,
-        filename: opts.filename, payload: opts.payload, blob: blob,
+        filename: opts.filename, payload: payload, blob: blob,
       });
       return { saved: true };
     } catch (e) {

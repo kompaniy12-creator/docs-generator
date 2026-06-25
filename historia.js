@@ -23,10 +23,19 @@
   function iconFor(docType) {
     var map = {
       'umowa-zlecenie': '📄', 'rejestracja-s24': '🏢', 'wynagrodzenie': '💰',
-      'e-urzad': '🏛️', 'pelnomocnictwo': '🖋️',
+      'e-urzad': '🏛️', 'pelnomocnictwo': '🖋️', 'zalacznik-pobyt': '🛂',
     };
     return map[docType] || '🗂️';
   }
+
+  // doc_type -> generator page that can re-open the document prefilled
+  var EDITORS = {
+    'umowa-zlecenie': 'umowa-zlecenie.html',
+    'wynagrodzenie': 'wynagrodzenie.html',
+    'pelnomocnictwo': 'pelnomocnictwo.html',
+    'zalacznik-pobyt': 'zalacznik-pobyt.html',
+    'e-urzad': 'e-urzad.html',
+  };
 
   function render() {
     var term = (searchEl.value || '').trim().toLowerCase();
@@ -58,13 +67,19 @@
           '<div class="d">' + fmtDate(r.created_at) + (r.user_email ? ' · ' + esc(r.user_email) : '') + '</div>' +
         '</div>' +
         '<div class="acts">' +
+          '<button class="btn view">Zobacz</button>' +
+          (EDITORS[r.doc_type] && r.payload && r.payload._autosave ? '<button class="btn edit">Edytuj</button>' : '') +
           '<button class="btn dl">Pobierz</button>' +
           '<button class="btn rm">Usuń</button>' +
         '</div>';
       var dlBtn = item.querySelector('.dl');
       var rmBtn = item.querySelector('.rm');
+      var viewBtn = item.querySelector('.view');
+      var editBtn = item.querySelector('.edit');
       dlBtn.addEventListener('click', function () { onDownload(r, dlBtn); });
       rmBtn.addEventListener('click', function () { onDelete(r); });
+      viewBtn.addEventListener('click', function () { onView(r, viewBtn); });
+      if (editBtn) editBtn.addEventListener('click', function () { onEdit(r); });
       listEl.appendChild(item);
     });
   }
@@ -84,6 +99,36 @@
     } finally {
       btn.disabled = false; btn.textContent = orig;
     }
+  }
+
+  async function onView(r, btn) {
+    clearError();
+    var orig = btn.textContent;
+    btn.disabled = true; btn.textContent = '...';
+    try {
+      var url = await window.DocHistory.downloadUrl(r.pdf_path);
+      window.open(url, '_blank', 'noopener'); // PDF opens inline in the browser
+    } catch (e) {
+      showError('Nie udało się otworzyć pliku: ' + (e.message || e));
+    } finally {
+      btn.disabled = false; btn.textContent = orig;
+    }
+  }
+
+  function onEdit(r) {
+    var page = EDITORS[r.doc_type];
+    var snap = r.payload && r.payload._autosave;
+    if (!page || !snap) return;
+    // write the saved form snapshot into the generator's autosave key; its
+    // autosave.restore() (runs on load) rebuilds the whole form, incl. lists.
+    var key = snap.key || r.doc_type;
+    try {
+      localStorage.setItem('tdcg_autosave_' + key, JSON.stringify({ v: 1, fields: snap.fields || [], lists: snap.lists || {} }));
+    } catch (e) {
+      showError('Nie udało się otworzyć edycji.');
+      return;
+    }
+    window.open(page, '_blank', 'noopener');
   }
 
   async function onDelete(r) {
