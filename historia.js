@@ -24,6 +24,7 @@
     var map = {
       'umowa-zlecenie': '📄', 'rejestracja-s24': '🏢', 'wynagrodzenie': '💰',
       'e-urzad': '🏛️', 'pelnomocnictwo': '🖋️', 'zalacznik-pobyt': '🛂',
+      'nip-8': '🧾',
     };
     return map[docType] || '🗂️';
   }
@@ -35,6 +36,7 @@
     'pelnomocnictwo': 'pelnomocnictwo.html',
     'zalacznik-pobyt': 'zalacznik-pobyt.html',
     'e-urzad': 'e-urzad.html',
+    'nip-8': 'nip-8.html',
   };
 
   function render() {

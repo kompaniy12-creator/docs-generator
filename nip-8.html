@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>NIP-8 — zgłoszenie danych uzupełniających — TD Consulting Group</title>
+<style>
+  :root{
+    --brand-navy:#1B3F7F;
+    --brand-navy-dark:#15315F;
+    --brand-green:#1FA84B;
+    --brand-tint:#EEF3F9;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#fff;color:#111;line-height:1.5;-webkit-font-smoothing:antialiased}
+  main{max-width:760px;margin:0 auto;padding:48px 24px 96px}
+  .back{display:inline-block;margin-bottom:16px;font-size:14px;color:#666;text-decoration:none}
+  .back:hover{color:var(--brand-navy)}
+  .brand{text-align:center;margin:0 0 24px}
+  .brand img{height:80px;width:auto;object-fit:contain}
+  h1{font-size:24px;font-weight:600;margin:0 0 8px;letter-spacing:-0.01em;color:var(--brand-navy)}
+  .lead{color:#666;margin:0 0 32px;font-size:14.5px}
+
+  fieldset{border:1px solid #e5e5e5;border-radius:8px;padding:24px;margin:0 0 20px}
+  legend{padding:0 8px;font-weight:600;font-size:14px;color:var(--brand-navy)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .row.three{grid-template-columns:1fr 1fr 1fr}
+  .row.uneven{grid-template-columns:2fr 1fr 1fr}
+  .row.addr{grid-template-columns:2fr 1fr 1fr}
+  @media (max-width:560px){.row,.row.three,.row.uneven,.row.addr{grid-template-columns:1fr}}
+  label{display:block;font-size:13px;font-weight:500;margin-bottom:6px;color:#333}
+  input[type="text"],input[type="tel"],input[type="email"],input[type="date"],textarea,select{
+    width:100%;padding:10px 12px;border:1px solid #d4d4d4;border-radius:6px;
+    font:inherit;font-size:14px;background:#fff;transition:border-color .15s,box-shadow .15s;
+  }
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand-navy);box-shadow:0 0 0 3px rgba(27,63,127,.12)}
+  textarea{resize:vertical;min-height:60px}
+  .field{margin-bottom:14px}
+  .field:last-child{margin-bottom:0}
+  .hint{display:block;color:#888;font-size:11.5px;margin-top:4px;font-weight:400}
+  .pos{color:#9aa6b8;font-weight:400}
+
+  .opt-row{display:flex;flex-wrap:wrap;gap:10px 22px;margin:2px 0 6px}
+  .opt{display:flex;align-items:flex-start;gap:8px;font-size:13.5px;font-weight:400;color:#444;cursor:pointer}
+  .opt input{width:18px;height:18px;margin:1px 0 0;accent-color:var(--brand-navy);flex:0 0 18px}
+  .check-row{display:flex;align-items:flex-start;gap:8px;margin-top:6px;font-size:13.5px;font-weight:400;color:#444;cursor:pointer}
+  .check-row input{width:18px;height:18px;margin:1px 0 0;accent-color:var(--brand-navy);flex:0 0 18px}
+
+  .subgroup{border:1px solid #ececec;border-radius:8px;padding:18px;margin-bottom:16px;background:#fcfdfe}
+  .subgroup h3{font-size:13.5px;font-weight:600;margin:0 0 14px;color:var(--brand-navy)}
+  .mini-btn{
+    background:#fff;border:1px solid var(--brand-navy);color:var(--brand-navy);
+    padding:7px 12px;border-radius:6px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;
+  }
+  .mini-btn:hover{background:var(--brand-tint)}
+
+  button[type="submit"]{
+    background:var(--brand-navy);color:#fff;border:none;
+    padding:14px 28px;border-radius:8px;font:inherit;font-size:15px;font-weight:600;
+    cursor:pointer;width:100%;transition:background .15s;
+  }
+  button[type="submit"]:hover{background:var(--brand-navy-dark)}
+  button[type="submit"]:disabled{background:#999;cursor:wait}
+  .status{margin-top:16px;padding:12px 14px;border-radius:6px;font-size:14px;display:none}
+  .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+  .status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+
+  .site-footer{margin-top:48px;padding-top:20px;border-top:1px solid #e5e5e5;text-align:center;font-size:13px}
+  .site-footer a{color:#666;text-decoration:none}
+  .site-footer a:hover{color:var(--brand-navy);text-decoration:underline}
+
+  .krs-upload{margin:0 0 14px}
+  .krs-btn{
+    display:flex;align-items:center;gap:14px;width:100%;padding:16px 20px;
+    background:linear-gradient(135deg,var(--brand-tint) 0%,#fff 100%);
+    border:1.5px solid var(--brand-navy);
+    border-radius:10px;cursor:pointer;text-align:left;font:inherit;color:inherit;
+    transition:all .15s;
+  }
+  .krs-btn:hover{background:var(--brand-tint);box-shadow:0 4px 12px rgba(27,63,127,.10);transform:translateY(-1px)}
+  .krs-icon{font-size:24px;flex-shrink:0}
+  .krs-text{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+  .krs-text strong{font-size:14.5px;font-weight:600;color:var(--brand-navy)}
+  .krs-text small{font-size:12px;color:#666;font-weight:400;line-height:1.45}
+  .krs-status{margin-top:10px;padding:0;font-size:13px;display:none}
+  .krs-status.loading{display:block;color:#666}
+  .krs-status.success{display:block;padding:10px 14px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px}
+  .krs-status.error{display:block;padding:10px 14px;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:6px}
+
+  .nip-lookup{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end;margin:0 0 6px}
+  .nip-lookup button{
+    background:var(--brand-navy);color:#fff;border:none;padding:10px 18px;border-radius:6px;
+    font:inherit;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s;
+  }
+  .nip-lookup button:hover{background:var(--brand-navy-dark)}
+  .nip-lookup button:disabled{background:#999;cursor:wait}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>NIP-8 — zgłoszenie danych uzupełniających</h1>
+  <p class="lead">Zgłoszenie identyfikacyjne / aktualizacyjne w zakresie danych uzupełniających dla spółki wpisanej do KRS (dane nieobjęte wpisem do KRS: nazwa skrócona, rachunki bankowe, miejsca prowadzenia działalności, biuro rachunkowe, dane kontaktowe). Dane spółki wczytasz po NIP z bazy klientów albo z odpisu KRS. Wygenerowany PDF to oficjalny wzór <strong>NIP-8(4)</strong> gotowy do podpisu i złożenia w urzędzie skarbowym.</p>
+
+  <div class="krs-upload">
+    <input type="file" id="krsFile" accept="application/pdf" hidden />
+    <button type="button" id="krsUploadBtn" class="krs-btn">
+      <span class="krs-icon">📄</span>
+      <span class="krs-text">
+        <strong>Wczytaj dane z wypisu KRS</strong>
+        <small>Pobierz „Odpis aktualny KRS” z prs.ms.gov.pl i wgraj jako PDF — system wypełni nazwę, adres, KRS, NIP, REGON oraz listę członków zarządu do podpisu.</small>
+      </span>
+    </button>
+    <div id="krsStatus" class="krs-status"></div>
+  </div>
+
+  <form id="form" novalidate>
+
+    <fieldset>
+      <legend>Dane spółki (A, B.1)</legend>
+      <div class="nip-lookup">
+        <div class="field" style="margin:0">
+          <label for="nip">NIP spółki <span class="pos">(poz. 1)</span></label>
+          <input id="nip" name="nip" type="text" required pattern="[0-9]{10}" maxlength="10" inputmode="numeric" placeholder="10 cyfr" />
+        </div>
+        <button type="button" id="nipBtn">Pobierz dane</button>
+      </div>
+      <div id="nipStatus" class="krs-status"></div>
+
+      <div class="field" style="margin-top:14px">
+        <label>Przeznaczenie formularza <span class="pos">(poz. 4)</span></label>
+        <div class="opt-row">
+          <label class="opt"><input type="radio" name="cel" value="1" /><span>1. zgłoszenie identyfikacyjne <small class="hint" style="display:inline">— pierwsze po wpisie do KRS</small></span></label>
+          <label class="opt"><input type="radio" name="cel" value="2" checked /><span>2. zgłoszenie aktualizacyjne <small class="hint" style="display:inline">— zmiana danych</small></span></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="us">Naczelnik urzędu skarbowego, do którego kierowane jest zgłoszenie <span class="pos">(poz. 5)</span></label>
+        <input id="us" name="us" type="text" required placeholder="np. Naczelnik Urzędu Skarbowego Poznań-Jeżyce" />
+      </div>
+      <div class="field">
+        <label for="nazwaPelna">Nazwa pełna <span class="pos">(poz. 6)</span></label>
+        <input id="nazwaPelna" name="nazwaPelna" type="text" required />
+      </div>
+      <div class="field">
+        <label for="nazwaSkrocona">Nazwa skrócona <span class="pos">(poz. 7)</span></label>
+        <input id="nazwaSkrocona" name="nazwaSkrocona" type="text" required />
+        <small class="hint">Proponowana automatycznie na podstawie nazwy pełnej — można zmienić.</small>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="krs">Numer KRS <span class="pos">(poz. 8)</span></label>
+          <input id="krs" name="krs" type="text" required pattern="[0-9]{10}" maxlength="10" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="regon">REGON <span class="pos">(poz. 9)</span></label>
+          <input id="regon" name="regon" type="text" inputmode="numeric" maxlength="14" />
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Dane kontaktowe (B.3)</legend>
+      <div class="field">
+        <label>Zgoda na udostępnienie danych kontaktowych z rejestru REGON <span class="pos">(poz. 13)</span></label>
+        <div class="opt-row">
+          <label class="opt"><input type="radio" name="zgoda" value="1" checked /><span>1. tak</span></label>
+          <label class="opt"><input type="radio" name="zgoda" value="2" /><span>2. nie</span></label>
+        </div>
+      </div>
+      <div class="row three">
+        <div class="field">
+          <label for="telefon">Telefon <span class="pos">(poz. 14)</span></label>
+          <input id="telefon" name="telefon" type="tel" placeholder="+48 ..." />
+        </div>
+        <div class="field">
+          <label for="faks">Faks <span class="pos">(poz. 16)</span></label>
+          <input id="faks" name="faks" type="tel" />
+        </div>
+        <div class="field">
+          <label for="email">E-mail <span class="pos">(poz. 18)</span></label>
+          <input id="email" name="email" type="email" />
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Adres miejsca prowadzenia działalności (B.4)</legend>
+      <button type="button" class="mini-btn" id="copySeatBtn">↓ Wstaw adres siedziby z KRS</button>
+      <div class="field" style="margin-top:14px">
+        <label>Czy to adres do doręczeń? <span class="pos">(poz. 32)</span></label>
+        <div class="opt-row">
+          <label class="opt"><input type="radio" name="doreczenia" value="1" /><span>1. tak</span></label>
+          <label class="opt"><input type="radio" name="doreczenia" value="2" checked /><span>2. nie</span></label>
+        </div>
+      </div>
+      <div class="field">
+        <label>Powód zgłoszenia adresu <span class="pos">(poz. 33)</span></label>
+        <div class="opt-row">
+          <label class="opt"><input type="radio" name="powod" value="1" checked /><span>1. prowadzenie działalności pod tym adresem</span></label>
+          <label class="opt"><input type="radio" name="powod" value="2" /><span>2. zakończenie działalności pod tym adresem</span></label>
+        </div>
+      </div>
+      <div class="row three">
+        <div class="field">
+          <label for="d_kraj">Kraj <span class="pos">(poz. 34)</span></label>
+          <input id="d_kraj" name="d_kraj" type="text" value="POLSKA" />
+        </div>
+        <div class="field">
+          <label for="d_wojewodztwo">Województwo <span class="pos">(poz. 35)</span></label>
+          <input id="d_wojewodztwo" name="d_wojewodztwo" type="text" />
+        </div>
+        <div class="field">
+          <label for="d_powiat">Powiat <span class="pos">(poz. 36)</span></label>
+          <input id="d_powiat" name="d_powiat" type="text" />
+        </div>
+      </div>
+      <div class="row addr">
+        <div class="field">
+          <label for="d_ulica">Ulica <span class="pos">(poz. 38)</span></label>
+          <input id="d_ulica" name="d_ulica" type="text" />
+        </div>
+        <div class="field">
+          <label for="d_nrDomu">Nr domu <span class="pos">(poz. 39)</span></label>
+          <input id="d_nrDomu" name="d_nrDomu" type="text" />
+        </div>
+        <div class="field">
+          <label for="d_nrLokalu">Nr lokalu <span class="pos">(poz. 40)</span></label>
+          <input id="d_nrLokalu" name="d_nrLokalu" type="text" />
+        </div>
+      </div>
+      <div class="row three">
+        <div class="field">
+          <label for="d_gmina">Gmina <span class="pos">(poz. 37)</span></label>
+          <input id="d_gmina" name="d_gmina" type="text" />
+        </div>
+        <div class="field">
+          <label for="d_kod">Kod pocztowy <span class="pos">(poz. 41)</span></label>
+          <input id="d_kod" name="d_kod" type="text" pattern="[0-9]{2}-[0-9]{3}" maxlength="6" placeholder="00-000" />
+        </div>
+        <div class="field">
+          <label for="d_miejscowosc">Miejscowość <span class="pos">(poz. 42)</span></label>
+          <input id="d_miejscowosc" name="d_miejscowosc" type="text" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="d_opis">Określenie opisowe adresu nietypowego <span class="pos">(poz. 43)</span></label>
+        <input id="d_opis" name="d_opis" type="text" placeholder="wypełnić tylko dla adresu nietypowego" />
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Dokumentacja rachunkowa (B.5)</legend>
+      <div class="field">
+        <label>Prowadzenie dokumentacji rachunkowej <span class="pos">(poz. 44)</span></label>
+        <div class="opt-row">
+          <label class="opt"><input type="radio" name="dokumentacja" value="1" checked /><span>1. w biurze rachunkowym lub przez inny podmiot</span></label>
+          <label class="opt"><input type="radio" name="dokumentacja" value="2" /><span>2. we własnym zakresie</span></label>
+        </div>
+      </div>
+      <div id="biuroWrap">
+        <div class="row">
+          <div class="field">
+            <label for="b_nip">NIP biura rachunkowego <span class="pos">(poz. 45)</span></label>
+            <input id="b_nip" name="b_nip" type="text" pattern="[0-9]{10}" maxlength="10" inputmode="numeric" />
+          </div>
+          <div class="field">
+            <label for="b_nazwa">Nazwa biura rachunkowego <span class="pos">(poz. 46)</span></label>
+            <input id="b_nazwa" name="b_nazwa" type="text" />
+          </div>
+        </div>
+      </div>
+      <p style="font-size:13px;font-weight:600;color:var(--brand-navy);margin:18px 0 8px">Adres miejsca przechowywania dokumentacji rachunkowej (B.5.2)</p>
+      <button type="button" class="mini-btn" id="copyDzialBtn">↓ Taki sam jak adres działalności</button>
+      <div class="row three" style="margin-top:14px">
+        <div class="field">
+          <label for="p_kraj">Kraj <span class="pos">(poz. 47)</span></label>
+          <input id="p_kraj" name="p_kraj" type="text" value="POLSKA" />
+        </div>
+        <div class="field">
+          <label for="p_wojewodztwo">Województwo <span class="pos">(poz. 48)</span></label>
+          <input id="p_wojewodztwo" name="p_wojewodztwo" type="text" />
+        </div>
+        <div class="field">
+          <label for="p_powiat">Powiat <span class="pos">(poz. 49)</span></label>
+          <input id="p_powiat" name="p_powiat" type="text" />
+        </div>
+      </div>
+      <div class="row addr">
+        <div class="field">
+          <label for="p_ulica">Ulica <span class="pos">(poz. 51)</span></label>
+          <input id="p_ulica" name="p_ulica" type="text" />
+        </div>
+        <div class="field">
+          <label for="p_nrDomu">Nr domu <span class="pos">(poz. 52)</span></label>
+          <input id="p_nrDomu" name="p_nrDomu" type="text" />
+        </div>
+        <div class="field">
+          <label for="p_nrLokalu">Nr lokalu <span class="pos">(poz. 53)</span></label>
+          <input id="p_nrLokalu" name="p_nrLokalu" type="text" />
+        </div>
+      </div>
+      <div class="row three">
+        <div class="field">
+          <label for="p_gmina">Gmina <span class="pos">(poz. 50)</span></label>
+          <input id="p_gmina" name="p_gmina" type="text" />
+        </div>
+        <div class="field">
+          <label for="p_kod">Kod pocztowy <span class="pos">(poz. 54)</span></label>
+          <input id="p_kod" name="p_kod" type="text" pattern="[0-9]{2}-[0-9]{3}" maxlength="6" placeholder="00-000" />
+        </div>
+        <div class="field">
+          <label for="p_miejscowosc">Miejscowość <span class="pos">(poz. 55)</span></label>
+          <input id="p_miejscowosc" name="p_miejscowosc" type="text" />
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Rachunki bankowe (C.1)</legend>
+      <div class="subgroup">
+        <h3>Rachunek do zwrotu podatku lub nadpłaty (C.1.1)</h3>
+        <div class="field">
+          <label for="r1_iban">Pełny numer rachunku <span class="pos">(poz. 59)</span></label>
+          <input id="r1_iban" name="r1_iban" type="text" inputmode="numeric" placeholder="PL 00 0000 0000 0000 0000 0000 0000" />
+          <small class="hint">26 cyfr — spacje i prefiks „PL” można wpisać, zostaną pominięte.</small>
+        </div>
+        <div class="row three">
+          <div class="field">
+            <label for="r1_waluta">Waluta <span class="pos">(poz. 58)</span></label>
+            <input id="r1_waluta" name="r1_waluta" type="text" maxlength="3" value="PLN" />
+          </div>
+          <div class="field">
+            <label for="r1_kraj">Kraj banku <span class="pos">(poz. 56)</span></label>
+            <input id="r1_kraj" name="r1_kraj" type="text" placeholder="tylko rachunek zagraniczny" />
+          </div>
+          <div class="field">
+            <label for="r1_swift">Kod SWIFT <span class="pos">(poz. 57)</span></label>
+            <input id="r1_swift" name="r1_swift" type="text" placeholder="tylko rachunek zagraniczny" />
+          </div>
+        </div>
+      </div>
+      <div class="subgroup">
+        <h3>Pozostały rachunek związany z działalnością (C.1.2) — opcjonalnie</h3>
+        <div class="field">
+          <label for="r2_iban">Pełny numer rachunku <span class="pos">(poz. 63)</span></label>
+          <input id="r2_iban" name="r2_iban" type="text" inputmode="numeric" />
+        </div>
+        <div class="row three">
+          <div class="field">
+            <label for="r2_waluta">Waluta <span class="pos">(poz. 62)</span></label>
+            <input id="r2_waluta" name="r2_waluta" type="text" maxlength="3" />
+          </div>
+          <div class="field">
+            <label for="r2_kraj">Kraj banku <span class="pos">(poz. 60)</span></label>
+            <input id="r2_kraj" name="r2_kraj" type="text" />
+          </div>
+          <div class="field">
+            <label for="r2_swift">Kod SWIFT <span class="pos">(poz. 61)</span></label>
+            <input id="r2_swift" name="r2_swift" type="text" />
+          </div>
+        </div>
+        <label class="check-row">
+          <input id="r2_likwidacja" name="r2_likwidacja" type="checkbox" />
+          <span>Likwidacja tego rachunku <span class="pos">(poz. 64)</span></span>
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Załączniki i podpisy (E, F)</legend>
+      <div class="field">
+        <label for="data">Data wypełnienia formularza <span class="pos">(poz. 93)</span></label>
+        <input id="data" name="data" type="date" required />
+      </div>
+      <div class="subgroup">
+        <h3>Osoba reprezentująca nr 1</h3>
+        <div class="field">
+          <label for="signer1">Wybierz z zarządu (KRS)</label>
+          <select id="signer1"></select>
+          <small class="hint">Lista członków zarządu z wczytanego odpisu KRS. Pola poniżej można edytować ręcznie.</small>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="s1_imie">Imię <span class="pos">(poz. 94)</span></label>
+            <input id="s1_imie" name="s1_imie" type="text" required />
+          </div>
+          <div class="field">
+            <label for="s1_nazwisko">Nazwisko <span class="pos">(poz. 95)</span></label>
+            <input id="s1_nazwisko" name="s1_nazwisko" type="text" required />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="s1_funkcja">Funkcja <span class="pos">(poz. 96)</span></label>
+            <input id="s1_funkcja" name="s1_funkcja" type="text" placeholder="np. Prezes Zarządu" />
+          </div>
+          <div class="field">
+            <label for="s1_pesel">PESEL lub NIP <span class="pos">(poz. 97)</span></label>
+            <input id="s1_pesel" name="s1_pesel" type="text" maxlength="11" inputmode="numeric" />
+          </div>
+        </div>
+      </div>
+      <div class="subgroup">
+        <h3>Osoba reprezentująca nr 2 — opcjonalnie</h3>
+        <div class="field">
+          <label for="signer2">Wybierz z zarządu (KRS)</label>
+          <select id="signer2"></select>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="s2_imie">Imię <span class="pos">(poz. 98)</span></label>
+            <input id="s2_imie" name="s2_imie" type="text" />
+          </div>
+          <div class="field">
+            <label for="s2_nazwisko">Nazwisko <span class="pos">(poz. 99)</span></label>
+            <input id="s2_nazwisko" name="s2_nazwisko" type="text" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="s2_funkcja">Funkcja <span class="pos">(poz. 100)</span></label>
+            <input id="s2_funkcja" name="s2_funkcja" type="text" />
+          </div>
+          <div class="field">
+            <label for="s2_pesel">PESEL lub NIP <span class="pos">(poz. 101)</span></label>
+            <input id="s2_pesel" name="s2_pesel" type="text" maxlength="11" inputmode="numeric" />
+          </div>
+        </div>
+      </div>
+      <label class="check-row">
+        <input id="zalPelnomocnictwo" name="zalPelnomocnictwo" type="checkbox" />
+        <span>Do zgłoszenia dołączono pełnomocnictwo <span class="pos">(poz. 92)</span></span>
+      </label>
+    </fieldset>
+
+    <button type="submit" id="submitBtn">Pobierz NIP-8 (PDF)</button>
+    <div id="status" class="status"></div>
+  </form>
+
+  <footer class="site-footer">
+    <a href="rodo.html">Informacja o przetwarzaniu danych osobowych (RODO)</a>
+  </footer>
+</main>
+
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="krs-parser.js"></script>
+<script src="history.js"></script>
+<script src="nip-8.js"></script>
+<script>window.AUTOSAVE = { key: 'nip-8', form: '#form', lists: [] };</script>
+<script src="autosave.js"></script>
+</body>
+</html>
