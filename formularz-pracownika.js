@@ -296,14 +296,18 @@
     if (!hint.textContent) clearErr($('u_stawka')); // e.g. the wymiar changed, the amount is fine now
     hint.style.color = '#b91c1c';
     var out = $('u_800_calc'), karta = $('u_karta_calc'), mies = monthlyPay(), prog = MIN_WAGE / 2;
-    if (isNaN(mies)) { out.textContent = ''; karta.textContent = ''; return; }
-    karta.textContent = mies >= MIN_WAGE ? ' Przy podanych danych warunek jest spełniony.'
-      : ' Uwaga: przy podanych danych to ok. ' + Math.round(mies) + ' zł miesięcznie — za mało do karty pobytu.';
-    karta.style.fontWeight = mies >= MIN_WAGE ? '400' : '700';
-    out.textContent = mies >= prog
-      ? ' Przy podanych danych: ok. ' + Math.round(mies) + ' zł miesięcznie — próg jest spełniony.'
-      : ' Uwaga: przy podanych danych to ok. ' + Math.round(mies) + ' zł miesięcznie — poniżej progu ' + prog + ' zł.';
-    out.style.fontWeight = mies >= prog ? '400' : '700';
+    // green when the threshold is met, red when it is not
+    function verdict(el, ok, text) {
+      el.textContent = text;
+      el.style.cssText = text ? 'display:block;margin-top:6px;padding:6px 10px;border-radius:6px;font-weight:600;' +
+        (ok ? 'background:#dcfce7;color:#166534;border:1px solid #86efac' : 'background:#fee2e2;color:#991b1b;border:1px solid #fca5a5') : '';
+    }
+    if (isNaN(mies)) { verdict(out, true, ''); verdict(karta, true, ''); return; }
+    var kwota = 'ok. ' + Math.round(mies) + ' zł miesięcznie';
+    verdict(out, mies >= prog, mies >= prog ? '✓ Przy podanych danych: ' + kwota + ' — próg jest spełniony.'
+      : '✗ Przy podanych danych: ' + kwota + ' — poniżej progu ' + prog + ' zł.');
+    verdict(karta, mies >= MIN_WAGE, mies >= MIN_WAGE ? '✓ Przy podanych danych: ' + kwota + ' — warunek jest spełniony.'
+      : '✗ Przy podanych danych: ' + kwota + ' — za mało do karty pobytu (min. ' + MIN_WAGE + ' zł).');
   }
   ['u_godziny', 'u_stawka', 'u_jedn', 'u_wymiar'].forEach(function (id) {
     $(id).addEventListener('input', updatePay); $(id).addEventListener('change', updatePay);
