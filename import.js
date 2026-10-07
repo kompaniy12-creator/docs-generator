@@ -23,8 +23,9 @@
     { k: 'p_dataur', label: 'Data urodzenia', date: true, re: /data ur|urodzen/ },
     { k: 'p_miejsceur', label: 'Miejsce urodzenia', re: /miejsce ur/ },
     { k: 'p_obywatelstwo', label: 'Obywatelstwo', re: /obywatel/ },
-    { k: 'p_dowod', label: 'Seria i nr dokumentu', re: /numer dowodu|paszport|numer identyfikacyjny|dokument.*(numer|nr|seria)|seria/ },
-    { k: 'p_nip', label: 'NIP pracownika', re: /^nip|identyfikator podatkowy/ },
+    { k: 'p_dowod', label: 'Seria i nr dokumentu', re: /numer dowodu|paszport|dokument.*(numer|nr|seria)|seria/ },
+    { k: '_dowod2', label: 'Nr innego dokumentu (paszport)', re: /numer identyfikacyjny/ },
+    { k: 'p_nip', label: 'NIP pracownika', re: /^nip/ },
     { k: 'p_telefon', label: 'Telefon', re: /telefon|tel\.|komork/ },
     { k: 'p_email', label: 'E-mail', re: /e-?mail/ },
     { k: 'a_ulica', label: 'Ulica', re: /ulica/ },
@@ -174,6 +175,8 @@
       p.p_imiona = parts.join(' ').trim();
     }
     delete p._fullname;
+    if (p._dowod2 && !p.p_dowod) p.p_dowod = p._dowod2;
+    delete p._dowod2;
     if (p._typ) { p.u_typ = /zlec/.test(norm(p._typ)) ? 'zlecenie' : /prac/.test(norm(p._typ)) ? 'praca' : ''; if (!p.u_typ) delete p.u_typ; }
     delete p._typ;
     if (p.p_pesel) p.p_pesel = digits(p.p_pesel).padStart(11, '0').slice(-11);
