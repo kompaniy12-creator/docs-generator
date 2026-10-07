@@ -65,7 +65,7 @@
   .site-footer{margin-top:48px;padding-top:20px;border-top:1px solid #e5e5e5;text-align:center;font-size:13px}
   .site-footer a{color:#666;text-decoration:none}
   .site-footer a:hover{color:var(--brand-navy);text-decoration:underline}
-  #rodzinaFields[hidden],#meldunekFields[hidden],[data-typ][hidden],#tplBox[hidden],label.check[hidden]{display:none}
+  #rodzinaFields[hidden],#meldunekFields[hidden],[data-typ][hidden],#tplBox[hidden],label.check[hidden],#krsFresh[hidden],#krsRep[hidden]{display:none !important}
   #tplFields button{border:1px solid #d4dbe6;background:#f6f8fb;border-radius:6px;padding:3px 8px;font:inherit;font-size:12px;cursor:pointer;color:#1B3F7F}
 </style>
 </head>
@@ -136,6 +136,7 @@
         </div>
       </div>
       <button type="button" id="krsBtn" class="add-btn" style="margin:0 0 6px">🔎 Pobierz firmę i osoby uprawnione z KRS</button>
+      <button type="button" id="krsFresh" class="add-btn" style="margin:0 0 6px 6px" hidden>↻ Odśwież z KRS</button>
       <div id="krsStatus" class="hint" style="margin:0 0 10px"></div>
       <div id="krsRep" hidden style="margin:0 0 14px;padding:12px 14px;background:#f6f8fb;border:1px solid #e5e9ef;border-radius:8px">
         <div style="font-size:12.5px;font-weight:700;color:var(--brand-navy);margin-bottom:6px">Kto podpisuje w imieniu firmy</div>

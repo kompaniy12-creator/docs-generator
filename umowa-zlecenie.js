@@ -71,10 +71,12 @@ applyTyp();
     rep.value = Array.from(list.querySelectorAll('input:checked')).map((i) => i.value).join(' oraz ');
     rep.dispatchEvent(new Event('change', { bubbles: true }));
   };
-  btn.addEventListener('click', async () => {
-    btn.disabled = true; st.textContent = '⏳ Pobieram dane z KRS…';
+  const freshBtn = document.getElementById('krsFresh');
+  // first use downloads the firm from the register; afterwards it comes from our own base
+  const run = async (fresh) => {
+    btn.disabled = true; st.textContent = '⏳ Pobieram dane firmy…';
     try {
-      const f = await window.Firma.lookup(document.getElementById('z_nip').value);
+      const f = await window.Firma.lookup(document.getElementById('z_nip').value, fresh);
       if (!f.found) { st.textContent = 'Nie ma takiej firmy w KRS (jednoosobowa działalność nie jest tam wpisana) — uzupełnij dane ręcznie.'; box.hidden = true; return; }
       setVal('z_nazwa', f.nazwa); setVal('z_miasto', f.miasto); setVal('z_ulica', f.ulica);
       setVal('z_regon', f.regon); setVal('z_krs', f.krs);
@@ -96,11 +98,14 @@ applyTyp();
       });
       box.hidden = !osoby.length;
       if (osoby.length) syncRep();
-      st.textContent = '✓ Dane z KRS (' + f.zrodlo + ', stan na ' + new Date(f.pobrano).toLocaleDateString('pl-PL') + ').';
+      st.textContent = (f.z_pamieci ? '✓ Dane z naszej bazy firm' : '✓ Pobrano z KRS i zapisano w naszej bazie') + ' — stan na ' + new Date(f.pobrano).toLocaleDateString('pl-PL') + '.';
+      freshBtn.hidden = !f.z_pamieci;
       loadUmowaTpl();
     } catch (e) { st.textContent = 'Błąd: ' + (e.message || e); }
     finally { btn.disabled = false; }
-  });
+  };
+  btn.addEventListener('click', () => run(false));
+  freshBtn.addEventListener('click', () => { if (confirm('Pobrać aktualne dane tej firmy z KRS? (płatne zapytanie)')) run(true); });
 })();
 
 // ---------------- Further family members ----------------

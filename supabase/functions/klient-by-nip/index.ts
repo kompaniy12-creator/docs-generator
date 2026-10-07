@@ -6,6 +6,8 @@
 // the portal/notification jobs read those server-side by NIP when needed.
 // ulica/regon (not in the sheet) are best-effort enriched from GUS (DataPort).
 
+import { firmaConfigured, getFirma } from "../_shared/firma.ts";
+
 const SHEET_ID = "1JXTjEEPBS6RVbZbuHhpl1E87gBEDdQW0QdnX5JKY5a8";
 const SHEET_CSV = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
 const DATAPORT_KEY = Deno.env.get("DATAPORT_API_KEY") ?? "";
@@ -107,6 +109,18 @@ Deno.serve(async (req) => {
   if (!client) return json({ found: false, nip }, 200, origin);
 
   let ulica = "", regon = "", kod = "";
+
+  // 2) registry data from our own firm base (filled from rejestr.io on first use).
+  // Only reached for firms that are our clients, so the paid first lookup is bounded.
+  try {
+    const fd = firmaConfigured() ? await getFirma(nip) : null;
+    if (fd && fd.found) {
+      return json({
+        found: true, nazwa: fd.nazwa || client.nazwa, nip,
+        miasto: fd.miasto || client.miasto, ulica: fd.ulica || "", kod: fd.kod || "", regon: fd.regon || "",
+      }, 200, origin);
+    }
+  } catch (_e) { /* fall back to the sheet / GUS below */ }
 
   // 2a) prefer the address from the sheet
   if (client.adres && client.adres.trim()) {
