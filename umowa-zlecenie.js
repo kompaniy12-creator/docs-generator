@@ -217,6 +217,7 @@ async function loadWorkers() {
     if (d.r_has === true || d.r_imienazwisko) { docRodzina.checked = true; rodzinaFields.hidden = false; }
     if (d.u_jedn) document.getElementById('u_jedn').dataset.touched = '1';
     if (d.u_godziny_zmienne === true) document.getElementById('u_godziny_zmienne').checked = true;
+    if (d.u_minimalna === true) document.getElementById('u_minimalna').checked = true;
     if (d.u_bezterminowo === true) {
       document.getElementById('u_bezterminowo').checked = true;
       if (d.u_typ === 'praca') setVal('u_rodzaj', 'nieokreslony');
@@ -324,7 +325,7 @@ function collectData() {
     umowa: {
       stanowisko: get('u_stanowisko'), miejsce: get('u_miejsce'), od: get('u_od'), do: get('u_do'),
       rodzaj: get('u_rodzaj'), wymiar: get('u_wymiar'), stawka: get('u_stawka'), jedn: get('u_jedn'),
-      wyplata: get('u_wyplata'), bezterminowo: chk('u_bezterminowo'), godziny: get('u_godziny'), godzinyZmienne: chk('u_godziny_zmienne'),
+      wyplata: get('u_wyplata'), bezterminowo: chk('u_bezterminowo'), minimalna: chk('u_minimalna'), godziny: get('u_godziny'), godzinyZmienne: chk('u_godziny_zmienne'),
     },
     umowaTpl: umowaTpl.custom || '',
     z: {
@@ -652,7 +653,7 @@ a
 Umowa zostaje zawarta {{okres}}.
 
 ## § 3. Wynagrodzenie
-1. Za wykonanie zlecenia Zleceniobiorca otrzyma wynagrodzenie w wysokości {{stawka}} zł {{jednostka}}.
+1. Za wykonanie zlecenia Zleceniobiorca otrzyma wynagrodzenie w wysokości {{wynagrodzenie}}.
 2. Wynagrodzenie za każdą godzinę wykonywania zlecenia nie może być niższe niż minimalna stawka godzinowa obowiązująca w danym roku.
 3. Liczbę godzin wykonywania zlecenia potwierdza ewidencja godzin, którą Zleceniobiorca przedkłada Zleceniodawcy do ostatniego dnia każdego miesiąca.
 4. Wynagrodzenie jest płatne raz w miesiącu, do {{termin_wyplaty}} dnia następnego miesiąca kalendarzowego, przelewem na rachunek bankowy Zleceniobiorcy nr {{konto}} albo — na wniosek Zleceniobiorcy — gotówką.
@@ -687,7 +688,7 @@ a
 1. Rodzaj umówionej pracy (stanowisko): {{stanowisko}}.
 2. Miejsce wykonywania pracy: {{miejsce_pracy}}.
 3. Wymiar czasu pracy: {{wymiar}}.
-4. Wynagrodzenie: {{stawka}} zł {{jednostka}}, płatne do {{termin_wyplaty}} dnia następnego miesiąca kalendarzowego.
+4. Wynagrodzenie w wysokości {{wynagrodzenie}}, płatne do {{termin_wyplaty}} dnia następnego miesiąca kalendarzowego.
 5. Dzień rozpoczęcia pracy: {{data_od}}.
 6. Dopuszczalna liczba godzin pracy ponad określony w umowie wymiar czasu pracy, których przekroczenie uprawnia pracownika zatrudnionego w niepełnym wymiarze do dodatku jak za godziny nadliczbowe: ..............................
 
@@ -705,6 +706,11 @@ a
 };
 const UMOWA_RODZAJ = { probny: 'na okres próbny', okreslony: 'na czas określony', nieokreslony: 'na czas nieokreślony' };
 const UMOWA_JEDN = { godz: 'brutto za godzinę', mies: 'brutto miesięcznie' };
+// "w wysokości …" when the statutory minimum is agreed instead of an amount (wording as in wFirma)
+const UMOWA_MIN = {
+  zlecenie: 'minimalnej stawki godzinowej, zgodnie z ustawą z dnia 10 października 2002 r. o minimalnym wynagrodzeniu za pracę (Dz. U. 2002, nr 200, poz. 1679, z późn. zm.), za 1 godzinę',
+  praca: 'minimalnego wynagrodzenia za pracę, zgodnie z ustawą z dnia 10 października 2002 r. o minimalnym wynagrodzeniu za pracę (Dz. U. 2002, nr 200, poz. 1679, z późn. zm.), miesięcznie — proporcjonalnie do wymiaru czasu pracy',
+};
 
 // {{placeholder}} -> value. { tr } values are Polish phrases translated in the second column.
 function umowaValues(d) {
@@ -717,6 +723,8 @@ function umowaValues(d) {
     obywatelstwo: d.p.obywatelstwo, dokument: d.p.dowod, adres: addrOneLine(d.adres), konto: d.p.konto,
     stanowisko: u.stanowisko && { tr: u.stanowisko }, miejsce_pracy: u.miejsce,
     wymiar: u.wymiar && { tr: u.wymiar }, stawka: u.stawka, jednostka: { tr: UMOWA_JEDN[u.jedn] || UMOWA_JEDN.godz },
+    wynagrodzenie: u.minimalna ? { tr: UMOWA_MIN[d.typ] }
+      : { tr: '{0} zł {1}', args: [u.stawka || DOTS, { tr: UMOWA_JEDN[u.jedn] || UMOWA_JEDN.godz }] },
     termin_wyplaty: u.wyplata,
     godziny: u.godzinyZmienne ? { tr: 'zmienna liczba godzin — według comiesięcznej ewidencji' }
       : (u.godziny ? { tr: '{0} godzin miesięcznie', args: [u.godziny] } : ''), data_zawarcia: isoToPLDots(d.sign.data), miejscowosc: d.sign.miejscowosc,

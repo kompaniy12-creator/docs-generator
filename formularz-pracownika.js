@@ -266,11 +266,24 @@
     });
     $('u_stawka_label').textContent = typ === 'praca' ? 'Wynagrodzenie miesięczne (zł brutto)' : 'Wynagrodzenie (zł brutto)';
     $('u_stawka').placeholder = typ === 'praca' ? 'np. 4806' : 'np. 31,40';
+    // statutory minimum instead of an amount: the contract then refers to the act
+    var min = $('u_minimalna').checked;
+    $('u_stawka').disabled = min;
+    if (min) {
+      $('u_stawka').value = ''; clearErr($('u_stawka'));
+      if (typ === 'zlecenie') $('u_jedn').value = 'godz';
+    }
+    if (typ === 'zlecenie') $('u_jedn').disabled = min;
     $('u_do').disabled = bezt;
     if (bezt) { $('u_do').value = ''; clearErr($('u_do')); }
     updatePay();
   }
   function monthlyPay() {
+    if ($('u_minimalna').checked) {
+      if ($('u_typ').value === 'praca') return MIN_WAGE * (ETAT[$('u_wymiar').value] || 1);
+      var hm = num('u_godziny');
+      return hm > 0 ? MIN_HOURLY * hm : NaN;
+    }
     var st = num('u_stawka');
     if (!(st > 0)) return NaN;
     if ($('u_typ').value === 'praca' || $('u_jedn').value === 'mies') return st;
@@ -279,6 +292,7 @@
   }
   // -> message when the pay is below the statutory minimum for this contract type
   function payProblem() {
+    if ($('u_minimalna').checked) return '';
     var st = num('u_stawka');
     if (!(st > 0)) return '';
     if ($('u_typ').value === 'praca') {
@@ -314,6 +328,7 @@
   });
   $('u_typ').addEventListener('change', applyTyp);
   $('u_bezterminowo').addEventListener('change', applyTyp);
+  $('u_minimalna').addEventListener('change', applyTyp);
   $('u_godziny_zmienne').addEventListener('change', function () { clearErr($('u_godziny')); });
   ['u_od', 'u_rodzaj'].forEach(function (id) { $(id).addEventListener('change', function () { clearErr($('u_do')); }); });
   applyTyp();
@@ -487,8 +502,9 @@
   function collect() {
     var fd = new FormData(form), data = {};
     fd.forEach(function (v, k) { data[k] = typeof v === 'string' ? v.trim() : v; });
-    ['p_nopesel', 'm_same', 'r_has', 'p_gotowka', 'u_godziny_zmienne', 'u_bezterminowo'].forEach(function (k) { data[k] = $(k).checked; });
+    ['p_nopesel', 'm_same', 'r_has', 'p_gotowka', 'u_godziny_zmienne', 'u_bezterminowo', 'u_minimalna'].forEach(function (k) { data[k] = $(k).checked; });
     // fields hidden for the chosen contract type are disabled and absent above
+    if (data.u_minimalna && data.u_typ === 'zlecenie') data.u_jedn = 'godz';
     if (data.u_typ === 'praca') { data.u_jedn = 'mies'; if (data.u_bezterminowo) data.u_rodzaj = 'nieokreslony'; }
     return data;
   }

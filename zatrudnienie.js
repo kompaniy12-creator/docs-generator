@@ -67,6 +67,7 @@
       html += '</div>';
     });
     if (p.u_bezterminowo === true) html += '<div class="grid"><div><b>Okres:</b> bezterminowo (czas nieokreślony)</div></div>';
+    if (p.u_minimalna === true) html += '<div class="grid"><div><b>Wynagrodzenie:</b> minimalne ustawowe (' + (p.u_typ === 'praca' ? 'miesięczne' : 'stawka godzinowa') + ')</div></div>';
     if (p.u_stawka) html += '<div class="grid"><div><b>Stawka:</b> ' + (p.u_jedn === 'mies' ? 'miesięczna' : 'godzinowa') + '</div></div>';
     if (p.u_godziny_zmienne === true) html += '<div class="grid"><div><b>Godziny:</b> zmienne — klient przesyła co miesiąc</div></div>';
     if (p.p_gotowka === true) html += '<div class="grid"><div><b>Wynagrodzenie:</b> gotówką (wniosek w komplecie)</div></div>';

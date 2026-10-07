@@ -292,7 +292,7 @@
         </div>
       </div>
       <div class="row three">
-        <div class="field"><label for="u_stawka">Wynagrodzenie (zł)</label><input id="u_stawka" name="u_stawka" type="text" inputmode="decimal" placeholder="np. 31,40" /></div>
+        <div class="field"><label for="u_stawka">Wynagrodzenie (zł)</label><input id="u_stawka" name="u_stawka" type="text" inputmode="decimal" placeholder="np. 31,40" /><label class="check" style="margin-top:6px"><input type="checkbox" name="u_minimalna" id="u_minimalna" /><span class="ct"><span>Minimalne ustawowe (bez kwoty w umowie)</span></span></label></div>
         <div class="field">
           <label for="u_jedn">Stawka</label>
           <select id="u_jedn" name="u_jedn">
@@ -317,7 +317,7 @@
         <div id="tplFields" style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px">
           <button type="button">firma</button><button type="button">firma_adres</button><button type="button">firma_nip</button><button type="button">firma_regon</button><button type="button">firma_krs</button><button type="button">reprezentant</button>
           <button type="button">imie_nazwisko</button><button type="button">adres</button><button type="button">pesel</button><button type="button">data_urodzenia</button><button type="button">dokument</button><button type="button">obywatelstwo</button><button type="button">konto</button>
-          <button type="button">stanowisko</button><button type="button">miejsce_pracy</button><button type="button">wymiar</button><button type="button">stawka</button><button type="button">jednostka</button><button type="button">termin_wyplaty</button><button type="button">godziny</button>
+          <button type="button">stanowisko</button><button type="button">miejsce_pracy</button><button type="button">wymiar</button><button type="button">wynagrodzenie</button><button type="button">stawka</button><button type="button">jednostka</button><button type="button">termin_wyplaty</button><button type="button">godziny</button>
           <button type="button">rodzaj_umowy</button><button type="button">okres</button><button type="button">data_od</button><button type="button">data_do</button><button type="button">data_zawarcia</button><button type="button">miejscowosc</button>
         </div>
         <textarea id="tplText" rows="16" style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:12.5px" placeholder="Treść umowy klienta z polami {{imie_nazwisko}}, {{stawka}} …"></textarea>
