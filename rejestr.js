@@ -7,12 +7,13 @@
   var KLIENCI_FN = SUPABASE_URL + '/functions/v1/klienci-list';
   var TABLE = 'zatrudnienie_zgloszenia';
 
-  var firms = [], workers = [], byNip = {}, tab = 'firmy', q = '';
+  // workers = current people; archive = former staff, kept apart (status 'archiwum')
+  var firms = [], workers = [], archive = [], byNip = {}, tab = 'firmy', q = '';
   var $ = function (id) { return document.getElementById(id); };
   function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function digits(s) { return (s || '').replace(/[^0-9]/g, ''); }
   function fmtDate(iso) { try { return new Date(iso).toLocaleDateString('pl-PL'); } catch (e) { return iso; } }
-  var STL = { nowe: 'Nowe', sprawdzone: 'Sprawdzone', wyslane: 'Wysłane', zatrudniony: 'Zatrudniony' };
+  var STL = { nowe: 'Nowe', sprawdzone: 'Sprawdzone', wyslane: 'Wysłane', zatrudniony: 'Zatrudniony', archiwum: 'Archiwum' };
 
   $('tabs').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
@@ -45,6 +46,14 @@
         if (!w.data || w.data.length < 1000) break;
       }
     } catch (e) { workers = []; }
+    regroup();
+    render();
+  }
+
+  function regroup() {
+    var all = workers.concat(archive);
+    workers = all.filter(function (w) { return w.status !== 'archiwum'; });
+    archive = all.filter(function (w) { return w.status === 'archiwum'; });
     // group workers by employer NIP (fallback: firm name)
     byNip = {};
     workers.forEach(function (wk) {
@@ -52,8 +61,22 @@
       var key = digits(p.z_nip) || ('nazwa:' + (p.z_nazwa || '').toLowerCase().trim());
       (byNip[key] = byNip[key] || []).push(wk);
     });
+  }
+
+  // move a person to the archive of former staff, or back
+  async function setStatus(id, status) {
+    var u = await window.sb.from(TABLE).update({ status: status }).eq('id', id);
+    if (u.error) { alert('Błąd: ' + u.error.message); return; }
+    workers.concat(archive).forEach(function (w) { if (w.id === id) w.status = status; });
+    regroup();
     render();
   }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-move]'); if (!b) return;
+    var to = b.getAttribute('data-move');
+    if (to === 'archiwum' && !confirm('Przenieść tę osobę do archiwum byłych pracowników?')) return;
+    setStatus(b.getAttribute('data-id'), to);
+  });
 
   function workersFor(f) {
     return byNip[digits(f.nip)] || byNip['nazwa:' + (f.nazwa || '').toLowerCase().trim()] || [];
@@ -64,6 +87,22 @@
     renderFirmy();
     renderPracownicy();
     renderTerminy();
+    renderArchiwum();
+  }
+
+  function renderArchiwum() {
+    var el = $('panel-archiwum');
+    var list = archive.filter(function (w) {
+      var p = w.payload || {};
+      return !q || ((w.worker_name || '') + ' ' + (p.z_nazwa || '') + ' ' + (p.z_nip || '')).toLowerCase().indexOf(q) !== -1;
+    });
+    if (!list.length) { el.innerHTML = '<div class="empty">Archiwum jest puste. Byłych pracowników przenosisz tu przyciskiem „Do archiwum” na zakładce Pracownicy.</div>'; return; }
+    el.innerHTML = '<table class="flat"><thead><tr><th>Pracownik</th><th>Firma</th><th>Umowa do</th><th></th></tr></thead><tbody>' +
+      list.map(function (w) {
+        var p = w.payload || {};
+        return '<tr><td>' + esc(w.worker_name || '(bez nazwy)') + '</td><td>' + esc(p.z_nazwa || '—') + '</td><td class="muted">' + esc(p.u_do || '—') + '</td>' +
+          '<td><button type="button" class="mini" data-move="zatrudniony" data-id="' + esc(w.id) + '">Przywróć</button></td></tr>';
+      }).join('') + '</tbody></table>';
   }
 
   var EXP = [
@@ -163,7 +202,9 @@
         '<td>' + esc(firmNameForWorker(w)) + '</td>' +
         '<td>' + badge(w.status) + '</td>' +
         '<td class="muted">' + fmtDate(w.created_at) + '</td>' +
-        '<td><a class="tlink" href="zatrudnienie.html">otwórz →</a></td></tr>';
+        '<td>' + (w.status === 'zatrudniony'
+          ? '<button type="button" class="mini" data-move="archiwum" data-id="' + esc(w.id) + '">Do archiwum</button>'
+          : '<a class="tlink" href="zatrudnienie.html">otwórz →</a>') + '</td></tr>';
     }).join('');
     el.innerHTML = '<table class="flat"><thead><tr><th>Pracownik</th><th>Firma</th><th>Status</th><th>Data</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>';
   }

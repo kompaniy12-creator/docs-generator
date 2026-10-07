@@ -144,7 +144,7 @@
       if (!r.data || r.data.length < page) break;
       from += page;
     }
-    rows = all;
+    rows = all.filter(function (w) { return w.status !== 'archiwum'; }); // former staff are not monitored
     // open on the most urgent non-empty category
     var first = TILES.filter(function (t) { return VIEWS[t.v].items().length; })[0];
     view = first ? first.v : 'wszyscy';
