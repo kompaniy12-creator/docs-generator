@@ -33,11 +33,11 @@ docRodzina.addEventListener('change', () => { rodzinaFields.hidden = !docRodzina
 // ("UZ — lista" and "Akta osobowe część B"); extras not on the lists come last.
 const DOC_ORDER = {
   zlecenie: ['kwest', 'wybor', 'umowa', 'gotowka', 'rodo', 'zus', 'wykonawca', 'pit2', 'rodzina', 'ppkInfo', 'ppkRez'],
-  praca: ['kwest', 'rodo', 'bhp', 'rowne', 'umowa', 'zakres', 'warunki', 'przepisy', 'pit2', 'ppkInfo', 'ppkRez',
+  praca: ['kwestKand', 'kwest', 'rodo', 'bhp', 'rowne', 'umowa', 'zakres', 'warunki', 'przepisy', 'pit2', 'ppkInfo', 'ppkRez',
     'zusPrac', 'zgodaPit', 'rodzic', 'gotowka', 'rodzina', 'zakladki'],
 };
 const DOC_FIELD = {
-  umowa: 'doc_umowa', kwest: 'doc_kwest', wybor: 'doc_wybor', gotowka: 'doc_gotowka', rodo: 'doc_rodo', zus: 'doc_zus',
+  umowa: 'doc_umowa', kwestKand: 'doc_kwest_kand', kwest: 'doc_kwest', wybor: 'doc_wybor', gotowka: 'doc_gotowka', rodo: 'doc_rodo', zus: 'doc_zus',
   wykonawca: 'doc_wykonawca', pit2: 'doc_pit2', rodzina: 'doc_rodzina', ppkInfo: 'doc_ppk_info', ppkRez: 'doc_ppk_rez',
   bhp: 'doc_bhp', rowne: 'doc_rowne', zakres: 'doc_zakres', warunki: 'doc_warunki', przepisy: 'doc_przepisy',
   zusPrac: 'doc_zus_prac', zgodaPit: 'doc_zgoda_pit', rodzic: 'doc_rodzic', zakladki: 'doc_zakladki',
@@ -628,7 +628,7 @@ function twoSignatures(C, leftCap, rightCap) {
 // from words) so each one translates as a unit.
 const ROLE = {
   zlecenie: { strona1: 'Podpis Zleceniobiorcy', strona2: 'Podpis Zleceniodawcy lub osoby upoważnionej', podpis: 'podpis zleceniobiorcy', podpisOs: 'data i podpis Zleceniobiorcy', podpisFirma: 'data i podpis Zleceniodawcy' },
-  praca: { strona1: 'Pracodawca', strona2: 'Pracownik', podpis: 'podpis pracownika', podpisOs: 'data i podpis Pracownika', podpisFirma: 'data i podpis Pracodawcy' },
+  praca: { strona1: 'data i podpis pracownika', strona2: 'podpis pracodawcy lub osoby upoważnionej', podpis: 'podpis pracownika', podpisOs: 'data i podpis Pracownika', podpisFirma: 'data i podpis Pracodawcy' },
 };
 const DOTS = '..............................';
 
@@ -673,36 +673,31 @@ Odpowiedzialność wobec osób trzecich za wykonaną przez Zleceniobiorcę umow�
 
 Wyrażam zgodę na przetwarzanie moich danych osobowych dla celów niezbędnych do zawarcia oraz realizacji niniejszej umowy, zgodnie z Rozporządzeniem Parlamentu Europejskiego i Rady (UE) 2016/679 z dnia 27 kwietnia 2016 r. w sprawie ochrony osób fizycznych w związku z przetwarzaniem danych osobowych i w sprawie swobodnego przepływu takich danych oraz uchylenia dyrektywy 95/46/WE (ogólne rozporządzenie o ochronie danych). Przyjmuję do wiadomości, że podanie tych danych jest dobrowolne, ale niezbędne do zawarcia i realizacji umowy.
 [podpis]`,
+  // structure of the ministry's helper template (MRPiPS, gov.pl), completed with the
+  // elements art. 29 § 1 KP requires since 2023 (end date, probation follow-up)
   praca: `# UMOWA O PRACĘ
-{{rodzaj_umowy}}
-zawarta w dniu {{data_zawarcia}} w miejscowości {{miejscowosc}} pomiędzy:
-{{firma}} z siedzibą: {{firma_adres}}, NIP: {{firma_nip}}, reprezentowaną przez: {{reprezentant}}, zwaną dalej „Pracodawcą”,
-a
-{{imie_nazwisko}}, zamieszkałym/ą: {{adres}}, PESEL: {{pesel}}, dokument tożsamości: {{dokument}}, obywatelstwo: {{obywatelstwo}}, zwanym/ą dalej „Pracownikiem”.
+zawarta w dniu {{data_zawarcia}} w miejscowości {{miejscowosc}}
+między: {{firma}}, z siedzibą: {{firma_adres}}, NIP {{firma_nip}}, REGON {{firma_regon}}, reprezentowanym przez: {{reprezentant}} — pracodawcą,
+a: {{imie_nazwisko}}, zamieszkałym/ą: {{adres}}, PESEL {{pesel}} — pracownikiem,
+{{rodzaj_umowy}}, {{okres}}.
 
-## § 1. Rodzaj umowy
-1. Strony zawierają umowę o pracę {{rodzaj_umowy}}, {{okres}}.
-2. Dotyczy wyłącznie umowy na okres próbny: po upływie okresu próbnego strony zamierzają zawrzeć umowę o pracę na czas określony krótszy niż 6 miesięcy / na czas określony wynoszący co najmniej 6 miesięcy i krótszy niż 12 miesięcy / na czas określony wynoszący co najmniej 12 miesięcy albo na czas nieokreślony (niepotrzebne skreślić).
+1. Strony ustalają następujące warunki zatrudnienia:
+1) rodzaj pracy (stanowisko, funkcja, zawód, specjalność): {{stanowisko}};
+2) miejsce wykonywania pracy: {{miejsce_pracy}};
+3) wymiar czasu pracy: {{wymiar}};
+4) wynagrodzenie (składniki wynagrodzenia i ich wysokość): w wysokości {{wynagrodzenie}}, płatne do {{termin_wyplaty}} dnia następnego miesiąca kalendarzowego;
+5) inne warunki zatrudnienia: ..............................;
+6) termin rozpoczęcia pracy: {{data_od}};
+7) dopuszczalna liczba godzin pracy ponad określony w umowie wymiar czasu pracy, których przekroczenie uprawnia pracownika, oprócz normalnego wynagrodzenia, do dodatku do wynagrodzenia, o którym mowa w art. 151¹ § 1 Kodeksu pracy*: ..............................
 
-## § 2. Warunki zatrudnienia
-1. Rodzaj umówionej pracy (stanowisko): {{stanowisko}}.
-2. Miejsce wykonywania pracy: {{miejsce_pracy}}.
-3. Wymiar czasu pracy: {{wymiar}}.
-4. Wynagrodzenie w wysokości {{wynagrodzenie}}, płatne do {{termin_wyplaty}} dnia następnego miesiąca kalendarzowego.
-5. Dzień rozpoczęcia pracy: {{data_od}}.
-6. Dopuszczalna liczba godzin pracy ponad określony w umowie wymiar czasu pracy, których przekroczenie uprawnia pracownika zatrudnionego w niepełnym wymiarze do dodatku jak za godziny nadliczbowe: ..............................
+2. Przyczyny uzasadniające zawarcie umowy**: ..............................
 
-## § 3. Obowiązki stron
-1. Pracownik zobowiązuje się wykonywać pracę sumiennie i starannie, stosować się do poleceń przełożonych dotyczących pracy, przestrzegać czasu pracy, regulaminu pracy oraz przepisów i zasad bezpieczeństwa i higieny pracy.
-2. Pracownik zobowiązuje się zachować w tajemnicy informacje, których ujawnienie mogłoby narazić Pracodawcę na szkodę.
-3. Pracodawca zobowiązuje się zatrudniać Pracownika za wynagrodzeniem i na warunkach określonych w umowie oraz zapewnić bezpieczne i higieniczne warunki pracy.
+3. Po upływie okresu próbnego strony zamierzają zawrzeć umowę o pracę na czas określony krótszy niż 6 miesięcy / na czas określony wynoszący co najmniej 6 miesięcy i krótszy niż 12 miesięcy / na czas określony wynoszący co najmniej 12 miesięcy albo na czas nieokreślony (niepotrzebne skreślić)***.
+[podpisy]
 
-## § 4. Postanowienia końcowe
-1. Wszelkie zmiany warunków umowy wymagają formy pisemnej.
-2. W sprawach nieuregulowanych umową stosuje się przepisy Kodeksu pracy.
-3. Umowę sporządzono w dwóch jednobrzmiących egzemplarzach, po jednym dla każdej ze stron.
-4. Pracownik potwierdza otrzymanie jednego egzemplarza umowy przed dopuszczeniem do pracy.
-[podpisy]`,
+* Dotyczy umowy o pracę z pracownikiem zatrudnianym w niepełnym wymiarze czasu pracy.
+** Dotyczy umowy o pracę na czas określony zawartej w celu, o którym mowa w art. 25¹ § 4 pkt 1–3 Kodeksu pracy, lub w przypadku, o którym mowa w art. 25¹ § 4 pkt 4 Kodeksu pracy.
+*** Dotyczy wyłącznie umowy o pracę na okres próbny.`,
 };
 const UMOWA_RODZAJ = { probny: 'na okres próbny', okreslony: 'na czas określony', nieokreslony: 'na czas nieokreślony' };
 const UMOWA_JEDN = { godz: 'brutto za godzinę', mies: 'brutto miesięcznie' };
@@ -760,8 +755,59 @@ function docUmowa(C, d) {
   });
 }
 
-// 1. KWESTIONARIUSZ OSOBOWY
+// Numbered item of a ministry questionnaire: label, then the value or a line to fill in.
+function kwItem(C, n, label, value, lines) {
+  para(C, ['{0}. ' + label, n], { bold: true, after: 1 });
+  if (value) para(C, value, { raw: true, indent: 14, after: 4 });
+  else for (let i = 0; i < (lines || 1); i++) para(C, '.' .repeat(C.bi ? 70 : 150), { raw: true, indent: 14, after: i === (lines || 1) - 1 ? 4 : 0 });
+}
+function kwNote(C, text) { para(C, text, { size: 8.5, lh: 11, indent: 14, color: rgb(0.4, 0.4, 0.4), after: 4 }); }
+
+// 1a. KWESTIONARIUSZ OSOBOWY DLA PRACOWNIKA — pomocniczy wzór MRPiPS (gov.pl)
+function docKwestPracownik(C, d) {
+  newPage(C);
+  title(C, 'KWESTIONARIUSZ OSOBOWY DLA PRACOWNIKA');
+  gap(C, 6);
+  kwItem(C, 1, 'Imię (imiona) i nazwisko', fullName(d.p));
+  kwItem(C, 2, 'Adres zamieszkania', addrOneLine(d.adres));
+  kwItem(C, 3, 'Numer PESEL (a w przypadku jego braku – rodzaj i numer dokumentu potwierdzającego tożsamość)', d.p.pesel || d.p.dowod);
+  kwItem(C, 4, 'Imiona i nazwiska oraz daty urodzenia dzieci, a także dane osobowe innych członków najbliższej rodziny, w przypadku zamiaru korzystania ze szczególnych uprawnień przewidzianych w prawie pracy', '', 2);
+  kwItem(C, 5, 'Inne dane osobowe pracownika niezbędne do korzystania ze szczególnych uprawnień przewidzianych prawem pracy', '', 2);
+  kwItem(C, 6, 'Wykształcenie (jeżeli nie istniała podstawa do jego żądania od osoby ubiegającej się o zatrudnienie)', '', 2);
+  kwNote(C, '(nazwa szkoły i rok jej ukończenia; zawód, specjalność, stopień naukowy, tytuł zawodowy, tytuł naukowy)');
+  kwItem(C, 7, 'Przebieg dotychczasowego zatrudnienia (jeżeli nie istniała podstawa do jego żądania od osoby ubiegającej się o zatrudnienie)', '', 2);
+  kwNote(C, '(okresy zatrudnienia u kolejnych pracodawców oraz zajmowane stanowiska pracy)');
+  const extra = [d.p.obywatelstwo && 'obywatelstwo: ' + d.p.obywatelstwo, d.p.us && 'urząd skarbowy: ' + d.p.us, d.p.nfz && 'oddział NFZ: ' + d.p.nfz].filter(Boolean).join('; ');
+  kwItem(C, 8, 'Dodatkowe dane osobowe, jeżeli prawo lub obowiązek ich podania wynika z przepisów szczególnych', extra, 2);
+  kwItem(C, 9, 'Numer rachunku płatniczego, jeżeli pracownik nie złożył wniosku o wypłatę wynagrodzenia do rąk własnych', d.docs.gotowka ? '—' : d.p.konto);
+  kwItem(C, 10, 'Osoba, którą należy zawiadomić w razie wypadku, jeżeli pracownik wyrazi zgodę na podanie danych osobowych takiej osoby', '', 1);
+  kwNote(C, '(imię i nazwisko, dane kontaktowe)');
+  placeLine(C, d);
+  signature(C, 'podpis pracownika', { align: 'right', top: 14 });
+}
+
+// 1b. KWESTIONARIUSZ OSOBOWY DLA OSOBY UBIEGAJĄCEJ SIĘ O ZATRUDNIENIE — pomocniczy wzór MRPiPS
+function docKwestKandydat(C, d) {
+  newPage(C);
+  title(C, 'KWESTIONARIUSZ OSOBOWY DLA OSOBY UBIEGAJĄCEJ SIĘ O ZATRUDNIENIE');
+  gap(C, 6);
+  kwItem(C, 1, 'Imię (imiona) i nazwisko', fullName(d.p));
+  kwItem(C, 2, 'Data urodzenia', isoToPLDots(d.p.dataur));
+  kwItem(C, 3, 'Dane kontaktowe (wskazane przez osobę ubiegającą się o zatrudnienie)', d.p.telefon);
+  kwItem(C, 4, 'Wykształcenie (gdy jest ono niezbędne do wykonywania pracy określonego rodzaju lub na określonym stanowisku)', '', 3);
+  kwNote(C, '(nazwa szkoły i rok jej ukończenia; zawód, specjalność, stopień naukowy, tytuł zawodowy, tytuł naukowy)');
+  kwItem(C, 5, 'Kwalifikacje zawodowe (gdy są one niezbędne do wykonywania pracy określonego rodzaju lub na określonym stanowisku)', '', 3);
+  kwNote(C, '(kursy, studia podyplomowe lub inne formy uzupełnienia wiedzy lub umiejętności)');
+  kwItem(C, 6, 'Przebieg dotychczasowego zatrudnienia (gdy jest ono niezbędne do wykonywania pracy określonego rodzaju lub na określonym stanowisku)', '', 4);
+  kwNote(C, '(okresy zatrudnienia u kolejnych pracodawców oraz zajmowane stanowiska pracy)');
+  kwItem(C, 7, 'Dodatkowe dane osobowe, jeżeli prawo lub obowiązek ich podania wynika z przepisów szczególnych', '', 3);
+  placeLine(C, d);
+  signature(C, 'podpis osoby ubiegającej się o zatrudnienie', { align: 'right', top: 14 });
+}
+
+// 1. KWESTIONARIUSZ OSOBOWY (umowa zlecenie — wzór biura)
 function docKwestionariusz(C, d) {
+  if (d.typ === 'praca') return docKwestPracownik(C, d);
   newPage(C);
   title(C, 'KWESTIONARIUSZ OSOBOWY');
   center(C, '(prosimy o uważne przeczytanie i wypełnienie drukowanymi literami lub elektronicznie)', { size: 9, lh: 12, color: rgb(0.4, 0.4, 0.4) });
@@ -1331,7 +1377,7 @@ async function generateKomplet(d, tr) {
 }
 function renderDocs(C, d) {
   const fn = {
-    umowa: docUmowa, kwest: docKwestionariusz, wybor: docWyborUmowy, gotowka: docGotowka, rodo: docRodo,
+    umowa: docUmowa, kwestKand: docKwestKandydat, kwest: docKwestionariusz, wybor: docWyborUmowy, gotowka: docGotowka, rodo: docRodo,
     zus: docOswiadczenieZus, wykonawca: docOswiadczenieWykonawcy, pit2: docPit2, rodzina: docCzlonkowieRodziny,
     ppkInfo: docInformacjaPpk, ppkRez: docRezygnacjaPpk, bhp: docBhp, rowne: docRowne, zakres: docZakres,
     warunki: docWarunki, przepisy: docPrzepisy, zusPrac: docZusPracownik, zgodaPit: docZgodaPit, rodzic: docRodzic,
