@@ -36,6 +36,27 @@
   .p-red{background:#fee2e2;color:#991b1b}.p-amber{background:#fef3c7;color:#92400e}.p-ok{background:#dcfce7;color:#166534}.p-grey{background:#eef1f6;color:#5a6577}
   .empty{text-align:center;color:#888;padding:28px}
   a.tl{color:var(--brand-navy);text-decoration:none;font-weight:600}
+  .mini{font:inherit;font-size:12.5px;font-weight:600;padding:5px 10px;border-radius:8px;border:1px solid #d4dbe6;background:#fff;color:var(--brand-navy);cursor:pointer;white-space:nowrap}
+  .mini:hover{border-color:var(--brand-navy)}.mini.ok{background:var(--brand-green);border-color:var(--brand-green);color:#fff}.mini:disabled{opacity:.6;cursor:default}
+  .sub{color:#7a8699;font-size:12.5px}.bad{color:#b91c1c;font-weight:600}
+  .box+.box{margin-top:18px}
+  .mode{margin:4px 0 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .warnbox{background:#fef3c7;color:#92400e;border-radius:9px;padding:9px 12px;font-size:13px;margin:0 0 10px}
+  .remfirm{border:1px solid #e5e9ef;border-radius:10px;padding:12px 14px;margin:0 0 10px}
+  .remhead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
+  .remfirm ul{margin:8px 0;padding-left:18px;font-size:13.5px}.remfirm li{margin:3px 0}
+  .remfirm summary{cursor:pointer;color:var(--brand-navy);font-size:13px;font-weight:600}
+  .remfirm pre{white-space:pre-wrap;font:inherit;font-size:13px;background:#f6f8fb;border-radius:8px;padding:12px;margin:8px 0 0}
+  .jobs{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .modal{position:fixed;inset:0;background:rgba(15,25,45,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+  .modal[hidden]{display:none}
+  .sheet{background:#fff;border-radius:14px;padding:20px;width:100%;max-width:440px;max-height:92vh;overflow:auto}
+  .sheet h3{margin:0 0 2px;font-size:17px;color:var(--brand-navy)}
+  .sheet label{display:block;font-size:13px;font-weight:600;color:#3b4658;margin:12px 0 4px}
+  .sheet input{width:100%;padding:10px 12px;border:1px solid #d4dbe6;border-radius:9px;font:inherit;font-size:15px}
+  .sheet .row{display:flex;gap:10px;margin-top:18px}
+  .sheet .row button{flex:1;padding:11px;border-radius:9px;font:inherit;font-weight:600;cursor:pointer;border:1px solid #d4dbe6;background:#fff}
+  .sheet .row .go{background:var(--brand-navy);border-color:var(--brand-navy);color:#fff}
   .search{display:block;width:100%;max-width:360px;margin:10px 0;padding:9px 12px;border:1px solid #d4dbe6;border-radius:9px;font:inherit;font-size:14px}
 </style>
 </head>
@@ -54,7 +75,27 @@
     <input type="search" id="q" class="search" placeholder="Szukaj: pracownik, firma…" />
     <div class="tablewrap"><table id="list"></table></div>
   </div>
+
+  <div class="box">
+    <h2>Przypomnienia dla klientów</h2>
+    <p class="hint">Firmy, którym dziś należy przypomnieć o kończącym się dokumencie lub umowie pracownika (60, 30, 14 i 7 dni przed terminem oraz w dniu upływu). Każde przypomnienie wychodzi tylko raz.</p>
+    <div id="rem"><div class="empty">Ładowanie…</div></div>
+  </div>
 </main>
+
+<div class="modal" id="edit" hidden>
+  <div class="sheet">
+    <h3>Terminy pracownika</h3>
+    <div class="sub" id="edName"></div>
+    <label for="ed_p_karta_do">Karta pobytu — ważna do</label><input type="date" id="ed_p_karta_do" />
+    <label for="ed_p_zezwolenie_do">Zezwolenie na pracę / wiza / oświadczenie — do</label><input type="date" id="ed_p_zezwolenie_do" />
+    <label for="ed_p_paszport_do">Paszport — ważny do</label><input type="date" id="ed_p_paszport_do" />
+    <label for="ed_p_badania_do">Badania lekarskie — ważne do</label><input type="date" id="ed_p_badania_do" />
+    <label for="ed_u_do">Umowa — koniec (puste = bezterminowo)</label><input type="date" id="ed_u_do" />
+    <div class="sub" id="edMsg" style="margin-top:8px;color:#b91c1c"></div>
+    <div class="row"><button type="button" id="edCancel">Anuluj</button><button type="button" class="go" id="edSave">Zapisz</button></div>
+  </div>
+</div>
 <script src="kontrola.js"></script>
 </body>
 </html>

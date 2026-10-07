@@ -20,6 +20,7 @@
       { href: 'umowa-zlecenie.html', ico: '🧾', text: 'Komplet dokumentów', short: 'Komplet' },
       { href: 'rejestr.html', ico: '🏢', text: 'Rejestr i terminy', short: 'Rejestr', wide: true },
       { href: 'import.html', ico: '📤', text: 'Import pracowników', short: 'Import', wide: true },
+      { href: 'wiedza.html', ico: '⚖️', text: 'Baza wiedzy — przepisy', short: 'Przepisy', wide: true },
     ] },
     { label: 'Spółka', items: [
       { href: 'index.html#rejestracja', ico: '📋', text: 'Rejestracja spółki', short: 'Rejestracja', sec: 'rejestracja' },

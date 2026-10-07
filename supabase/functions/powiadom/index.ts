@@ -16,6 +16,7 @@ const TG = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
 const PORTAL = "https://docgenerator.td-group.pl";
 const KEY = "telegram_kadry";
 const FRESH_MIN = 30;
+const HOUR_CAP = 15; // at most this many "new submission" messages per hour
 
 function cors(origin: string | null) {
   return {
@@ -85,6 +86,15 @@ Deno.serve(async (req) => {
       if (!row || row.status !== "nowe" || !fresh || p._powiadomiono) return json({ ok: false }, 200, origin);
       const chats = await savedChats();
       if (!chats.length) return json({ ok: false }, 200, origin);
+      // flood guard: the form is public, so a burst of submissions must not become a burst of messages
+      const hourAgo = new Date(Date.now() - 3600000).toISOString();
+      const cnt = await db(`zatrudnienie_zgloszenia?select=id&created_at=gte.${hourAgo}&payload->>_powiadomiono=not.is.null`, { headers: { Prefer: "count=exact", Range: "0-0" } });
+      const sentHour = Number((cnt.headers.get("content-range") ?? "/0").split("/")[1]) || 0;
+      if (sentHour >= HOUR_CAP) {
+        if (sentHour === HOUR_CAP) await send(chats, `⚠️ Dużo zgłoszeń w ostatniej godzinie (${sentHour}+). Kolejne powiadomienia są wstrzymane — sprawdź listę: ${PORTAL}/zatrudnienie.html`);
+        await db(`zatrudnienie_zgloszenia?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ payload: { ...p, _powiadomiono: "wstrzymane" } }) });
+        return json({ ok: false }, 200, origin);
+      }
       // mark first, so a repeated call cannot produce a second message
       await db(`zatrudnienie_zgloszenia?id=eq.${id}`, {
         method: "PATCH", body: JSON.stringify({ payload: { ...p, _powiadomiono: new Date().toISOString() } }),

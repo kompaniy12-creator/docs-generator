@@ -112,9 +112,10 @@
     { k: 'p_badania_do', label: 'Badania (medkomisja)' },
     { k: 'u_do', label: 'Umowa — koniec' },
   ];
-  function daysLeft(iso) { return Math.floor((new Date(iso + 'T00:00:00') - new Date()) / 86400000); }
+  // whole calendar days from today (0 = today, 1 = tomorrow)
+  function daysLeft(iso) { var t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((new Date(iso + 'T00:00:00') - t) / 86400000); }
   function termClass(d) { return d < 0 ? 'term-exp' : d <= 30 ? 'term-soon' : d <= 60 ? 'term-warn' : 'term-ok'; }
-  function termText(d) { return d < 0 ? 'po terminie (' + (-d) + ' dni)' : 'za ' + d + ' dni'; }
+  function termText(d) { return d < 0 ? 'po terminie (' + (-d) + ' dni)' : d === 0 ? 'dziś' : d === 1 ? 'jutro' : 'za ' + d + ' dni'; }
 
   function renderTerminy() {
     var el = $('panel-terminy');

@@ -654,8 +654,13 @@
         var d = allFiles[i];
         var ext = (d.file.name.split('.').pop() || 'jpg').toLowerCase();
         var path = folder + '/' + d.cat + '/' + (i + 1) + '.' + ext;
-        var up = await window.sb.storage.from(BUCKET).upload(path, d.file, { contentType: d.file.type || 'application/octet-stream', upsert: false });
-        if (up.error) throw up.error;
+        // the bucket takes images and PDF only; some phones give no type for HEIC photos
+        var ctype = d.file.type || ({ pdf: 'application/pdf', heic: 'image/heic', heif: 'image/heif', png: 'image/png', webp: 'image/webp' }[ext] || 'image/jpeg');
+        var up = await window.sb.storage.from(BUCKET).upload(path, d.file, { contentType: ctype, upsert: false });
+        if (up.error) {
+          if (/mime|size|exceeded|too large/i.test(up.error.message || '')) throw new Error('Plik „' + d.file.name + '” nie został przyjęty — dozwolone są zdjęcia i PDF do 20 MB.');
+          throw up.error;
+        }
         docPaths.push(path);
         documents.push({ cat: d.cat, label: d.label, path: path, name: d.file.name });
       }

@@ -32,15 +32,15 @@ docRodzina.addEventListener('change', () => { rodzinaFields.hidden = !docRodzina
 // Documents per contract type, in the order of the office checklists
 // ("UZ — lista" and "Akta osobowe część B"); extras not on the lists come last.
 const DOC_ORDER = {
-  zlecenie: ['kwest', 'wybor', 'umowa', 'gotowka', 'rodo', 'zus', 'wykonawca', 'pit2', 'rodzina', 'ppkInfo', 'ppkRez'],
-  praca: ['kwestKand', 'kwest', 'rodo', 'bhp', 'rowne', 'umowa', 'zakres', 'warunki', 'przepisy', 'pit2', 'ppkInfo', 'ppkRez',
+  zlecenie: ['kwest', 'wybor', 'umowa', 'gotowka', 'rodo', 'zwiazki', 'zus', 'wykonawca', 'pit2', 'rodzina', 'ppkInfo', 'ppkRez'],
+  praca: ['kwestKand', 'kwest', 'rodo', 'zwiazki', 'bhp', 'rowne', 'umowa', 'zakres', 'warunki', 'przepisy', 'pit2', 'ppkInfo', 'ppkRez',
     'zusPrac', 'zgodaPit', 'rodzic', 'gotowka', 'rodzina', 'zakladki'],
 };
 const DOC_FIELD = {
   umowa: 'doc_umowa', kwestKand: 'doc_kwest_kand', kwest: 'doc_kwest', wybor: 'doc_wybor', gotowka: 'doc_gotowka', rodo: 'doc_rodo', zus: 'doc_zus',
   wykonawca: 'doc_wykonawca', pit2: 'doc_pit2', rodzina: 'doc_rodzina', ppkInfo: 'doc_ppk_info', ppkRez: 'doc_ppk_rez',
   bhp: 'doc_bhp', rowne: 'doc_rowne', zakres: 'doc_zakres', warunki: 'doc_warunki', przepisy: 'doc_przepisy',
-  zusPrac: 'doc_zus_prac', zgodaPit: 'doc_zgoda_pit', rodzic: 'doc_rodzic', zakladki: 'doc_zakladki',
+  zusPrac: 'doc_zus_prac', zgodaPit: 'doc_zgoda_pit', rodzic: 'doc_rodzic', zakladki: 'doc_zakladki', zwiazki: 'doc_zwiazki',
 };
 // contract type -> which documents are offered
 const uTyp = document.getElementById('u_typ');
@@ -219,10 +219,16 @@ const tOn = document.getElementById('t_on');
 const pObyw = document.getElementById('p_obywatelstwo');
 let tOnTouched = false;
 tOn.addEventListener('change', () => { tOnTouched = true; });
+// a foreigner must also get the written notice about trade unions (art. 5 ust. 4 of the 2025 act)
+const docZwiazki = document.querySelector('[name="doc_zwiazki"]');
+let zwiazkiTouched = false;
+docZwiazki.addEventListener('change', () => { zwiazkiTouched = true; });
 function syncTlumaczenie() {
-  if (tOnTouched) return;
   const o = pObyw.value.trim().toLowerCase();
-  tOn.checked = !!o && !/^pol/.test(o);
+  const foreign = !!o && !/^pol/.test(o);
+  if (!zwiazkiTouched) docZwiazki.checked = foreign;
+  if (tOnTouched) return;
+  tOn.checked = foreign;
 }
 pObyw.addEventListener('input', syncTlumaczenie);
 
@@ -1306,6 +1312,27 @@ function docBhp(C, d) {
   signature(C, 'podpis pracownika', { align: 'right', top: 14 });
 }
 
+// INFORMACJA O PRAWIE WSTĘPOWANIA DO ZWIĄZKÓW ZAWODOWYCH — cudzoziemcy
+// (art. 5 ust. 4 ustawy z 20.03.2025 r. o warunkach dopuszczalności powierzania pracy cudzoziemcom;
+//  treść wg art. 1–3 ustawy z 23.05.1991 r. o związkach zawodowych)
+function docZwiazkiInfo(C, d) {
+  newPage(C);
+  field(C, 'Imię i nazwisko', fullName(d.p));
+  field(C, d.typ === 'praca' ? 'Pracodawca' : 'Zleceniodawca', d.z.nazwa, { after: 10 });
+  title(C, 'Informacja o prawie wstępowania do związków zawodowych');
+  para(C, 'Na podstawie art. 5 ust. 4 ustawy z dnia 20 marca 2025 r. o warunkach dopuszczalności powierzania pracy cudzoziemcom na terytorium Rzeczypospolitej Polskiej informujemy, że przysługuje Pani/Panu prawo wstępowania do związków zawodowych na zasadach określonych w ustawie z dnia 23 maja 1991 r. o związkach zawodowych.', { after: 6 });
+  const pts = [
+    'Prawo tworzenia związków zawodowych i wstępowania do nich przysługuje osobom wykonującym pracę zarobkową — pracownikom oraz osobom świadczącym pracę za wynagrodzeniem na innej podstawie niż stosunek pracy (na przykład na podstawie umowy zlecenia), na zasadach określonych w tej ustawie.',
+    'Przynależność do związku zawodowego jest dobrowolna. Nikt nie może ponosić ujemnych następstw z powodu przynależności do związku zawodowego lub pozostawania poza nim albo wykonywania funkcji związkowej.',
+    'Związki zawodowe reprezentują i bronią praw oraz interesów zawodowych i socjalnych osób wykonujących pracę zarobkową.',
+  ];
+  pts.forEach((p, i) => para(C, ['{0}.  ' + p, i + 1], { hang: 18, after: 3 }));
+  gap(C, 6);
+  para(C, 'Oświadczam, że otrzymałam/em powyższą informację na piśmie, w języku dla mnie zrozumiałym.', { after: 4 });
+  placeLine(C, d);
+  signature(C, d.typ === 'praca' ? 'podpis pracownika' : 'podpis zleceniobiorcy', { align: 'right', top: 14 });
+}
+
 // P5. INFORMACJA DOT. RÓWNEGO TRAKTOWANIA (art. 94¹ KP)
 function docRowne(C, d) {
   newPage(C);
@@ -1473,7 +1500,7 @@ function renderDocs(C, d) {
     zus: docOswiadczenieZus, wykonawca: docOswiadczenieWykonawcy, pit2: docPit2, rodzina: docCzlonkowieRodziny,
     ppkInfo: docInformacjaPpk, ppkRez: docRezygnacjaPpk, bhp: docBhp, rowne: docRowne, zakres: docZakres,
     warunki: docWarunki, przepisy: docPrzepisy, zusPrac: docZusPracownik, zgodaPit: docZgodaPit, rodzic: docRodzic,
-    zakladki: docZakladki,
+    zakladki: docZakladki, zwiazki: docZwiazkiInfo,
   };
   DOC_ORDER[d.typ].forEach((k) => { if (d.docs[k]) fn[k](C, d); });
 }

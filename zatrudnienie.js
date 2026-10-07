@@ -78,6 +78,7 @@
     html += '<button class="btn-gen" data-act="generuj">🧾 Generuj komplet (' + esc(TYP_LABEL[p.u_typ] || 'umowa zlecenie') + ')</button>';
     if (r.status === 'nowe') html += '<button class="btn-rev" data-act="sprawdzone">✔ Oznacz jako sprawdzone</button>';
     html += '<button class="btn-send" data-act="wyslij">📤 ' + (r.status === 'wyslane' ? 'Wyślij ponownie' : 'Wyślij klientowi do podpisu') + '</button>';
+    if (r.status === 'wyslane' || r.status === 'sprawdzone') html += '<button class="btn-rev" data-act="zatrudniony">✅ Podpisane — zatrudniony</button>';
     html += '<button class="btn-del" data-act="delete">Usuń</button>';
     html += '</div>';
     return html;
@@ -242,6 +243,15 @@
       return;
     }
     if (act === 'wyslij') return openSend(r, card);
+    if (act === 'zatrudniony') {
+      if (!confirm('Potwierdzasz, że komplet wrócił podpisany?\n\n' + (r.worker_name || '') + ' przejdzie do rejestru pracowników, a portal zacznie pilnować terminów (ZUS, urząd pracy, dokumenty, koniec umowy).')) return;
+      var z = await window.sb.from(TABLE).update({ status: 'zatrudniony' }).eq('id', r.id);
+      if (z.error) return toast('Błąd: ' + z.error.message);
+      rows = rows.filter(function (x) { return x.id !== r.id; });
+      render(); toast('Przeniesiono do rejestru. Terminy są w Kontroli.');
+      if (window.PortalShell) window.PortalShell.refreshBadge();
+      return;
+    }
     // status change: sprawdzone
     var patch = { status: act };
     if (act === 'sprawdzone') { patch.reviewed_at = new Date().toISOString(); }

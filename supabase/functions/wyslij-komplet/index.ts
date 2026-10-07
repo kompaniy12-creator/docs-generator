@@ -12,6 +12,7 @@
 //   -> { mail: "ok" | "skipped" | "not_configured" | "<error>", telegram: same, status }
 
 import nodemailer from "npm:nodemailer@6.9.14";
+import { loadKlienci, okMail } from "../_shared/klienci.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -25,8 +26,6 @@ const SMTP_PORT = Number(Deno.env.get("SMTP_PORT") ?? "465");
 const SMTP_USER = Deno.env.get("SMTP_USER") ?? "kadry@td-group.pl";
 const SMTP_PASS = Deno.env.get("SMTP_PASS") ?? "";
 const MAIL_FROM = `TD Consulting Group — Kadry <${SMTP_USER}>`;
-const SHEET_ID = "1JXTjEEPBS6RVbZbuHhpl1E87gBEDdQW0QdnX5JKY5a8";
-const SHEET_CSV = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
 const BUCKET = "portal-documents";
 
 function cors(origin: string | null) {
@@ -57,44 +56,14 @@ function db(path: string, init: RequestInit = {}) {
   });
 }
 
-function parseCSV(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [], field = "", i = 0, inQ = false;
-  while (i < text.length) {
-    const c = text[i];
-    if (inQ) {
-      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i += 2; continue; } inQ = false; i++; continue; }
-      field += c; i++; continue;
-    }
-    if (c === '"') { inQ = true; i++; continue; }
-    if (c === ",") { row.push(field); field = ""; i++; continue; }
-    if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; i++; continue; }
-    if (c === "\r") { i++; continue; }
-    field += c; i++;
-  }
-  if (field !== "" || row.length) { row.push(field); rows.push(row); }
-  return rows;
-}
-// the client's contact data from the clients sheet (by NIP)
+// the client's contact data from the client base (by NIP)
 async function clientContact(nip: string): Promise<{ email: string; chat: string }> {
-  const out = { email: "", chat: "" };
-  if (!/^\d{10}$/.test(nip)) return out;
+  if (!/^\d{10}$/.test(nip)) return { email: "", chat: "" };
   try {
-    const rows = parseCSV(await (await fetch(SHEET_CSV, { redirect: "follow" })).text());
-    if (!rows.length) return out;
-    const h = rows[0].map((c) => c.toLowerCase());
-    const col = (n: string) => h.findIndex((c) => c.includes(n));
-    const iNip = col("nip"), iMail = col("mail"), iChat = col("telegram");
-    for (let r = 1; r < rows.length; r++) {
-      if (((rows[r][iNip] ?? "").replace(/\D/g, "")) !== nip) continue;
-      out.email = (iMail >= 0 ? rows[r][iMail] ?? "" : "").trim().split(/[;,\s]+/)[0] ?? "";
-      out.chat = (iChat >= 0 ? rows[r][iChat] ?? "" : "").trim();
-      break;
-    }
-  } catch (e) { console.error("sheet", e); }
-  return out;
+    const k = (await loadKlienci()).get(nip);
+    return { email: k?.email ?? "", chat: k?.chat ?? "" };
+  } catch (e) { console.error("klienci", e); return { email: "", chat: "" }; }
 }
-const okMail = (s: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s);
 
 function messageText(worker: string, firma: string, typ: string) {
   const umowa = typ === "praca" ? "umowa o pracę" : "umowa zlecenie";

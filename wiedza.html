@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>Baza wiedzy — TD Consulting Group</title>
+<style>
+  :root{--brand-navy:#1B3F7F;--brand-navy-dark:#15315F;--brand-green:#1FA84B;--brand-tint:#EEF3F9;}
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f6f8fb;color:#111;line-height:1.55}
+  main{max-width:900px;margin:0 auto;padding:36px 20px 96px}
+  .back{display:inline-block;margin-bottom:14px;font-size:14px;color:#666;text-decoration:none}
+  .brand{text-align:center;margin:0 0 14px}.brand img{height:60px}
+  h1{font-size:23px;font-weight:700;margin:0 0 6px;color:var(--brand-navy);text-align:center}
+  .lead{color:#666;margin:0 auto 20px;font-size:14px;text-align:center;max-width:720px}
+  h2{font-size:15px;color:var(--brand-navy);margin:26px 0 10px}
+  .rule{background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:14px 16px;margin:0 0 10px}
+  .rule.check{border-color:#f59e0b;background:#fffbeb}
+  .rule h3{font-size:15px;margin:0 0 6px}
+  .rule p{margin:0 0 8px;font-size:14px}
+  .meta{font-size:12.5px;color:#5a6577;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+  .meta a{color:var(--brand-navy)}
+  .pill{display:inline-block;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .p-amber{background:#fef3c7;color:#92400e}.p-ok{background:#dcfce7;color:#166534}.p-red{background:#fee2e2;color:#991b1b}
+  .mini{font:inherit;font-size:12.5px;font-weight:600;padding:5px 10px;border-radius:8px;border:1px solid #d4dbe6;background:#fff;color:var(--brand-navy);cursor:pointer}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;background:#fff;border:1px solid #e5e9ef;border-radius:12px;overflow:hidden}
+  th,td{padding:9px 12px;border-bottom:1px solid #eef1f6;text-align:left;vertical-align:top}
+  th{color:#5a6577;font-weight:600;font-size:12.5px}
+  .tablewrap{overflow:auto}
+  .empty{text-align:center;color:#888;padding:28px}
+  .search{display:block;width:100%;max-width:360px;margin:0 auto 6px;padding:9px 12px;border:1px solid #d4dbe6;border-radius:9px;font:inherit;font-size:14px}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Baza wiedzy — przepisy</h1>
+  <p class="lead">Zasady, na których opiera się moduł kadrowy, z podstawą prawną. Portal codziennie sprawdza w urzędowym rejestrze aktów (ELI, Sejm RP), czy te ustawy zostały zmienione — zmieniona zasada jest oznaczana „do sprawdzenia”.</p>
+  <input type="search" id="q" class="search" placeholder="Szukaj w zasadach…" />
+  <div id="rules"><div class="empty">Ładowanie…</div></div>
+  <h2>Obserwowane akty prawne</h2>
+  <div class="tablewrap"><table id="acts"></table></div>
+</main>
+<script src="wiedza.js"></script>
+</body>
+</html>
