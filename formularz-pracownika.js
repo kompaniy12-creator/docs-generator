@@ -239,24 +239,71 @@
   $('r_has').addEventListener('change', function () {
     $('rodzinaBlock').hidden = !this.checked;
   });
-  // hours per month: required unless the client declares monthly reporting of variable hours;
-  // live check against the 800+ threshold (50% of the minimum wage)
-  var MIN_WAGE = 4806; // minimalne wynagrodzenie za pracę 2026 (zł brutto) — zaktualizuj co roku
-  function update800() {
-    var out = $('u_800_calc');
-    var h = parseFloat(($('u_godziny').value || '').replace(',', '.'));
-    var st = parseFloat(($('u_stawka').value || '').replace(',', '.'));
-    if (!(st > 0)) { out.textContent = ''; return; }
-    var mies = $('u_jedn').value === 'mies' ? st : (h > 0 ? st * h : NaN);
+  // ---------------- Contract terms: fields per contract type + legal minimums ----------------
+  var MIN_WAGE = 4806;   // minimalne wynagrodzenie za pracę 2026 (zł brutto / mies.) — zaktualizuj co roku
+  var MIN_HOURLY = 31.4; // minimalna stawka godzinowa 2026 (zł brutto)
+  var ETAT = { 'pełny etat': 1, '3/4 etatu': 0.75, '1/2 etatu': 0.5, '1/4 etatu': 0.25 };
+  function num(id) { return parseFloat(($(id).value || '').replace(/\s/g, '').replace(',', '.')); }
+  function monthsBetween(a, b) { // whole months from date a to date b (b inclusive)
+    var d1 = new Date(a), d2 = new Date(b);
+    d2.setDate(d2.getDate() + 1);
+    var m = (d2.getFullYear() - d1.getFullYear()) * 12 + (d2.getMonth() - d1.getMonth());
+    return d2.getDate() > d1.getDate() ? m + 1 : m;
+  }
+  // umowa o pracę: monthly salary + wymiar etatu; umowa zlecenie: rate + hours
+  function applyTyp() {
+    var typ = $('u_typ').value, bezt = $('u_bezterminowo').checked;
+    form.querySelectorAll('[data-typ]').forEach(function (box) {
+      var on = box.getAttribute('data-typ') === typ && !(box.id === 'u_rodzaj_box' && bezt);
+      box.hidden = !on;
+      box.querySelectorAll('input, select').forEach(function (el) { el.disabled = !on; });
+    });
+    $('u_stawka_label').textContent = typ === 'praca' ? 'Wynagrodzenie miesięczne (zł brutto)' : 'Wynagrodzenie (zł brutto)';
+    $('u_stawka').placeholder = typ === 'praca' ? 'np. 4806' : 'np. 31,40';
+    $('u_do').disabled = bezt;
+    if (bezt) { $('u_do').value = ''; clearErr($('u_do')); }
+    updatePay();
+  }
+  function monthlyPay() {
+    var st = num('u_stawka');
+    if (!(st > 0)) return NaN;
+    if ($('u_typ').value === 'praca' || $('u_jedn').value === 'mies') return st;
+    var h = num('u_godziny');
+    return h > 0 ? st * h : NaN;
+  }
+  // -> message when the pay is below the statutory minimum for this contract type
+  function payProblem() {
+    var st = num('u_stawka');
+    if (!(st > 0)) return '';
+    if ($('u_typ').value === 'praca') {
+      var min = Math.round(MIN_WAGE * (ETAT[$('u_wymiar').value] || 1) * 100) / 100;
+      return st < min ? 'Wynagrodzenie nie może być niższe niż minimalne: ' + min + ' zł brutto (' + $('u_wymiar').value + ').' : '';
+    }
+    if ($('u_typ').value === 'zlecenie' && $('u_jedn').value === 'godz' && st < MIN_HOURLY) {
+      return 'Stawka jest niższa niż minimalna stawka godzinowa (' + MIN_HOURLY.toFixed(2).replace('.', ',') + ' zł brutto).';
+    }
+    return '';
+  }
+  function updatePay() {
+    var hint = $('u_stawka_hint');
+    hint.textContent = payProblem();
+    if (!hint.textContent) clearErr($('u_stawka')); // e.g. the wymiar changed, the amount is fine now
+    hint.style.color = '#b91c1c';
+    var out = $('u_800_calc'), mies = monthlyPay(), prog = MIN_WAGE / 2;
     if (isNaN(mies)) { out.textContent = ''; return; }
-    var prog = MIN_WAGE / 2;
     out.textContent = mies >= prog
       ? ' Przy podanych danych: ok. ' + Math.round(mies) + ' zł miesięcznie — próg jest spełniony.'
       : ' Uwaga: przy podanych danych to ok. ' + Math.round(mies) + ' zł miesięcznie — poniżej progu ' + prog + ' zł.';
     out.style.fontWeight = mies >= prog ? '400' : '700';
   }
-  ['u_godziny', 'u_stawka', 'u_jedn'].forEach(function (id) { $(id).addEventListener('input', update800); $(id).addEventListener('change', update800); });
+  ['u_godziny', 'u_stawka', 'u_jedn', 'u_wymiar'].forEach(function (id) {
+    $(id).addEventListener('input', updatePay); $(id).addEventListener('change', updatePay);
+  });
+  $('u_typ').addEventListener('change', applyTyp);
+  $('u_bezterminowo').addEventListener('change', applyTyp);
   $('u_godziny_zmienne').addEventListener('change', function () { clearErr($('u_godziny')); });
+  ['u_od', 'u_rodzaj'].forEach(function (id) { $(id).addEventListener('change', function () { clearErr($('u_do')); }); });
+  applyTyp();
 
   $('p_gotowka').addEventListener('change', function () {
     var konto = $('p_konto');
@@ -371,10 +418,26 @@
       }
     }
 
+    // contract terms
+    var typ = $('u_typ').value, uOd = $('u_od'), uDo = $('u_do'), bezt = $('u_bezterminowo').checked;
+    if (typ && !bezt && !uDo.value) { setErr(uDo, 'Podaj datę zakończenia albo zaznacz „bezterminowo”'); problems.push(uDo); }
+    if (uOd.value && uDo.value) {
+      if (uDo.value < uOd.value) { setErr(uDo, 'Data zakończenia jest wcześniejsza niż data rozpoczęcia'); problems.push(uDo); }
+      else if (typ === 'praca') {
+        var mies = monthsBetween(uOd.value, uDo.value);
+        if ($('u_rodzaj').value === 'probny' && mies > 3) { setErr(uDo, 'Okres próbny nie może przekraczać 3 miesięcy'); problems.push(uDo); }
+        if ($('u_rodzaj').value === 'okreslony' && mies > 33) { setErr(uDo, 'Umowa na czas określony nie może przekraczać 33 miesięcy'); problems.push(uDo); }
+      }
+    }
+    var stawka = $('u_stawka');
+    if (stawka.value && !(num('u_stawka') > 0)) { setErr(stawka, 'Podaj kwotę, np. 4806 lub 31,40'); problems.push(stawka); }
+    else if (typ === 'praca' && payProblem()) { setErr(stawka, payProblem()); problems.push(stawka); }
     var godz = $('u_godziny');
-    if (godz.value && !/^\d{1,3}$/.test(godz.value.trim())) { setErr(godz, 'Podaj liczbę godzin (np. 160)'); problems.push(godz); }
-    else if (!godz.value.trim() && !$('u_godziny_zmienne').checked) {
-      setErr(godz, 'Podaj liczbę godzin albo zaznacz, że jest zmienna'); problems.push(godz);
+    if (typ === 'zlecenie') {
+      if (godz.value && !/^\d{1,3}$/.test(godz.value.trim())) { setErr(godz, 'Podaj liczbę godzin (np. 160)'); problems.push(godz); }
+      else if (!godz.value.trim() && !$('u_godziny_zmienne').checked) {
+        setErr(godz, 'Podaj liczbę godzin albo zaznacz, że jest zmienna'); problems.push(godz);
+      }
     }
 
     var kod = $('a_kod');
@@ -409,7 +472,9 @@
   function collect() {
     var fd = new FormData(form), data = {};
     fd.forEach(function (v, k) { data[k] = typeof v === 'string' ? v.trim() : v; });
-    ['p_nopesel', 'm_same', 'r_has', 'p_gotowka', 'u_godziny_zmienne'].forEach(function (k) { data[k] = $(k).checked; });
+    ['p_nopesel', 'm_same', 'r_has', 'p_gotowka', 'u_godziny_zmienne', 'u_bezterminowo'].forEach(function (k) { data[k] = $(k).checked; });
+    // fields hidden for the chosen contract type are disabled and absent above
+    if (data.u_typ === 'praca') { data.u_jedn = 'mies'; if (data.u_bezterminowo) data.u_rodzaj = 'nieokreslony'; }
     return data;
   }
 

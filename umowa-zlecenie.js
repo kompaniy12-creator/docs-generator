@@ -217,6 +217,10 @@ async function loadWorkers() {
     if (d.r_has === true || d.r_imienazwisko) { docRodzina.checked = true; rodzinaFields.hidden = false; }
     if (d.u_jedn) document.getElementById('u_jedn').dataset.touched = '1';
     if (d.u_godziny_zmienne === true) document.getElementById('u_godziny_zmienne').checked = true;
+    if (d.u_bezterminowo === true) {
+      document.getElementById('u_bezterminowo').checked = true;
+      if (d.u_typ === 'praca') setVal('u_rodzaj', 'nieokreslony');
+    }
     applyTyp();
     syncTlumaczenie();
     loadUmowaTpl();
@@ -320,7 +324,7 @@ function collectData() {
     umowa: {
       stanowisko: get('u_stanowisko'), miejsce: get('u_miejsce'), od: get('u_od'), do: get('u_do'),
       rodzaj: get('u_rodzaj'), wymiar: get('u_wymiar'), stawka: get('u_stawka'), jedn: get('u_jedn'),
-      wyplata: get('u_wyplata'), godziny: get('u_godziny'), godzinyZmienne: chk('u_godziny_zmienne'),
+      wyplata: get('u_wyplata'), bezterminowo: chk('u_bezterminowo'), godziny: get('u_godziny'), godzinyZmienne: chk('u_godziny_zmienne'),
     },
     umowaTpl: umowaTpl.custom || '',
     z: {
@@ -645,7 +649,7 @@ a
 4. Zleceniobiorca zobowiązuje się wykonywać zlecenie z należytą starannością, zgodnie z obowiązującymi przepisami oraz wskazówkami Zleceniodawcy.
 
 ## § 2. Okres obowiązywania umowy
-Umowa zostaje zawarta na okres {{okres}}.
+Umowa zostaje zawarta {{okres}}.
 
 ## § 3. Wynagrodzenie
 1. Za wykonanie zlecenia Zleceniobiorca otrzyma wynagrodzenie w wysokości {{stawka}} zł {{jednostka}}.
@@ -676,7 +680,7 @@ a
 {{imie_nazwisko}}, zamieszkałym/ą: {{adres}}, PESEL: {{pesel}}, dokument tożsamości: {{dokument}}, obywatelstwo: {{obywatelstwo}}, zwanym/ą dalej „Pracownikiem”.
 
 ## § 1. Rodzaj umowy
-1. Strony zawierają umowę o pracę {{rodzaj_umowy}}, na okres {{okres}}.
+1. Strony zawierają umowę o pracę {{rodzaj_umowy}}, {{okres}}.
 2. Dotyczy wyłącznie umowy na okres próbny: po upływie okresu próbnego strony zamierzają zawrzeć umowę o pracę na czas określony krótszy niż 6 miesięcy / na czas określony wynoszący co najmniej 6 miesięcy i krótszy niż 12 miesięcy / na czas określony wynoszący co najmniej 12 miesięcy albo na czas nieokreślony (niepotrzebne skreślić).
 
 ## § 2. Warunki zatrudnienia
@@ -705,7 +709,7 @@ const UMOWA_JEDN = { godz: 'brutto za godzinę', mies: 'brutto miesięcznie' };
 // {{placeholder}} -> value. { tr } values are Polish phrases translated in the second column.
 function umowaValues(d) {
   const u = d.umowa, od = isoToPLDots(u.od), dd = isoToPLDots(u.do);
-  const bezterm = d.typ === 'praca' && u.rodzaj === 'nieokreslony';
+  const bezterm = u.bezterminowo || (d.typ === 'praca' && u.rodzaj === 'nieokreslony');
   return {
     firma: d.z.nazwa, firma_adres: [d.z.ulica, d.z.miasto].filter(Boolean).join(', '),
     firma_nip: d.z.nip, firma_regon: d.z.regon, firma_krs: d.z.krs, reprezentant: d.z.reprezentant,
@@ -717,9 +721,9 @@ function umowaValues(d) {
     godziny: u.godzinyZmienne ? { tr: 'zmienna liczba godzin — według comiesięcznej ewidencji' }
       : (u.godziny ? { tr: '{0} godzin miesięcznie', args: [u.godziny] } : ''), data_zawarcia: isoToPLDots(d.sign.data), miejscowosc: d.sign.miejscowosc,
     data_od: od, data_do: dd,
-    rodzaj_umowy: { tr: UMOWA_RODZAJ[u.rodzaj] || UMOWA_RODZAJ.okreslony },
-    okres: bezterm ? { tr: 'od dnia {0}, bezterminowo', args: [od || DOTS] }
-      : { tr: 'od dnia {0} do dnia {1}', args: [od || DOTS, dd || DOTS] },
+    rodzaj_umowy: { tr: bezterm ? UMOWA_RODZAJ.nieokreslony : (UMOWA_RODZAJ[u.rodzaj] || UMOWA_RODZAJ.okreslony) },
+    okres: bezterm ? { tr: d.typ === 'praca' ? 'od dnia {0}' : 'od dnia {0} na czas nieokreślony', args: [od || DOTS] }
+      : { tr: 'na okres od dnia {0} do dnia {1}', args: [od || DOTS, dd || DOTS] },
   };
 }
 function docUmowa(C, d) {

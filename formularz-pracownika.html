@@ -41,6 +41,7 @@
   .hint{display:block;color:#888;font-size:11.5px;margin-top:4px;font-weight:400}
   .err{display:none;color:#b91c1c;font-size:11.5px;margin-top:4px;font-weight:500}
   .err.show{display:block}
+  [data-typ][hidden]{display:none !important}
   .check-row{display:flex;align-items:flex-start;gap:8px;margin-top:4px;font-size:13.5px;font-weight:400;color:#444;cursor:pointer}
   .check-row input{width:18px;height:18px;margin:1px 0 0;accent-color:var(--brand-navy);flex:0 0 18px}
 
@@ -173,20 +174,49 @@
         <div class="field">
           <label for="u_od">Data rozpoczęcia</label>
           <input id="u_od" name="u_od" type="date" />
+          <span class="err" data-for="u_od"></span>
         </div>
         <div class="field">
-          <label for="u_stawka">Wynagrodzenie (zł brutto)</label>
+          <label for="u_do">Data zakończenia umowy <span class="req">*</span></label>
+          <input id="u_do" name="u_do" type="date" />
+          <span class="err" data-for="u_do"></span>
+        </div>
+        <div class="field" style="display:flex;align-items:flex-end">
+          <label class="check-row"><input type="checkbox" id="u_bezterminowo" name="u_bezterminowo" /> Bezterminowo (na czas nieokreślony)</label>
+        </div>
+      </div>
+      <div class="field" data-typ="praca" id="u_rodzaj_box">
+        <label for="u_rodzaj">Rodzaj umowy o pracę</label>
+        <select id="u_rodzaj" name="u_rodzaj">
+          <option value="probny">na okres próbny (do 3 miesięcy)</option>
+          <option value="okreslony" selected>na czas określony (do 33 miesięcy)</option>
+        </select>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="u_stawka" id="u_stawka_label">Wynagrodzenie (zł brutto)</label>
           <input id="u_stawka" name="u_stawka" type="text" inputmode="decimal" placeholder="np. 31,40" />
+          <span class="err" data-for="u_stawka"></span>
+          <span class="hint" id="u_stawka_hint"></span>
         </div>
-        <div class="field">
+        <div class="field" data-typ="zlecenie">
           <label for="u_jedn">Stawka</label>
           <select id="u_jedn" name="u_jedn">
             <option value="godz">za godzinę</option>
             <option value="mies">miesięcznie</option>
           </select>
         </div>
+        <div class="field" data-typ="praca">
+          <label for="u_wymiar">Wymiar czasu pracy</label>
+          <select id="u_wymiar" name="u_wymiar">
+            <option value="pełny etat">pełny etat</option>
+            <option value="3/4 etatu">3/4 etatu</option>
+            <option value="1/2 etatu">1/2 etatu</option>
+            <option value="1/4 etatu">1/4 etatu</option>
+          </select>
+        </div>
       </div>
-      <div class="row">
+      <div class="row" data-typ="zlecenie">
         <div class="field">
           <label for="u_godziny">Liczba godzin pracy w miesiącu <span class="req">*</span></label>
           <input id="u_godziny" name="u_godziny" type="text" inputmode="numeric" maxlength="3" placeholder="np. 160" />

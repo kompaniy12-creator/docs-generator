@@ -38,7 +38,7 @@
 
   // human-friendly labels for payload keys
   var LABELS = {
-    u_typ: 'Rodzaj umowy', u_stanowisko: 'Stanowisko', u_miejsce: 'Miejsce pracy', u_od: 'Od dnia', u_stawka: 'Stawka (zł)', u_godziny: 'Godzin / mies.',
+    u_typ: 'Rodzaj umowy', u_stanowisko: 'Stanowisko', u_miejsce: 'Miejsce pracy', u_od: 'Od dnia', u_do: 'Do dnia', u_stawka: 'Wynagrodzenie (zł)', u_godziny: 'Godzin / mies.', u_wymiar: 'Wymiar',
     z_nazwa: 'Firma', z_nip: 'NIP', z_miasto: 'Miejscowość', z_ulica: 'Ulica i nr',
     p_imiona: 'Imię', p_nazwisko: 'Nazwisko', p_pesel: 'PESEL', p_dataur: 'Data ur.',
     p_miejsceur: 'Miejsce ur.', p_obywatelstwo: 'Obywatelstwo', p_doc_typ: 'Dokument',
@@ -49,7 +49,7 @@
   };
   var TYP_LABEL = { zlecenie: 'umowa zlecenie', praca: 'umowa o pracę' };
   var GROUPS = [
-    { title: 'Pracodawca', keys: ['u_typ', 'u_stanowisko', 'u_miejsce', 'u_od', 'u_stawka', 'u_godziny', 'z_nazwa', 'z_nip', 'z_miasto', 'z_ulica'] },
+    { title: 'Pracodawca', keys: ['u_typ', 'u_stanowisko', 'u_miejsce', 'u_od', 'u_do', 'u_stawka', 'u_wymiar', 'u_godziny', 'z_nazwa', 'z_nip', 'z_miasto', 'z_ulica'] },
     { title: 'Dane osobowe', keys: ['p_imiona', 'p_nazwisko', 'p_pesel', 'p_dataur', 'p_miejsceur', 'p_obywatelstwo', 'p_doc_typ', 'p_dowod'] },
     { title: 'Adres', keys: ['a_ulica', 'a_nrdom', 'a_nrmiesz', 'a_kod', 'a_miejscowosc', 'a_gmina', 'a_powiat', 'a_wojewodztwo'] },
     { title: 'Do zatrudnienia', keys: ['p_telefon', 'p_email', 'p_nfz', 'p_us', 'p_nip', 'p_konto'] },
@@ -66,6 +66,8 @@
       });
       html += '</div>';
     });
+    if (p.u_bezterminowo === true) html += '<div class="grid"><div><b>Okres:</b> bezterminowo (czas nieokreślony)</div></div>';
+    if (p.u_stawka) html += '<div class="grid"><div><b>Stawka:</b> ' + (p.u_jedn === 'mies' ? 'miesięczna' : 'godzinowa') + '</div></div>';
     if (p.u_godziny_zmienne === true) html += '<div class="grid"><div><b>Godziny:</b> zmienne — klient przesyła co miesiąc</div></div>';
     if (p.p_gotowka === true) html += '<div class="grid"><div><b>Wynagrodzenie:</b> gotówką (wniosek w komplecie)</div></div>';
     var docs = r.doc_paths || [];
