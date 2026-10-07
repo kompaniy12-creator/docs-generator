@@ -295,8 +295,11 @@
     hint.textContent = payProblem();
     if (!hint.textContent) clearErr($('u_stawka')); // e.g. the wymiar changed, the amount is fine now
     hint.style.color = '#b91c1c';
-    var out = $('u_800_calc'), mies = monthlyPay(), prog = MIN_WAGE / 2;
-    if (isNaN(mies)) { out.textContent = ''; return; }
+    var out = $('u_800_calc'), karta = $('u_karta_calc'), mies = monthlyPay(), prog = MIN_WAGE / 2;
+    if (isNaN(mies)) { out.textContent = ''; karta.textContent = ''; return; }
+    karta.textContent = mies >= MIN_WAGE ? ' Przy podanych danych warunek jest spełniony.'
+      : ' Uwaga: przy podanych danych to ok. ' + Math.round(mies) + ' zł miesięcznie — za mało do karty pobytu.';
+    karta.style.fontWeight = mies >= MIN_WAGE ? '400' : '700';
     out.textContent = mies >= prog
       ? ' Przy podanych danych: ok. ' + Math.round(mies) + ' zł miesięcznie — próg jest spełniony.'
       : ' Uwaga: przy podanych danych to ok. ' + Math.round(mies) + ' zł miesięcznie — poniżej progu ' + prog + ' zł.';
