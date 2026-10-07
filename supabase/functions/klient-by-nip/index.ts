@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
   if (nip.length !== 10) return json({ error: "Nieprawidłowy NIP (10 cyfr)." }, 400, origin);
 
   // 1) find the client in the sheet
-  let client: { nazwa: string; miasto: string; adres: string } | null = null;
+  let client: { nazwa: string; miasto: string; adres: string; mail: string } | null = null;
   try {
     const res = await fetch(SHEET_CSV, { redirect: "follow" });
     const csv = await res.text();
@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
     if (rows.length) {
       const headers = rows[0];
       const iNip = col(headers, "nip"), iNazwa = col(headers, "nazwa"),
-        iMiasto = col(headers, "miasto"), iAdres = col(headers, "adres");
+        iMiasto = col(headers, "miasto"), iAdres = col(headers, "adres"), iMail = col(headers, "mail");
       for (let r = 1; r < rows.length; r++) {
         const cell = (iNip >= 0 ? rows[r][iNip] : "") || "";
         if (cell.replace(/[^0-9]/g, "") === nip) {
@@ -96,6 +96,7 @@ Deno.serve(async (req) => {
             nazwa: (iNazwa >= 0 ? rows[r][iNazwa] : "") || "",
             miasto: (iMiasto >= 0 ? rows[r][iMiasto] : "") || "",
             adres: (iAdres >= 0 ? rows[r][iAdres] : "") || "",
+            mail: ((iMail >= 0 ? rows[r][iMail] : "") || "").trim().split(/[;,\s]+/)[0] || "",
           };
           break;
         }
@@ -109,6 +110,10 @@ Deno.serve(async (req) => {
   if (!client) return json({ found: false, nip }, 200, origin);
 
   let ulica = "", regon = "", kod = "";
+  // Never the address itself — only a masked hint ("bi***@gmail.com"), so the form can say
+  // that documents will go to the address we already have.
+  const mm = client.mail.match(/^([^@\s]{1,2})[^@\s]*(@[^@\s]+\.[^@\s]+)$/);
+  const email_hint = mm ? mm[1] + "***" + mm[2] : "";
 
   // 2) registry data from our own firm base (filled from rejestr.io on first use).
   // Only reached for firms that are our clients, so the paid first lookup is bounded.
@@ -117,7 +122,7 @@ Deno.serve(async (req) => {
     if (fd && fd.found) {
       return json({
         found: true, nazwa: fd.nazwa || client.nazwa, nip,
-        miasto: fd.miasto || client.miasto, ulica: fd.ulica || "", kod: fd.kod || "", regon: fd.regon || "",
+        miasto: fd.miasto || client.miasto, ulica: fd.ulica || "", kod: fd.kod || "", regon: fd.regon || "", email_hint,
       }, 200, origin);
     }
   } catch (_e) { /* fall back to the sheet / GUS below */ }
@@ -153,5 +158,6 @@ Deno.serve(async (req) => {
     ulica,
     kod,
     regon,
+    email_hint,
   }, 200, origin);
 });

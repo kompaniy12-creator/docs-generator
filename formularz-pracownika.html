@@ -164,6 +164,12 @@
           <input id="z_ulica" name="z_ulica" type="text" placeholder="np. ul. Przykładowa 1/2" />
         </div>
       </div>
+      <div class="field">
+        <label for="z_email">E-mail firmy — tu wyślemy dokumenty do podpisu <span class="req" id="z_email_req">*</span></label>
+        <input id="z_email" name="z_email" type="email" placeholder="np. biuro@przyklad.pl" />
+        <span class="err" data-for="z_email"></span>
+        <span class="hint" id="z_email_hint"></span>
+      </div>
       <input type="hidden" id="z_regon" name="z_regon" />
       <input type="hidden" id="z_kod" name="z_kod" />
     </fieldset>

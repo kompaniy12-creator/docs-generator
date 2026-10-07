@@ -115,6 +115,7 @@
   // ---------------- GUS company lookup by NIP ----------------
   var gusBtn = $('gusBtn');
   var gusStatus = $('gusStatus');
+  var emailHint = ''; // masked address of this client from our base, if any
   function setGus(msg, type) { gusStatus.textContent = msg; gusStatus.className = 'ai-status ' + (type || ''); }
   gusBtn.addEventListener('click', async function () {
     var nip = ($('z_nip').value || '').replace(/[^0-9]/g, '');
@@ -136,6 +137,13 @@
       if (out.nip) $('z_nip').value = out.nip;
       $('z_regon').value = out.regon || '';
       $('z_kod').value = out.kod || '';
+      // we may already hold the firm's address: then the field is optional
+      emailHint = out.email_hint || '';
+      $('z_email_req').style.display = emailHint ? 'none' : '';
+      $('z_email_hint').textContent = emailHint
+        ? 'Mamy już w bazie adres ' + emailHint + ' — zostaw pole puste, aby wysłać dokumenty na ten adres, albo wpisz inny.'
+        : '';
+      clearErr($('z_email'));
       clearErr($('z_nip'));
       setGus('✅ Wczytano: ' + (out.nazwa || ''), 'success');
     } catch (err) {
@@ -573,6 +581,10 @@
 
     var tel = $('p_telefon');
     if (tel.value && !telDigits(tel.value)) { setErr(tel, 'Podaj polski numer: 9 cyfr, np. +48 500 600 700'); problems.push(tel); }
+
+    var zemail = $('z_email');
+    if (zemail.value && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(zemail.value)) { setErr(zemail, 'Nieprawidłowy e-mail'); problems.push(zemail); }
+    else if (!zemail.value && !emailHint) { setErr(zemail, 'Podaj e-mail firmy — na ten adres wyślemy dokumenty do podpisu'); problems.push(zemail); }
 
     var email = $('p_email');
     if (email.value && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.value)) { setErr(email, 'Nieprawidłowy e-mail'); problems.push(email); }

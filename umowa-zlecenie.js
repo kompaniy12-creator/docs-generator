@@ -277,6 +277,8 @@ async function loadWorkers() {
 // ---------------- Import from a zatrudnienie task (AI-kadry) ----------------
 // The portal task list stores the submission payload in sessionStorage and opens
 // this generator with ?from=zgloszenie. Field names already match (p_/a_/m_/r_/z_).
+// id of the submission this packet is generated for (set when opened from a task)
+let zgloszenieId = null;
 (function importFromZgloszenie() {
   try {
     // localStorage (shared across tabs) — the portal opens this page in a new tab.
@@ -286,6 +288,7 @@ async function loadWorkers() {
     // prevent autosave.restore() (runs after this script) from overwriting the import
     try { localStorage.removeItem('tdcg_autosave_umowa-zlecenie'); } catch (e2) { /* ignore */ }
     const d = JSON.parse(raw);
+    zgloszenieId = d._zid || null;
     Object.keys(d).forEach((k) => {
       const v = d[k];
       if (typeof v === 'string' && v !== '') setVal(k, v);
@@ -1631,7 +1634,7 @@ form.addEventListener('submit', async (e) => {
     // Save to history (non-blocking — never fails the generation)
     if (window.DocHistory && window.DocHistory.save) {
       try {
-        await window.DocHistory.save({
+        const saved = await window.DocHistory.save({
           docType: 'umowa-zlecenie',
           title: data.typ === 'praca' ? 'Umowa o pracę — komplet' : 'Umowa zlecenie — komplet',
           subject: fullName(data.p),
@@ -1639,6 +1642,15 @@ form.addEventListener('submit', async (e) => {
           payload: data,
           pdfBytes: bytes,
         });
+        // attach the packet to its submission, so it can be sent to the client for signing
+        if (zgloszenieId && saved && saved.pdf_path) {
+          const cur = await window.sb.from('zatrudnienie_zgloszenia').select('payload').eq('id', zgloszenieId).single();
+          if (!cur.error && cur.data) {
+            await window.sb.from('zatrudnienie_zgloszenia').update({
+              payload: Object.assign({}, cur.data.payload, { komplet: { path: saved.pdf_path, filename, at: new Date().toISOString() } }),
+            }).eq('id', zgloszenieId);
+          }
+        }
         showStatus('Komplet wygenerowany, pobrany i zapisany w historii.' + trNote, 'success');
       } catch (err) {
         console.warn('History save failed:', err);

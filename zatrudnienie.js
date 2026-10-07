@@ -39,7 +39,7 @@
   // human-friendly labels for payload keys
   var LABELS = {
     u_typ: 'Rodzaj umowy', u_stanowisko: 'Stanowisko', u_miejsce: 'Miejsce pracy', u_od: 'Od dnia', u_do: 'Do dnia', u_stawka: 'Wynagrodzenie (zł)', u_godziny: 'Godzin / mies.', u_wymiar: 'Wymiar',
-    z_nazwa: 'Firma', z_nip: 'NIP', z_miasto: 'Miejscowość', z_ulica: 'Ulica i nr',
+    z_nazwa: 'Firma', z_email: 'E-mail firmy', z_nip: 'NIP', z_miasto: 'Miejscowość', z_ulica: 'Ulica i nr',
     p_imiona: 'Imię', p_nazwisko: 'Nazwisko', p_pesel: 'PESEL', p_dataur: 'Data ur.',
     p_miejsceur: 'Miejsce ur.', p_obywatelstwo: 'Obywatelstwo', p_doc_typ: 'Dokument',
     p_dowod: 'Seria i nr', p_telefon: 'Telefon', p_email: 'E-mail', p_nfz: 'NFZ',
@@ -49,7 +49,7 @@
   };
   var TYP_LABEL = { zlecenie: 'umowa zlecenie', praca: 'umowa o pracę' };
   var GROUPS = [
-    { title: 'Pracodawca', keys: ['u_typ', 'u_stanowisko', 'u_miejsce', 'u_od', 'u_do', 'u_stawka', 'u_wymiar', 'u_godziny', 'z_nazwa', 'z_nip', 'z_miasto', 'z_ulica'] },
+    { title: 'Pracodawca', keys: ['u_typ', 'u_stanowisko', 'u_miejsce', 'u_od', 'u_do', 'u_stawka', 'u_wymiar', 'u_godziny', 'z_nazwa', 'z_email', 'z_nip', 'z_miasto', 'z_ulica'] },
     { title: 'Dane osobowe', keys: ['p_imiona', 'p_nazwisko', 'p_pesel', 'p_dataur', 'p_miejsceur', 'p_obywatelstwo', 'p_doc_typ', 'p_dowod'] },
     { title: 'Adres', keys: ['a_ulica', 'a_nrdom', 'a_nrmiesz', 'a_kod', 'a_miejscowosc', 'a_gmina', 'a_powiat', 'a_wojewodztwo'] },
     { title: 'Do zatrudnienia', keys: ['p_telefon', 'p_email', 'p_nfz', 'p_us', 'p_nip', 'p_konto'] },
@@ -77,7 +77,7 @@
     html += '<div class="actions">';
     html += '<button class="btn-gen" data-act="generuj">🧾 Generuj komplet (' + esc(TYP_LABEL[p.u_typ] || 'umowa zlecenie') + ')</button>';
     if (r.status === 'nowe') html += '<button class="btn-rev" data-act="sprawdzone">✔ Oznacz jako sprawdzone</button>';
-    if (r.status !== 'wyslane') html += '<button class="btn-send" data-act="wyslane">📤 Wyślij klientowi do podpisu</button>';
+    html += '<button class="btn-send" data-act="wyslij">📤 ' + (r.status === 'wyslane' ? 'Wyślij ponownie' : 'Wyślij klientowi do podpisu') + '</button>';
     html += '<button class="btn-del" data-act="delete">Usuń</button>';
     html += '</div>';
     return html;
@@ -155,11 +155,77 @@
     }
   }
 
+  // ---------------- Send the packet to the client for signing ----------------
+  var SEND_FN = 'https://dpfxwkxpzqqjtmgqwozw.supabase.co/functions/v1/wyslij-komplet';
+  async function sendCall(body) {
+    var sess = await window.sb.auth.getSession();
+    var token = sess && sess.data && sess.data.session ? sess.data.session.access_token : '';
+    var res = await fetch(SEND_FN, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: window.sb.supabaseKey || '', Authorization: 'Bearer ' + token },
+      body: JSON.stringify(body),
+    });
+    var out = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(out.error || ('Błąd ' + res.status));
+    return out;
+  }
+  async function openSend(r, card) {
+    var old = card.querySelector('.send-box'); if (old) { old.remove(); return; }
+    var box = document.createElement('div');
+    box.className = 'send-box';
+    box.innerHTML = '<div class="muted">Sprawdzam komplet i dane kontaktowe klienta…</div>';
+    card.querySelector('.detail').appendChild(box);
+    var info;
+    try { info = await sendCall({ action: 'info', id: r.id }); }
+    catch (e) { box.innerHTML = '<div class="warn">' + esc(e.message) + '</div>'; return; }
+    if (!info.komplet) {
+      box.innerHTML = '<h4>Najpierw wygeneruj komplet</h4><div class="muted">Kliknij „Generuj komplet” w tym zgłoszeniu — wygenerowany plik zostanie tu dołączony i będzie można go wysłać.</div>';
+      return;
+    }
+    var email = info.email_zgloszenie || info.email_baza || '';
+    var history = (info.wyslano || []).map(function (w) {
+      return fmtDate(w.at) + (w.email ? ' — e-mail ' + esc(w.email) : '') + (w.telegram ? ' — Telegram' : '');
+    }).join('<br>');
+    box.innerHTML =
+      '<h4>Wyślij klientowi do podpisu</h4>' +
+      '<div class="muted">Plik: ' + esc(info.filename) + ' (wygenerowany ' + esc(fmtDate(info.wygenerowano)) + ')</div>' +
+      '<label><input type="checkbox" data-ch="mail"' + (info.mail_configured ? ' checked' : ' disabled') + ' /> E-mail z ' + esc(info.mail_from || 'kadry@td-group.pl') +
+        (info.mail_configured ? '' : ' <span class="warn">— poczta nie jest jeszcze skonfigurowana</span>') + '</label>' +
+      '<input type="email" data-email value="' + esc(email) + '" placeholder="e-mail klienta" />' +
+      '<div class="muted">' + (info.email_zgloszenie ? 'Adres podany w zgłoszeniu.' : info.email_baza ? 'Adres z naszej bazy klientów.' : 'Brak adresu — wpisz go.') + '</div>' +
+      '<label><input type="checkbox" data-ch="telegram"' + (info.telegram ? ' checked' : ' disabled') + ' /> Telegram klienta' +
+        (info.telegram ? '' : ' <span class="muted">— brak czatu Telegram tego klienta w bazie</span>') + '</label>' +
+      (history ? '<div class="muted" style="margin-top:6px">Wysłano wcześniej:<br>' + history + '</div>' : '') +
+      '<div class="row-btn"><button class="btn-send" data-go>Wyślij</button><button class="btn-del" data-cancel>Anuluj</button></div>' +
+      '<div data-res style="margin-top:8px"></div>';
+    box.querySelector('[data-cancel]').addEventListener('click', function () { box.remove(); });
+    box.querySelector('[data-go]').addEventListener('click', async function () {
+      var btn = this, res = box.querySelector('[data-res]');
+      var mail = box.querySelector('[data-ch="mail"]').checked, tg = box.querySelector('[data-ch="telegram"]').checked;
+      var to = box.querySelector('[data-email]').value.trim();
+      if (!mail && !tg) { res.innerHTML = '<span class="warn">Zaznacz e-mail lub Telegram.</span>'; return; }
+      if (mail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) { res.innerHTML = '<span class="warn">Wpisz poprawny e-mail klienta.</span>'; return; }
+      if (!confirm('Wysłać komplet dokumentów: ' + (r.worker_name || '') + '\n' + (mail ? 'e-mail: ' + to + '\n' : '') + (tg ? 'Telegram klienta\n' : ''))) return;
+      btn.disabled = true; res.textContent = 'Wysyłam…';
+      try {
+        var out = await sendCall({ action: 'send', id: r.id, email: to, mail: mail, telegram: tg });
+        var line = function (name, v) { return v === 'skipped' ? '' : name + ': ' + (v === 'ok' ? '✓ wysłano' : v === 'not_configured' ? 'nie skonfigurowano' : esc(v)) + '<br>'; };
+        res.innerHTML = line('E-mail', out.mail) + line('Telegram', out.telegram);
+        if (out.status === 'wyslane') {
+          r.status = 'wyslane';
+          toast('Wysłano klientowi do podpisu.');
+          if (window.PortalShell) window.PortalShell.refreshBadge();
+          setTimeout(function () { render(); }, 1800);
+        } else btn.disabled = false;
+      } catch (e) { res.innerHTML = '<span class="warn">' + esc(e.message) + '</span>'; btn.disabled = false; }
+    });
+  }
+
   async function onAction(r, act, card) {
     if (act === 'generuj') {
       // hand the submission off to the umowa-zlecenie generator, prefilled.
       // localStorage (not sessionStorage) so the new tab can read it.
-      try { localStorage.setItem('tdcg_zlecenie_import', JSON.stringify(r.payload || {})); } catch (e) {}
+      try { localStorage.setItem('tdcg_zlecenie_import', JSON.stringify(Object.assign({}, r.payload || {}, { _zid: r.id }))); } catch (e) {}
       window.open('umowa-zlecenie.html?from=zgloszenie', '_blank', 'noopener');
       return;
     }
@@ -175,7 +241,8 @@
       if (window.PortalShell) window.PortalShell.refreshBadge();
       return;
     }
-    // status change: sprawdzone | wyslane
+    if (act === 'wyslij') return openSend(r, card);
+    // status change: sprawdzone
     var patch = { status: act };
     if (act === 'sprawdzone') { patch.reviewed_at = new Date().toISOString(); }
     var u = await window.sb.from(TABLE).update(patch).eq('id', r.id).select().single();
@@ -183,7 +250,7 @@
     r.status = act; if (u.data) { r.reviewed_at = u.data.reviewed_at; }
     if (window.PortalShell) window.PortalShell.refreshBadge();
     render();
-    toast(act === 'wyslane' ? 'Oznaczono jako wysłane do podpisu.' : 'Oznaczono jako sprawdzone.');
+    toast('Oznaczono jako sprawdzone.');
   }
 
   load();
