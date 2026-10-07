@@ -20,11 +20,11 @@
     { key: 'tozsamosc', label: 'Paszport', hint: 'paszport (strona ze zdjęciem) / dowód osobisty', required: true, ai: true },
     { key: 'pobyt', label: 'Dokumenty legalizujące pobyt', hint: 'decyzja / karta pobytu / wiza', required: false, ai: true },
     { key: 'praca', label: 'Dokumenty legalizujące pracę', hint: 'powiadomienie / zezwolenie na pracę / oświadczenie o powierzeniu pracy', required: false, ai: true },
-    { key: 'student', label: 'Dla studenta — zaświadczenie / legitymacja', hint: 'jeżeli posiada', required: false },
+    { key: 'student', label: 'Dla studenta — zaświadczenie / legitymacja', hint: 'jeżeli posiada', required: false, typ: 'zlecenie' },
     { key: 'bhp', label: 'Szkolenie wstępne BHP', hint: 'karta szkolenia wstępnego BHP', required: false },
     { key: 'badania', label: 'Skierowanie i orzeczenie lekarskie', hint: 'skierowanie na badanie + orzeczenie lekarskie', required: false },
-    { key: 'swiadectwa', label: 'Świadectwa pracy', hint: 'umowa o pracę — z poprzednich miejsc pracy', required: false },
-    { key: 'dyplomy', label: 'Dyplomy i dokumenty kwalifikacji', hint: 'umowa o pracę — jeżeli posiada', required: false },
+    { key: 'swiadectwa', label: 'Świadectwa pracy', hint: 'z poprzednich miejsc pracy', required: false, typ: 'praca' },
+    { key: 'dyplomy', label: 'Dyplomy i dokumenty kwalifikacji', hint: 'jeżeli posiada', required: false, typ: 'praca' },
     { key: 'konto', label: 'Potwierdzenie nr konta', hint: 'opcjonalnie', required: false },
     { key: 'inne', label: 'Inne załączniki', hint: 'opcjonalnie', required: false },
   ];
@@ -98,9 +98,11 @@
   // All uploaded docs flattened, with their category.
   function allDocs() {
     var out = [];
-    DOC_CATS.forEach(function (c) { docFiles[c.key].forEach(function (r) { out.push({ cat: c.key, label: c.label, file: r.file }); }); });
+    DOC_CATS.forEach(function (c) { if (catActive(c)) docFiles[c.key].forEach(function (r) { out.push({ cat: c.key, label: c.label, file: r.file }); }); });
     return out;
   }
+  // a category tied to one contract type counts only while that type is chosen
+  function catActive(c) { return !c.typ || c.typ === $('u_typ').value; }
   // Required categories with no file. Marks slots and returns the missing list.
   function missingRequiredDocs() {
     var miss = [];
@@ -253,6 +255,10 @@
   // umowa o pracę: monthly salary + wymiar etatu; umowa zlecenie: rate + hours
   function applyTyp() {
     var typ = $('u_typ').value, bezt = $('u_bezterminowo').checked;
+    form.classList.toggle('no-typ', !typ);
+    $('typHint').style.display = typ ? 'none' : '';
+    form.querySelectorAll('[data-zlecenie]').forEach(function (el) { if (typ) el.textContent = el.getAttribute('data-' + typ); });
+    DOC_CATS.forEach(function (c) { catEls[c.key].style.display = catActive(c) ? '' : 'none'; });
     form.querySelectorAll('[data-typ]').forEach(function (box) {
       var on = box.getAttribute('data-typ') === typ && !(box.id === 'u_rodzaj_box' && bezt);
       box.hidden = !on;

@@ -42,6 +42,8 @@
   .err{display:none;color:#b91c1c;font-size:11.5px;margin-top:4px;font-weight:500}
   .err.show{display:block}
   [data-typ][hidden]{display:none !important}
+  /* nothing but the contract-type choice until it is made */
+  form.no-typ > *:not(#typBox){display:none !important}
   .check-row{display:flex;align-items:flex-start;gap:8px;margin-top:4px;font-size:13.5px;font-weight:400;color:#444;cursor:pointer}
   .check-row input{width:18px;height:18px;margin:1px 0 0;accent-color:var(--brand-navy);flex:0 0 18px}
 
@@ -106,7 +108,21 @@
   <h1>Zgłoszenie pracownika do zatrudnienia</h1>
   <p class="lead">Prześlij zdjęcia dokumentów pracownika — dane odczytają się automatycznie. Uzupełnij brakujące pola i wyślij zgłoszenie. Resztą zajmie się nasz dział kadr.</p>
 
-  <form id="form" novalidate>
+  <form id="form" novalidate class="no-typ">
+
+    <fieldset id="typBox">
+      <legend>Rodzaj umowy</legend>
+      <div class="field">
+        <label for="u_typ">Na jakiej podstawie ma zostać zatrudniony pracownik? <span class="req">*</span></label>
+        <select id="u_typ" name="u_typ" required>
+          <option value="">— wybierz —</option>
+          <option value="zlecenie">Umowa zlecenie</option>
+          <option value="praca">Umowa o pracę</option>
+        </select>
+        <span class="err" data-for="u_typ"></span>
+      </div>
+      <p class="hint" id="typHint" style="margin:8px 0 0">Wybierz rodzaj umowy — pokażemy tylko te pola i dokumenty, które jej dotyczą.</p>
+    </fieldset>
 
     <!-- Required documents + AI document reader -->
     <div class="ai-box">
@@ -150,29 +166,20 @@
     </fieldset>
 
     <fieldset>
-      <legend>Rodzaj umowy</legend>
-      <div class="field">
-        <label for="u_typ">Na jakiej podstawie ma zostać zatrudniony pracownik? <span class="req">*</span></label>
-        <select id="u_typ" name="u_typ" required>
-          <option value="">— wybierz —</option>
-          <option value="zlecenie">Umowa zlecenie</option>
-          <option value="praca">Umowa o pracę</option>
-        </select>
-        <span class="err" data-for="u_typ"></span>
-      </div>
+      <legend data-zlecenie="Warunki umowy zlecenia" data-praca="Warunki umowy o pracę">Warunki umowy</legend>
       <div class="row">
         <div class="field">
-          <label for="u_stanowisko">Stanowisko / zakres czynności</label>
+          <label for="u_stanowisko" data-zlecenie="Zakres czynności (przedmiot zlecenia)" data-praca="Stanowisko / rodzaj pracy">Stanowisko / zakres czynności</label>
           <input id="u_stanowisko" name="u_stanowisko" type="text" placeholder="np. pracownik produkcji" />
         </div>
         <div class="field">
-          <label for="u_miejsce">Miejsce wykonywania pracy</label>
+          <label for="u_miejsce" data-zlecenie="Miejsce wykonywania zlecenia" data-praca="Miejsce wykonywania pracy">Miejsce wykonywania pracy</label>
           <input id="u_miejsce" name="u_miejsce" type="text" placeholder="np. Poznań, ul. ..." />
         </div>
       </div>
       <div class="row three">
         <div class="field">
-          <label for="u_od">Data rozpoczęcia</label>
+          <label for="u_od" data-zlecenie="Data rozpoczęcia zlecenia" data-praca="Dzień rozpoczęcia pracy">Data rozpoczęcia</label>
           <input id="u_od" name="u_od" type="date" />
           <span class="err" data-for="u_od"></span>
         </div>
