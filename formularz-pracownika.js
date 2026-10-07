@@ -599,6 +599,8 @@
     fd.forEach(function (v, k) { data[k] = typeof v === 'string' ? v.trim() : v; });
     ['p_nopesel', 'm_same', 'r_has', 'p_gotowka', 'u_godziny_zmienne', 'u_bezterminowo', 'u_minimalna'].forEach(function (k) { data[k] = $(k).checked; });
     data.r_dodatkowi = data.r_has ? extraRodzina() : [];
+    var td = telDigits(data.p_telefon); // same format whether or not the field was left with a blur
+    if (td) data.p_telefon = '+48 ' + td.slice(0, 3) + ' ' + td.slice(3, 6) + ' ' + td.slice(6);
     // fields hidden for the chosen contract type are disabled and absent above
     if (data.u_minimalna && data.u_typ === 'zlecenie') data.u_jedn = 'godz';
     if (data.u_typ === 'praca') { data.u_jedn = 'mies'; if (data.u_bezterminowo) data.u_rodzaj = 'nieokreslony'; }
