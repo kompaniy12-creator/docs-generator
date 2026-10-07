@@ -172,6 +172,7 @@
       if (d.error) return toast('Błąd: ' + d.error.message);
       rows = rows.filter(function (x) { return x.id !== r.id; });
       render(); toast('Usunięto.');
+      if (window.PortalShell) window.PortalShell.refreshBadge();
       return;
     }
     // status change: sprawdzone | wyslane
@@ -180,6 +181,7 @@
     var u = await window.sb.from(TABLE).update(patch).eq('id', r.id).select().single();
     if (u.error) return toast('Błąd: ' + u.error.message);
     r.status = act; if (u.data) { r.reviewed_at = u.data.reviewed_at; }
+    if (window.PortalShell) window.PortalShell.refreshBadge();
     render();
     toast(act === 'wyslane' ? 'Oznaczono jako wysłane do podpisu.' : 'Oznaczono jako sprawdzone.');
   }

@@ -58,9 +58,26 @@
       return;
     }
     window.PortalAccess = { has: function (s) { return hasSection(session.user, s); } };
+    window.PortalUser = {
+      email: session.user && session.user.email,
+      admin: !!(session.user && session.user.app_metadata && session.user.app_metadata.portal_admin === true),
+    };
     document.dispatchEvent(new CustomEvent('portal:access'));
-    injectLogoutBar(session.user && session.user.email);
-    reveal();
+    // Navigation shell (sidebar / mobile menu). The page is revealed once it is in
+    // place, so the layout does not jump; without it, fall back to the logout pill.
+    var shown = false;
+    var show = function (fallback) {
+      if (shown) return;
+      shown = true;
+      if (fallback) injectLogoutBar(window.PortalUser.email);
+      reveal();
+    };
+    var shell = document.createElement('script');
+    shell.src = 'portal-shell.js';
+    shell.onload = function () { show(false); };
+    shell.onerror = function () { show(true); };
+    document.head.appendChild(shell);
+    setTimeout(function () { show(!document.getElementById('psSide')); }, 2500);
   }).catch(function () {
     gotoLogin();
   });
