@@ -5,6 +5,7 @@
 // PORTAL ONLY, Kadry section. The PDF is the one the generator saved for this
 // submission (payload.komplet.path in the portal-documents bucket).
 //
+// POST { action: "test_mail" }  -> { ok } — verifies the SMTP login, sends nothing
 // POST { action: "info", id }
 //   -> { komplet, filename, email_zgloszenie, email_baza, telegram, mail_configured }
 // POST { action: "send", id, email?, mail: bool, telegram: bool }
@@ -116,6 +117,16 @@ Deno.serve(async (req) => {
 
   let body: { action?: string; id?: string; email?: string; mail?: boolean; telegram?: boolean };
   try { body = await req.json(); } catch { return json({ error: "Nieprawidłowy JSON." }, 400, origin); }
+  // Checks the mailbox login without sending anything.
+  if (body.action === "test_mail") {
+    if (!SMTP_PASS) return json({ ok: false, error: "Brak hasła (SMTP_PASS)." }, 200, origin);
+    try {
+      await nodemailer.createTransport({ host: SMTP_HOST, port: SMTP_PORT, secure: true, auth: { user: SMTP_USER, pass: SMTP_PASS } }).verify();
+      return json({ ok: true, user: SMTP_USER, host: SMTP_HOST }, 200, origin);
+    } catch (e) {
+      return json({ ok: false, error: String((e as Error)?.message ?? e).slice(0, 160) }, 200, origin);
+    }
+  }
   if (!/^[0-9a-f-]{36}$/i.test(body.id ?? "")) return json({ error: "Brak identyfikatora zgłoszenia." }, 400, origin);
 
   try {
