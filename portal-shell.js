@@ -15,6 +15,7 @@
   // sec = section required (see auth-guard.js); wide = list pages that use the whole width
   var NAV = [
     { label: 'Kadry', sec: 'kadry', items: [
+      { href: 'kontrola.html', ico: '🚦', text: 'Kontrola', short: 'Kontrola', wide: true },
       { href: 'zatrudnienie.html', ico: '📥', text: 'Zgłoszenia pracowników', short: 'Zgłoszenia', badge: true, wide: true },
       { href: 'umowa-zlecenie.html', ico: '🧾', text: 'Komplet dokumentów', short: 'Komplet' },
       { href: 'rejestr.html', ico: '🏢', text: 'Rejestr i terminy', short: 'Rejestr', wide: true },
@@ -35,7 +36,7 @@
 
   // someone limited to Kadry has nothing on the start page's default panel — open their inbox
   if (page === 'index.html' && !location.hash && acc.has('kadry') && !acc.has('rejestracja')) {
-    location.replace('zatrudnienie.html');
+    location.replace('kontrola.html');
     return;
   }
 

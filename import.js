@@ -168,6 +168,7 @@
       var v = f.date ? toIso(r[i]) : cell(r[i]);
       if (v !== '') p[f.k] = v;
     });
+    if (p._fullname) p._name = norm(p._fullname);
     if (p._fullname && !p.p_nazwisko) {
       // wFirma lists "Nazwisko Imię"; a comma separates them unambiguously
       var parts = p._fullname.indexOf(',') !== -1 ? p._fullname.split(',') : p._fullname.split(/\s+/);
@@ -177,6 +178,7 @@
     delete p._fullname;
     if (p._dowod2 && !p.p_dowod) p.p_dowod = p._dowod2;
     delete p._dowod2;
+    if (p._typ) p.u_umowa = p._typ;
     if (p._typ) { p.u_typ = /zlec/.test(norm(p._typ)) ? 'zlecenie' : /prac/.test(norm(p._typ)) ? 'praca' : ''; if (!p.u_typ) delete p.u_typ; }
     delete p._typ;
     if (p.p_pesel) p.p_pesel = digits(p.p_pesel).padStart(11, '0').slice(-11);
@@ -203,29 +205,42 @@
   // Writes the people of one firm; existing[] is the portal's current content (kept
   // up to date across a batch). Returns { added, updated }.
   async function fetchExisting() {
-    var ex = await window.sb.from(TABLE).select('id,payload').limit(10000);
-    if (ex.error) throw ex.error;
-    return ex.data || [];
+    var all = [], from = 0, page = 1000;
+    for (;;) { // PostgREST returns at most 1000 rows per request
+      var ex = await window.sb.from(TABLE).select('id,payload').order('created_at', { ascending: true }).range(from, from + page - 1);
+      if (ex.error) throw ex.error;
+      all = all.concat(ex.data || []);
+      if (!ex.data || ex.data.length < page) break;
+      from += page;
+    }
+    return all;
   }
-  async function importPeople(list, nip, nazwa, all, onStep) {
-    var existing = {};
+  async function importPeople(list, nip, nazwa, all, onStep, byName) {
+    var existing = {}, names = {};
     all.forEach(function (r) {
       var p = r.payload || {};
       var same = nip ? digits(p.z_nip) === nip : norm(p.z_nazwa) === norm(nazwa);
-      if (same) existing[keyOf(p)] = r;
+      if (same) { existing[keyOf(p)] = r; names[norm((p.p_nazwisko || '') + ' ' + (p.p_imiona || ''))] = r; }
     });
     var added = 0, updated = 0, seen = {}, fresh = [];
     var stamp = { source: 'import', at: new Date().toISOString() };
     for (var i = 0; i < list.length; i++) {
-      var p = list[i], k = keyOf(p);
+      var p = list[i], nameKey = p._name || norm((p.p_nazwisko || '') + ' ' + (p.p_imiona || ''));
+      delete p._name;
+      var k = byName ? 'name:' + nameKey : keyOf(p);
       if (seen[k]) continue; // the same person twice in the file
       seen[k] = true;
       if (onStep) onStep(i + 1, list.length);
-      var old = existing[k];
+      var old = byName ? names[nameKey] : existing[k];
       if (old) {
         var merged = Object.assign({}, old.payload), changed = false;
         Object.keys(p).forEach(function (f) { if (merged[f] == null || merged[f] === '') { merged[f] = p[f]; changed = true; } });
         if (changed) {
+          if (!old.id) { // added earlier in this batch: look its id up
+            var f0 = await window.sb.from(TABLE).select('id').eq('worker_name', ((merged.p_imiona || '') + ' ' + merged.p_nazwisko).trim()).eq('payload->>z_nip', nip).limit(1);
+            if (f0.error || !f0.data || !f0.data.length) continue;
+            old.id = f0.data[0].id;
+          }
           var u = await window.sb.from(TABLE).update({ payload: merged }).eq('id', old.id);
           if (u.error) throw u.error;
           old.payload = merged; updated++;
@@ -239,7 +254,8 @@
         payload: payload, doc_paths: [],
       });
       if (ins.error) throw ins.error;
-      all.push({ id: null, payload: payload });
+      var row = { id: null, payload: payload };
+      all.push(row); names[nameKey] = row;
       added++; fresh.push(p);
     }
     // reusable profiles for the document generator ("Pracownik z bazy")
@@ -288,12 +304,14 @@
   bfile.addEventListener('change', async function () {
     var files = Array.prototype.slice.call(bfile.files); bfile.value = '';
     if (!files.length) return;
+    var isUmowy = function (f) { return /__umowy/i.test(f.name) ? 1 : 0; };
+    files.sort(function (a, b) { return isUmowy(a) - isUmowy(b) || a.name.localeCompare(b.name); });
     var names = {};
     Array.prototype.forEach.call($('firma').options, function (o) { if (o.value) names[o.value] = o.dataset.nazwa; });
     var all, out = [], tot = { added: 0, updated: 0, firms: 0 };
     try { all = await fetchExisting(); } catch (e) { return show(bres, 'Błąd: ' + (e.message || e), 'error'); }
     for (var i = 0; i < files.length; i++) {
-      var f = files[i], m = f.name.match(/^wfirma_(\d{10})_(.*?)\.(xlsx?|csv)$/i);
+      var f = files[i], m = f.name.match(/^wfirma_(\d{10})_(.*?)(__umowy)?(?: ?\(\d+\))?\.(xlsx?|csv)$/i);
       show(bres, 'Firma ' + (i + 1) + ' / ' + files.length + ': ' + f.name, 'info');
       if (!m) { out.push(f.name + ' — pominięto (nazwa pliku bez NIP)'); continue; }
       try {
@@ -302,9 +320,9 @@
         var list = people();
         if (!list.length) { out.push(f.name + ' — brak pracowników'); continue; }
         var nazwa = names[m[1]] || m[2].replace(/_/g, ' ');
-        var r = await importPeople(list, m[1], nazwa, all);
-        tot.added += r.added; tot.updated += r.updated; tot.firms++;
-        out.push(nazwa + ' — dodano ' + r.added + ', uzupełniono ' + r.updated);
+        var r = await importPeople(list, m[1], nazwa, all, null, !!m[3]);
+        tot.added += r.added; tot.updated += r.updated; if (!m[3]) tot.firms++;
+        out.push(nazwa + (m[3] ? ' (umowy)' : '') + ' — dodano ' + r.added + ', uzupełniono ' + r.updated);
       } catch (e) { out.push(f.name + ' — BŁĄD: ' + (e.message || e)); }
     }
     headers = []; rows = []; mapping = {};

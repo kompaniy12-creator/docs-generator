@@ -38,8 +38,12 @@
     }
     // workers
     try {
-      var w = await window.sb.from(TABLE).select('id,worker_name,status,created_at,payload').order('created_at', { ascending: false }).limit(2000);
-      workers = (w.data || []);
+      workers = [];
+      for (var from = 0; ; from += 1000) { // PostgREST returns at most 1000 rows per request
+        var w = await window.sb.from(TABLE).select('id,worker_name,status,created_at,payload').order('created_at', { ascending: false }).range(from, from + 999);
+        workers = workers.concat(w.data || []);
+        if (!w.data || w.data.length < 1000) break;
+      }
     } catch (e) { workers = []; }
     // group workers by employer NIP (fallback: firm name)
     byNip = {};
@@ -67,6 +71,7 @@
     { k: 'p_paszport_do', label: 'Paszport' },
     { k: 'p_zezwolenie_do', label: 'Zezwolenie/wiza' },
     { k: 'p_badania_do', label: 'Badania (medkomisja)' },
+    { k: 'u_do', label: 'Umowa — koniec' },
   ];
   function daysLeft(iso) { return Math.floor((new Date(iso + 'T00:00:00') - new Date()) / 86400000); }
   function termClass(d) { return d < 0 ? 'term-exp' : d <= 30 ? 'term-soon' : d <= 60 ? 'term-warn' : 'term-ok'; }

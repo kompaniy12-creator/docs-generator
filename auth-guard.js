@@ -30,7 +30,7 @@
     'rejestracja.html': 'rejestracja',
     'wynagrodzenie.html': 'biezaca', 'e-urzad.html': 'biezaca', 'pelnomocnictwo.html': 'biezaca',
     'zalacznik-pobyt.html': 'biezaca', 'nip-8.html': 'biezaca',
-    'umowa-zlecenie.html': 'kadry', 'rejestr.html': 'kadry', 'zatrudnienie.html': 'kadry', 'import.html': 'kadry',
+    'umowa-zlecenie.html': 'kadry', 'rejestr.html': 'kadry', 'zatrudnienie.html': 'kadry', 'import.html': 'kadry', 'kontrola.html': 'kadry',
   };
   function hasSection(user, section) {
     var m = (user && user.app_metadata) || {};
