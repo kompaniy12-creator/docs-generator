@@ -16,22 +16,22 @@
   // Portal field -> label + header patterns (matched on lower-cased, accent-free headers).
   // Order matters: the first unused column that matches wins.
   var FIELDS = [
-    { k: 'p_nazwisko', label: 'Nazwisko', re: /^nazwisko$|nazwisko(?!.*(rodow|panien|matki|ojca))/ },
-    { k: 'p_imiona', label: 'Imię / imiona', re: /^imi[eo]|pierwsze imie|imiona/ },
+    { k: 'p_nazwisko', label: 'Nazwisko', re: /^nazwisko$/ },
+    { k: 'p_imiona', label: 'Imię / imiona', re: /^imie$|^imiona$|pierwsze imie/ },
     { k: '_fullname', label: 'Imię i nazwisko (jedna kolumna)', re: /imie i nazwisko|nazwisko i imi|^pracownik$|^nazwa$/ },
     { k: 'p_pesel', label: 'PESEL', re: /pesel/ },
     { k: 'p_dataur', label: 'Data urodzenia', date: true, re: /data ur|urodzen/ },
     { k: 'p_miejsceur', label: 'Miejsce urodzenia', re: /miejsce ur/ },
     { k: 'p_obywatelstwo', label: 'Obywatelstwo', re: /obywatel/ },
-    { k: 'p_dowod', label: 'Seria i nr dokumentu', re: /paszport|dowod|dokument.*(numer|nr|seria)|seria/ },
-    { k: 'p_nip', label: 'NIP pracownika', re: /^nip/ },
+    { k: 'p_dowod', label: 'Seria i nr dokumentu', re: /numer dowodu|paszport|numer identyfikacyjny|dokument.*(numer|nr|seria)|seria/ },
+    { k: 'p_nip', label: 'NIP pracownika', re: /^nip|identyfikator podatkowy/ },
     { k: 'p_telefon', label: 'Telefon', re: /telefon|tel\.|komork/ },
     { k: 'p_email', label: 'E-mail', re: /e-?mail/ },
     { k: 'a_ulica', label: 'Ulica', re: /ulica/ },
     { k: 'a_nrdom', label: 'Nr domu', re: /nr domu|numer domu|nr budynku|numer budynku/ },
     { k: 'a_nrmiesz', label: 'Nr mieszkania', re: /nr lokalu|numer lokalu|mieszkan/ },
     { k: 'a_kod', label: 'Kod pocztowy', re: /kod poczt|^kod$/ },
-    { k: 'a_miejscowosc', label: 'Miejscowość', re: /miejscowosc|miasto/ },
+    { k: 'a_miejscowosc', label: 'Miejscowość', re: /miejscowosc|^miasto$/ },
     { k: 'a_gmina', label: 'Gmina', re: /gmina/ },
     { k: 'a_powiat', label: 'Powiat', re: /powiat/ },
     { k: 'a_wojewodztwo', label: 'Województwo', re: /wojew/ },
@@ -40,9 +40,10 @@
     { k: 'p_nfz', label: 'Oddział NFZ', re: /nfz/ },
     { k: 'u_stanowisko', label: 'Stanowisko', re: /stanowisk|rodzaj pracy/ },
     { k: '_typ', label: 'Rodzaj umowy', re: /rodzaj umowy|typ umowy|^umowa$|forma zatrud/ },
-    { k: 'u_od', label: 'Zatrudniony od', date: true, re: /zatrudn.*od|data zatrud|data rozpocz|^od$/ },
-    { k: 'u_do', label: 'Umowa do', date: true, re: /zatrudn.*do|data zakoncz|data zwoln|^do$/ },
-    { k: 'u_stawka', label: 'Wynagrodzenie', re: /wynagrodz|stawka|pensja|brutto/ },
+    { k: 'u_od', label: 'Zatrudniony od', date: true, re: /zatrudn.* od$|data zatrud|data rozpocz|^od$/ },
+    { k: 'u_do', label: 'Umowa do', date: true, re: /zatrudn.* do$|data zakoncz|data zwoln|^do$/ },
+    { k: 'u_stawka', label: 'Wynagrodzenie', re: /^wynagrodzenie$|stawka|pensja|brutto/ },
+    { k: 'u_wymiar', label: 'Etat', re: /^etat$|wymiar/ },
     { k: 'p_karta_do', label: 'Karta pobytu ważna do', date: true, re: /karta pobytu/ },
     { k: 'p_paszport_do', label: 'Paszport ważny do', date: true, re: /paszport.*(wazn|do)/ },
     { k: 'p_zezwolenie_do', label: 'Zezwolenie / wiza do', date: true, re: /zezwolen|wiza|oswiadczen/ },
@@ -99,16 +100,21 @@
   drop.addEventListener('drop', function (ev) { if (ev.dataTransfer.files[0]) read(ev.dataTransfer.files[0]); });
   file.addEventListener('change', function () { if (file.files[0]) read(file.files[0]); file.value = ''; });
 
+  // file -> { headers, rows } (the header row is the first one with at least 3 filled cells)
+  async function parse(f) {
+    var wb = XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: true });
+    var data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: true });
+    var h = data.findIndex(function (r) { return r.filter(function (c) { return String(c).trim() !== ''; }).length >= 3; });
+    if (h < 0) throw new Error('Nie znaleziono wiersza z nagłówkami kolumn.');
+    return {
+      headers: data[h].map(function (c, i) { return String(c).trim() || ('Kolumna ' + (i + 1)); }),
+      rows: data.slice(h + 1).filter(function (r) { return r.some(function (c) { return String(c).trim() !== ''; }); }),
+    };
+  }
   async function read(f) {
     try {
-      var wb = XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: true });
-      var sheet = wb.Sheets[wb.SheetNames[0]];
-      var data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
-      // the header row is the first one with at least 3 filled cells
-      var h = data.findIndex(function (r) { return r.filter(function (c) { return String(c).trim() !== ''; }).length >= 3; });
-      if (h < 0) throw new Error('Nie znaleziono wiersza z nagłówkami kolumn.');
-      headers = data[h].map(function (c, i) { return String(c).trim() || ('Kolumna ' + (i + 1)); });
-      rows = data.slice(h + 1).filter(function (r) { return r.some(function (c) { return String(c).trim() !== ''; }); });
+      var parsed = await parse(f);
+      headers = parsed.headers; rows = parsed.rows;
       if (!rows.length) throw new Error('Plik nie zawiera wierszy z danymi.');
       autoMap();
       renderMap();
@@ -191,6 +197,68 @@
     if (p.p_pesel && digits(p.p_pesel).length === 11) return 'pesel:' + digits(p.p_pesel);
     return 'name:' + norm((p.p_nazwisko || '') + ' ' + (p.p_imiona || '')) + '|' + (p.p_dataur || '');
   }
+  // Writes the people of one firm; existing[] is the portal's current content (kept
+  // up to date across a batch). Returns { added, updated }.
+  async function fetchExisting() {
+    var ex = await window.sb.from(TABLE).select('id,payload').limit(10000);
+    if (ex.error) throw ex.error;
+    return ex.data || [];
+  }
+  async function importPeople(list, nip, nazwa, all, onStep) {
+    var existing = {};
+    all.forEach(function (r) {
+      var p = r.payload || {};
+      var same = nip ? digits(p.z_nip) === nip : norm(p.z_nazwa) === norm(nazwa);
+      if (same) existing[keyOf(p)] = r;
+    });
+    var added = 0, updated = 0, seen = {}, fresh = [];
+    var stamp = { source: 'import', at: new Date().toISOString() };
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i], k = keyOf(p);
+      if (seen[k]) continue; // the same person twice in the file
+      seen[k] = true;
+      if (onStep) onStep(i + 1, list.length);
+      var old = existing[k];
+      if (old) {
+        var merged = Object.assign({}, old.payload), changed = false;
+        Object.keys(p).forEach(function (f) { if (merged[f] == null || merged[f] === '') { merged[f] = p[f]; changed = true; } });
+        if (changed) {
+          var u = await window.sb.from(TABLE).update({ payload: merged }).eq('id', old.id);
+          if (u.error) throw u.error;
+          old.payload = merged; updated++;
+        }
+        continue;
+      }
+      var payload = Object.assign({ z_nazwa: nazwa, z_nip: nip, m_same: true, _import: stamp }, p);
+      var ins = await window.sb.from(TABLE).insert({
+        status: 'zatrudniony',
+        worker_name: ((p.p_imiona || '') + ' ' + p.p_nazwisko).trim(),
+        payload: payload, doc_paths: [],
+      });
+      if (ins.error) throw ins.error;
+      all.push({ id: null, payload: payload });
+      added++; fresh.push(p);
+    }
+    // reusable profiles for the document generator ("Pracownik z bazy")
+    for (var j = 0; j < fresh.length; j++) {
+      var q = fresh[j];
+      try {
+        await window.Workers.save({
+          nazwisko: q.p_nazwisko, imiona: q.p_imiona || '', pesel: q.p_pesel || '',
+          data: {
+            p: { nazwisko: q.p_nazwisko, imiona: q.p_imiona || '', pesel: q.p_pesel || '', dataur: q.p_dataur || '',
+              miejsceur: q.p_miejsceur || '', dowod: q.p_dowod || '', nip: q.p_nip || '', telefon: q.p_telefon || '',
+              konto: q.p_konto || '', us: q.p_us || '', nfz: q.p_nfz || '', obywatelstwo: q.p_obywatelstwo || '' },
+            adres: { ulica: q.a_ulica || '', nrdom: q.a_nrdom || '', nrmiesz: q.a_nrmiesz || '', kod: q.a_kod || '',
+              miejscowosc: q.a_miejscowosc || '', gmina: q.a_gmina || '', powiat: q.a_powiat || '', woj: q.a_wojewodztwo || '' },
+            meld: null,
+          },
+        });
+      } catch (e) { /* the registry row exists; the profile can be created later from the generator */ }
+    }
+    return { added: added, updated: updated, people: Object.keys(seen).length };
+  }
+
   $('go').addEventListener('click', async function () {
     var res = $('result'), btn = this;
     var nip = digits($('nip').value), nazwa = $('nazwa').value.trim();
@@ -200,68 +268,45 @@
     if (!list.length) return show(res, 'Brak osób do importu — dopasuj kolumnę z nazwiskiem.', 'error');
     btn.disabled = true;
     try {
-      // people of this firm already in the portal
-      var ex = await window.sb.from(TABLE).select('id,payload').limit(5000);
-      if (ex.error) throw ex.error;
-      var existing = {};
-      (ex.data || []).forEach(function (r) {
-        var p = r.payload || {};
-        var same = nip ? digits(p.z_nip) === nip : norm(p.z_nazwa) === norm(nazwa);
-        if (same) existing[keyOf(p)] = r;
-      });
-
-      var added = 0, updated = 0, seen = {}, fresh = [];
-      var stamp = { source: 'import', at: new Date().toISOString() };
-      for (var i = 0; i < list.length; i++) {
-        var p = list[i], k = keyOf(p);
-        if (seen[k]) continue; // the same person twice in the file
-        seen[k] = true;
-        show(res, 'Importuję… ' + (i + 1) + ' / ' + list.length, 'info');
-        var old = existing[k];
-        if (old) {
-          var merged = Object.assign({}, old.payload), changed = false;
-          Object.keys(p).forEach(function (f) { if (merged[f] == null || merged[f] === '') { merged[f] = p[f]; changed = true; } });
-          if (changed) {
-            var u = await window.sb.from(TABLE).update({ payload: merged }).eq('id', old.id);
-            if (u.error) throw u.error;
-            updated++;
-          }
-          continue;
-        }
-        var payload = Object.assign({ z_nazwa: nazwa, z_nip: nip, m_same: true, _import: stamp }, p);
-        var ins = await window.sb.from(TABLE).insert({
-          status: 'zatrudniony',
-          worker_name: ((p.p_imiona || '') + ' ' + p.p_nazwisko).trim(),
-          payload: payload, doc_paths: [],
-        });
-        if (ins.error) throw ins.error;
-        added++; fresh.push(p);
-      }
-
-      // reusable profiles for the document generator ("Pracownik z bazy")
-      for (var j = 0; j < fresh.length; j++) {
-        var q = fresh[j];
-        show(res, 'Zapisuję profile do generatora… ' + (j + 1) + ' / ' + fresh.length, 'info');
-        try {
-          await window.Workers.save({
-            nazwisko: q.p_nazwisko, imiona: q.p_imiona || '', pesel: q.p_pesel || '',
-            data: {
-              p: { nazwisko: q.p_nazwisko, imiona: q.p_imiona || '', pesel: q.p_pesel || '', dataur: q.p_dataur || '',
-                miejsceur: q.p_miejsceur || '', dowod: q.p_dowod || '', nip: q.p_nip || '', telefon: q.p_telefon || '',
-                konto: q.p_konto || '', us: q.p_us || '', nfz: q.p_nfz || '', obywatelstwo: q.p_obywatelstwo || '' },
-              adres: { ulica: q.a_ulica || '', nrdom: q.a_nrdom || '', nrmiesz: q.a_nrmiesz || '', kod: q.a_kod || '',
-                miejscowosc: q.a_miejscowosc || '', gmina: q.a_gmina || '', powiat: q.a_powiat || '', woj: q.a_wojewodztwo || '' },
-              meld: null,
-            },
-          });
-        } catch (e) { /* the registry row exists; the profile can be created later from the generator */ }
-      }
-      var skipped = rows.length - Object.keys(seen).length;
-      show(res, 'Gotowe: dodano ' + added + ', uzupełniono ' + updated + (skipped > 0 ? ', pominięto ' + skipped + ' (bez nazwiska lub powtórzone)' : '') +
+      var r = await importPeople(list, nip, nazwa, await fetchExisting(), function (n, all) { show(res, 'Importuję… ' + n + ' / ' + all, 'info'); });
+      var skipped = rows.length - r.people;
+      show(res, 'Gotowe: dodano ' + r.added + ', uzupełniono ' + r.updated + (skipped > 0 ? ', pominięto ' + skipped + ' (bez nazwiska lub powtórzone)' : '') +
         '. Pracownicy są w Rejestrze przy firmie „' + nazwa + '”.', 'success');
     } catch (e) {
       show(res, 'Błąd importu: ' + (e.message || e) + ' — część osób mogła zostać już dodana; ponowny import ich nie zdubluje.', 'error');
     } finally { btn.disabled = false; }
+  });
+
+  // ---------------- batch: many firms at once ----------------
+  // Files named  wfirma_<NIP>_<nazwa firmy>.xls(x)  carry their firm in the name, so a
+  // whole set of exports can be imported in one go (columns are matched automatically).
+  var bfile = $('bfile'), bres = $('bresult');
+  $('bdrop').addEventListener('click', function () { bfile.click(); });
+  bfile.addEventListener('change', async function () {
+    var files = Array.prototype.slice.call(bfile.files); bfile.value = '';
+    if (!files.length) return;
+    var names = {};
+    Array.prototype.forEach.call($('firma').options, function (o) { if (o.value) names[o.value] = o.dataset.nazwa; });
+    var all, out = [], tot = { added: 0, updated: 0, firms: 0 };
+    try { all = await fetchExisting(); } catch (e) { return show(bres, 'Błąd: ' + (e.message || e), 'error'); }
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i], m = f.name.match(/^wfirma_(\d{10})_(.*?)\.(xlsx?|csv)$/i);
+      show(bres, 'Firma ' + (i + 1) + ' / ' + files.length + ': ' + f.name, 'info');
+      if (!m) { out.push(f.name + ' — pominięto (nazwa pliku bez NIP)'); continue; }
+      try {
+        var parsed = await parse(f);
+        headers = parsed.headers; rows = parsed.rows; autoMap();
+        var list = people();
+        if (!list.length) { out.push(f.name + ' — brak pracowników'); continue; }
+        var nazwa = names[m[1]] || m[2].replace(/_/g, ' ');
+        var r = await importPeople(list, m[1], nazwa, all);
+        tot.added += r.added; tot.updated += r.updated; tot.firms++;
+        out.push(nazwa + ' — dodano ' + r.added + ', uzupełniono ' + r.updated);
+      } catch (e) { out.push(f.name + ' — BŁĄD: ' + (e.message || e)); }
+    }
+    headers = []; rows = []; mapping = {};
+    show(bres, 'Gotowe: ' + tot.firms + ' firm, dodano ' + tot.added + ' osób, uzupełniono ' + tot.updated + '.', 'success');
+    $('blog').textContent = out.join('\n');
   });
 
   loadFirms();

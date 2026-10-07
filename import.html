@@ -71,6 +71,15 @@
     <div id="fileInfo" class="status"></div>
   </div>
 
+  <details class="step">
+    <summary style="cursor:pointer;font-weight:600;color:var(--brand-navy)">Import wielu firm naraz</summary>
+    <p class="hint" style="margin-top:10px">Zaznacz wiele plików eksportu jednocześnie. Każdy plik musi nazywać się <code>wfirma_NIP_nazwa.xlsx</code> (10 cyfr NIP firmy) — po NIP rozpoznajemy firmę. Kolumny są dopasowywane automatycznie.</p>
+    <div class="drop" id="bdrop"><strong>Kliknij i wybierz pliki</strong> (wiele naraz)</div>
+    <input type="file" id="bfile" accept=".xlsx,.xls,.csv" multiple hidden />
+    <div id="bresult" class="status"></div>
+    <pre id="blog" style="white-space:pre-wrap;font-size:12.5px;color:#3a4759;margin:10px 0 0"></pre>
+  </details>
+
   <div class="step" id="stepMap" hidden>
     <h2><span>3</span>Dopasowanie kolumn</h2>
     <p class="hint">Kolumny rozpoznane automatycznie są zaznaczone na zielono — sprawdź i popraw. Pola bez kolumny zostaną puste. Wymagane jest nazwisko (albo „imię i nazwisko” w jednej kolumnie).</p>
