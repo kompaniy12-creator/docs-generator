@@ -302,6 +302,10 @@
         </div>
         <div class="field"><label for="u_wyplata">Wypłata do dnia miesiąca</label><input id="u_wyplata" name="u_wyplata" type="text" inputmode="numeric" value="10" /></div>
       </div>
+      <div class="field" data-typ="zlecenie">
+        <label for="u_numer">Numer umowy <span class="opt">(puste = do wpisania ręcznie)</span></label>
+        <input id="u_numer" name="u_numer" type="text" placeholder="np. UZ 1/2026" />
+      </div>
       <div class="row">
         <div class="field"><label for="u_godziny">Liczba godzin w miesiącu</label><input id="u_godziny" name="u_godziny" type="text" inputmode="numeric" placeholder="np. 160" /></div>
         <div class="field" style="display:flex;align-items:flex-end"><label class="check"><input type="checkbox" name="u_godziny_zmienne" id="u_godziny_zmienne" /><span class="ct"><span>Godziny zmienne — wg comiesięcznej ewidencji od klienta</span></span></label></div>
@@ -313,12 +317,12 @@
       <p class="hint" id="tplStatus" style="margin:10px 0 8px">Wzór umowy: standardowy TD.</p>
       <button type="button" id="tplToggle" class="add-btn" style="margin:0">Wzór umowy klienta…</button>
       <div id="tplBox" hidden style="margin-top:12px">
-        <p class="hint" style="margin:0 0 8px">Wklej lub wczytaj umowę klienta i wstaw pola <code>{{…}}</code> tam, gdzie mają trafić dane. Zapisany wzór jest używany dla tej firmy (NIP) i wybranego rodzaju umowy zamiast wzoru standardowego. Formatowanie: <code># Tytuł</code>, <code>## Nagłówek</code>, <code>1. punkt</code>, <code>[podpisy]</code>.</p>
+        <p class="hint" style="margin:0 0 8px">Wklej lub wczytaj umowę klienta i wstaw pola <code>{{…}}</code> tam, gdzie mają trafić dane. Zapisany wzór jest używany dla tej firmy (NIP) i wybranego rodzaju umowy zamiast wzoru standardowego. Formatowanie: <code># Tytuł</code>, <code>## Nagłówek</code>, <code>1. punkt</code>, <code>[podpisy]</code> (obie strony), <code>[podpis]</code> (sam zleceniobiorca / pracownik).</p>
         <div id="tplFields" style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px">
           <button type="button">firma</button><button type="button">firma_adres</button><button type="button">firma_nip</button><button type="button">firma_regon</button><button type="button">firma_krs</button><button type="button">reprezentant</button>
           <button type="button">imie_nazwisko</button><button type="button">adres</button><button type="button">pesel</button><button type="button">data_urodzenia</button><button type="button">dokument</button><button type="button">obywatelstwo</button><button type="button">konto</button>
-          <button type="button">stanowisko</button><button type="button">miejsce_pracy</button><button type="button">wymiar</button><button type="button">wynagrodzenie</button><button type="button">stawka</button><button type="button">jednostka</button><button type="button">termin_wyplaty</button><button type="button">godziny</button>
-          <button type="button">rodzaj_umowy</button><button type="button">okres</button><button type="button">data_od</button><button type="button">data_do</button><button type="button">data_zawarcia</button><button type="button">miejscowosc</button>
+          <button type="button">stanowisko</button><button type="button">miejsce_pracy</button><button type="button">wymiar</button><button type="button">wynagrodzenie</button><button type="button">stawka</button><button type="button">jednostka</button><button type="button">termin_wyplaty</button><button type="button">forma_wyplaty</button><button type="button">godziny</button>
+          <button type="button">rodzaj_umowy</button><button type="button">okres</button><button type="button">data_od</button><button type="button">data_do</button><button type="button">data_zawarcia</button><button type="button">numer</button><button type="button">miejscowosc</button>
         </div>
         <textarea id="tplText" rows="16" style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:12.5px" placeholder="Treść umowy klienta z polami {{imie_nazwisko}}, {{stawka}} …"></textarea>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center">

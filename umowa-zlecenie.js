@@ -325,7 +325,7 @@ function collectData() {
     umowa: {
       stanowisko: get('u_stanowisko'), miejsce: get('u_miejsce'), od: get('u_od'), do: get('u_do'),
       rodzaj: get('u_rodzaj'), wymiar: get('u_wymiar'), stawka: get('u_stawka'), jedn: get('u_jedn'),
-      wyplata: get('u_wyplata'), bezterminowo: chk('u_bezterminowo'), minimalna: chk('u_minimalna'), godziny: get('u_godziny'), godzinyZmienne: chk('u_godziny_zmienne'),
+      wyplata: get('u_wyplata'), numer: get('u_numer'), bezterminowo: chk('u_bezterminowo'), minimalna: chk('u_minimalna'), godziny: get('u_godziny'), godzinyZmienne: chk('u_godziny_zmienne'),
     },
     umowaTpl: umowaTpl.custom || '',
     z: {
@@ -627,7 +627,7 @@ function twoSignatures(C, leftCap, rightCap) {
 // Role wording per contract type. Whole sentences are kept per type (not glued
 // from words) so each one translates as a unit.
 const ROLE = {
-  zlecenie: { strona1: 'Zleceniodawca', strona2: 'Zleceniobiorca', podpis: 'podpis zleceniobiorcy', podpisOs: 'data i podpis Zleceniobiorcy', podpisFirma: 'data i podpis Zleceniodawcy' },
+  zlecenie: { strona1: 'Podpis Zleceniobiorcy', strona2: 'Podpis Zleceniodawcy lub osoby upoważnionej', podpis: 'podpis zleceniobiorcy', podpisOs: 'data i podpis Zleceniobiorcy', podpisFirma: 'data i podpis Zleceniodawcy' },
   praca: { strona1: 'Pracodawca', strona2: 'Pracownik', podpis: 'podpis pracownika', podpisOs: 'data i podpis Pracownika', podpisFirma: 'data i podpis Pracodawcy' },
 };
 const DOTS = '..............................';
@@ -637,42 +637,42 @@ const DOTS = '..............................';
 //   "# Tytuł", "## Nagłówek paragrafu", blank line = odstęp, "[podpisy]" = signature lines,
 //   "1. …" / "- …" = point with hanging indent, {{nazwa}} = value from the form.
 const UMOWA_STANDARD = {
-  zlecenie: `# UMOWA ZLECENIE
-zawarta w dniu {{data_zawarcia}} w miejscowości {{miejscowosc}} pomiędzy:
-{{firma}} z siedzibą: {{firma_adres}}, NIP: {{firma_nip}}, reprezentowaną przez: {{reprezentant}}, zwaną dalej „Zleceniodawcą”,
-a
-{{imie_nazwisko}}, zamieszkałym/ą: {{adres}}, PESEL: {{pesel}}, dokument tożsamości: {{dokument}}, obywatelstwo: {{obywatelstwo}}, zwanym/ą dalej „Zleceniobiorcą”.
+  // wording and structure follow the office's wFirma contract
+  zlecenie: `# Umowa zlecenie
+## nr {{numer}}
+Zawarta w dniu {{data_zawarcia}} w miejscowości {{miejscowosc}} pomiędzy
+{{firma}} z siedzibą {{firma_adres}}, NIP {{firma_nip}} REGON {{firma_regon}}, reprezentowaną przez {{reprezentant}}, zwaną dalej Zleceniodawcą, a Panem/Panią
+{{imie_nazwisko}}, zamieszkałym/ą {{adres}}, PESEL {{pesel}}, zwanym/ą Zleceniobiorcą.
 
-## § 1. Przedmiot umowy
-1. Zleceniodawca zleca, a Zleceniobiorca zobowiązuje się do wykonywania następujących czynności: {{stanowisko}}.
-2. Miejsce wykonywania zlecenia: {{miejsce_pracy}}.
-3. Przewidywany wymiar wykonywania zlecenia: {{godziny}}.
-4. Zleceniobiorca zobowiązuje się wykonywać zlecenie z należytą starannością, zgodnie z obowiązującymi przepisami oraz wskazówkami Zleceniodawcy.
+## §1 - Przedmiot umowy
+Zleceniobiorca zobowiązuje się na zlecenie Zleceniodawcy do wykonania następujących czynności: {{stanowisko}}
 
-## § 2. Okres obowiązywania umowy
-Umowa zostaje zawarta {{okres}}.
+## §2 - Czas trwania umowy
+Umowa niniejsza zostaje zawarta {{okres}}
 
-## § 3. Wynagrodzenie
-1. Za wykonanie zlecenia Zleceniobiorca otrzyma wynagrodzenie w wysokości {{wynagrodzenie}}.
-2. Wynagrodzenie za każdą godzinę wykonywania zlecenia nie może być niższe niż minimalna stawka godzinowa obowiązująca w danym roku.
-3. Liczbę godzin wykonywania zlecenia potwierdza ewidencja godzin, którą Zleceniobiorca przedkłada Zleceniodawcy do ostatniego dnia każdego miesiąca.
-4. Wynagrodzenie jest płatne raz w miesiącu, do {{termin_wyplaty}} dnia następnego miesiąca kalendarzowego, przelewem na rachunek bankowy Zleceniobiorcy nr {{konto}} albo — na wniosek Zleceniobiorcy — gotówką.
-5. Od wynagrodzenia Zleceniodawca potrąci należne składki na ubezpieczenia społeczne i zdrowotne oraz zaliczkę na podatek dochodowy.
+## §3 - Wynagrodzenie
+1. Z tytułu wykonywanych czynności opisanych w §1 niniejszej umowy Zleceniobiorca otrzyma wynagrodzenie w wysokości {{wynagrodzenie}}.
+2. Wymieniona kwota zostanie zapłacona {{forma_wyplaty}} Zleceniobiorcy lub osobie upoważnionej przez Zleceniobiorcę w terminie 7 dni po przedłożeniu rachunku do umowy.
+3. Zleceniodawca zastrzega sobie prawo dokonania stosownych potrąceń z wynagrodzenia na poczet zaliczki na podatek dochodowy i składek ZUS.
+4. Zleceniobiorca oświadcza, że w zakresie wykonywanej umowy zlecenie nie prowadzi działalności gospodarczej w rozumieniu art. 10 ust. 1 pkt 3 ustawy z 26 lipca 1991 r. o podatku dochodowym od osób fizycznych (Dz.U. z 2000 r. nr 14, poz. 176 z późn. zm.).
 
-## § 4. Wykonywanie zlecenia
-1. Zleceniobiorca może powierzyć wykonanie zlecenia osobie trzeciej wyłącznie za uprzednią pisemną zgodą Zleceniodawcy.
-2. Zleceniobiorca zobowiązuje się przestrzegać zasad bezpieczeństwa i higieny pracy obowiązujących w miejscu wykonywania zlecenia.
-3. Zleceniobiorca zobowiązuje się zachować w tajemnicy informacje uzyskane w związku z wykonywaniem zlecenia, których ujawnienie mogłoby narazić Zleceniodawcę na szkodę.
+## §4 - Warunki wykonywania umowy
+1. Zleceniobiorca zobowiązuje się wykonywać powierzone czynności z należytą starannością i nie powierzać osobie trzeciej wykonania czynności będących przedmiotem niniejszej umowy bez uprzedniego zezwolenia Zleceniodawcy.
+2. Zleceniobiorca nie może bez uprzedniej pisemnej zgody Zleceniodawcy zmienić uzgodnionego sposobu wykonywania zlecenia.
+3. Zleceniobiorca zobowiązuje się udzielać Zleceniodawcy potrzebnych informacji o przebiegu wykonywania zlecenia.
 
-## § 5. Rozwiązanie umowy
-1. Każda ze stron może wypowiedzieć umowę z zachowaniem 7-dniowego okresu wypowiedzenia.
-2. Zleceniodawca może rozwiązać umowę bez zachowania okresu wypowiedzenia w razie rażącego naruszenia jej postanowień przez Zleceniobiorcę.
+## §5 - Odpowiedzialność Zleceniodawcy
+Odpowiedzialność wobec osób trzecich za wykonaną przez Zleceniobiorcę umowę zlecenia przechodzi na Zleceniodawcę z dniem wykonania umowy.
 
-## § 6. Postanowienia końcowe
-1. Wszelkie zmiany umowy wymagają formy pisemnej pod rygorem nieważności.
-2. W sprawach nieuregulowanych umową stosuje się przepisy Kodeksu cywilnego.
-3. Umowę sporządzono w dwóch jednobrzmiących egzemplarzach, po jednym dla każdej ze stron.
-[podpisy]`,
+## §6 - Inne postanowienia
+1. W sprawach nieuregulowanych w niniejszej umowie mają zastosowanie przepisy kodeksu cywilnego.
+2. Ewentualne spory mogące wyniknąć z realizacji niniejszej umowy podlegają rozstrzygnięciu przez sąd powszechny miejscowo właściwy dla siedziby Zleceniodawcy.
+3. Wszelkie zmiany niniejszej umowy wymagają zachowania formy pisemnej pod rygorem nieważności.
+4. Umowę sporządzono w dwóch jednobrzmiących egzemplarzach po jednym dla każdej strony.
+[podpisy]
+
+Wyrażam zgodę na przetwarzanie moich danych osobowych dla celów niezbędnych do zawarcia oraz realizacji niniejszej umowy, zgodnie z Rozporządzeniem Parlamentu Europejskiego i Rady (UE) 2016/679 z dnia 27 kwietnia 2016 r. w sprawie ochrony osób fizycznych w związku z przetwarzaniem danych osobowych i w sprawie swobodnego przepływu takich danych oraz uchylenia dyrektywy 95/46/WE (ogólne rozporządzenie o ochronie danych). Przyjmuję do wiadomości, że podanie tych danych jest dobrowolne, ale niezbędne do zawarcia i realizacji umowy.
+[podpis]`,
   praca: `# UMOWA O PRACĘ
 {{rodzaj_umowy}}
 zawarta w dniu {{data_zawarcia}} w miejscowości {{miejscowosc}} pomiędzy:
@@ -725,13 +725,14 @@ function umowaValues(d) {
     wymiar: u.wymiar && { tr: u.wymiar }, stawka: u.stawka, jednostka: { tr: UMOWA_JEDN[u.jedn] || UMOWA_JEDN.godz },
     wynagrodzenie: u.minimalna ? { tr: UMOWA_MIN[d.typ] }
       : { tr: '{0} zł {1}', args: [u.stawka || DOTS, { tr: UMOWA_JEDN[u.jedn] || UMOWA_JEDN.godz }] },
-    termin_wyplaty: u.wyplata,
+    termin_wyplaty: u.wyplata, numer: u.numer,
+    forma_wyplaty: { tr: d.docs.gotowka ? 'gotówką' : 'przelewem na rachunek bankowy' },
     godziny: u.godzinyZmienne ? { tr: 'zmienna liczba godzin — według comiesięcznej ewidencji' }
       : (u.godziny ? { tr: '{0} godzin miesięcznie', args: [u.godziny] } : ''), data_zawarcia: isoToPLDots(d.sign.data), miejscowosc: d.sign.miejscowosc,
     data_od: od, data_do: dd,
     rodzaj_umowy: { tr: bezterm ? UMOWA_RODZAJ.nieokreslony : (UMOWA_RODZAJ[u.rodzaj] || UMOWA_RODZAJ.okreslony) },
-    okres: bezterm ? { tr: d.typ === 'praca' ? 'od dnia {0}' : 'od dnia {0} na czas nieokreślony', args: [od || DOTS] }
-      : { tr: 'na okres od dnia {0} do dnia {1}', args: [od || DOTS, dd || DOTS] },
+    okres: bezterm ? { tr: d.typ === 'praca' ? 'od dnia {0}' : 'na czas nieokreślony od dnia {0}', args: [od || DOTS] }
+      : { tr: d.typ === 'praca' ? 'na okres od dnia {0} do dnia {1}' : 'na czas od dnia {0} do dnia {1}', args: [od || DOTS, dd || DOTS] },
   };
 }
 function docUmowa(C, d) {
@@ -742,6 +743,7 @@ function docUmowa(C, d) {
     const line = raw.trim();
     if (!line) { gap(C, 5); return; }
     if (/^\[podpisy\]$/i.test(line)) { twoSignatures(C, ROLE[d.typ].strona1, ROLE[d.typ].strona2); return; }
+    if (/^\[podpis\]$/i.test(line)) { signature(C, ROLE[d.typ].podpis, { align: 'left', top: 24, lineLen: 200 }); return; }
     let m, kind = 'p', body = line;
     if ((m = line.match(/^##\s+(.*)$/))) { kind = 'h'; body = m[1]; }
     else if ((m = line.match(/^#\s+(.*)$/))) { kind = 't'; body = m[1]; }
