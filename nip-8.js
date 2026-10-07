@@ -196,7 +196,7 @@ $('nipBtn').addEventListener('click', async () => {
   }
 });
 
-// Address as returned by the lookups: "ul. Garbary 71/9" + kod + miasto.
+// Address as returned by the lookups: "ul. Przykładowa 1/2" + kod + miasto.
 function applyCompany(o) {
   if (o.nazwa) {
     setVal('nazwaPelna', up(o.nazwa));

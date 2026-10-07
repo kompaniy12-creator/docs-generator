@@ -21,7 +21,7 @@ function json(body: unknown, status: number, origin: string | null) {
   });
 }
 
-// "ul. Garbary 71 /9 61-866 Poznań" -> { ulica, kod, miasto }
+// "ul. Przykładowa 1 /2 00-000 Warszawa" -> { ulica, kod, miasto }
 function parseAdres(adres: string) {
   const out = { ulica: "", kod: "", miasto: "", adres };
   if (!adres) return out;
