@@ -387,6 +387,11 @@
         <div class="field"><label for="r_dataur">Data urodzenia</label><input id="r_dataur" name="r_dataur" type="date" /></div>
         <div class="field"><label for="r_adres">Adres zamieszkania</label><input id="r_adres" name="r_adres" type="text" /></div>
       </div>
+      <div class="field"><label for="r_pokrew">Pokrewieństwo</label><input id="r_pokrew" name="r_pokrew" type="text" placeholder="np. dziecko / małżonek" /></div>
+      <input type="hidden" name="r_dodatkowi" id="r_dodatkowi" value="[]" />
+      <div id="rodzinaExtra"></div>
+      <button type="button" id="rodzinaAdd" class="add-btn" style="margin:8px 0 0">＋ Dodaj następnego członka rodziny</button>
+      <p class="hint" style="margin:8px 0 0">Dla każdej osoby powstaje osobny wniosek.</p>
     </fieldset>
 
     <button type="submit" id="submitBtn">Pobierz komplet (PDF)</button>
@@ -401,6 +406,7 @@
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+<script src="stawki.js"></script>
 <script src="history.js"></script>
 <script src="workers.js"></script>
 <script src="wfirma.js"></script>

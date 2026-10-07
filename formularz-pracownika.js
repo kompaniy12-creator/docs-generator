@@ -242,8 +242,16 @@
     $('rodzinaBlock').hidden = !this.checked;
   });
   // ---------------- Contract terms: fields per contract type + legal minimums ----------------
-  var MIN_WAGE = 4806;   // minimalne wynagrodzenie za pracę 2026 (zł brutto / mies.) — zaktualizuj co roku
-  var MIN_HOURLY = 31.4; // minimalna stawka godzinowa 2026 (zł brutto)
+  // Statutory minimums in force on the contract start date (today if not given yet);
+  // stawki.js keeps them current from the official register of acts.
+  var MIN_WAGE = 4806, MIN_HOURLY = 31.4;
+  function syncStawki() {
+    var st = window.Stawki.at($('u_od').value);
+    MIN_WAGE = st.wage; MIN_HOURLY = st.hourly;
+    var txt = { od: st.from.slice(5) === '01-01' ? 'w ' + st.year + ' r.' : 'od ' + st.from.split('-').reverse().join('.') + ' r.',
+      wage: window.Stawki.zl(st.wage), half: window.Stawki.zl(st.wage / 2) };
+    form.querySelectorAll('[data-st]').forEach(function (el) { el.textContent = txt[el.getAttribute('data-st')]; });
+  }
   var ETAT = { 'pełny etat': 1, '3/4 etatu': 0.75, '1/2 etatu': 0.5, '1/4 etatu': 0.25 };
   function num(id) { return parseFloat(($(id).value || '').replace(/\s/g, '').replace(',', '.')); }
   function monthsBetween(a, b) { // whole months from date a to date b (b inclusive)
@@ -305,6 +313,7 @@
     return '';
   }
   function updatePay() {
+    syncStawki();
     var hint = $('u_stawka_hint');
     hint.textContent = payProblem();
     if (!hint.textContent) clearErr($('u_stawka')); // e.g. the wymiar changed, the amount is fine now
@@ -331,13 +340,54 @@
   $('u_minimalna').addEventListener('change', applyTyp);
   $('u_godziny_zmienne').addEventListener('change', function () { clearErr($('u_godziny')); });
   ['u_od', 'u_rodzaj'].forEach(function (id) { $(id).addEventListener('change', function () { clearErr($('u_do')); }); });
+  $('u_od').addEventListener('change', updatePay);
+  window.Stawki.ready.then(updatePay);
   applyTyp();
 
   $('p_gotowka').addEventListener('change', function () {
     var konto = $('p_konto');
     konto.disabled = this.checked;
+    $('kontoBox').style.display = this.checked ? 'none' : '';
     if (this.checked) { konto.value = ''; clearErr(konto); }
   });
+
+  // Polish phone number: 9 digits (not starting with 0), optionally prefixed +48 / 0048 / 48
+  function telDigits(v) {
+    var d = (v || '').replace(/[\s().-]/g, '').replace(/^(\+48|0048)/, '');
+    if (/^48\d{9}$/.test(d)) d = d.slice(2);
+    return /^[1-9]\d{8}$/.test(d) ? d : '';
+  }
+  $('p_telefon').addEventListener('blur', function () {
+    var d = telDigits(this.value);
+    if (d) { this.value = '+48 ' + d.slice(0, 3) + ' ' + d.slice(3, 6) + ' ' + d.slice(6); clearErr(this); }
+  });
+
+  // further family members (the first one uses the fixed r_* fields above)
+  var MAX_RODZINA = 8;
+  function addRodzina() {
+    var wrap = $('rodzinaExtra');
+    if (wrap.children.length >= MAX_RODZINA - 1) return;
+    var el = document.createElement('div');
+    el.className = 'rodzina-next';
+    el.innerHTML =
+      '<div class="rodzina-next-head"><span>Kolejny członek rodziny</span><button type="button">Usuń</button></div>' +
+      '<div class="row"><div class="field"><label>Imię i nazwisko</label><input type="text" data-r="imienazwisko" /></div>' +
+        '<div class="field"><label>PESEL</label><input type="text" inputmode="numeric" maxlength="11" data-r="pesel" /><span class="err"></span></div></div>' +
+      '<div class="row"><div class="field"><label>Data urodzenia</label><input type="date" data-r="dataur" /></div>' +
+        '<div class="field"><label>Pokrewieństwo</label><input type="text" data-r="pokrew" placeholder="np. dziecko / małżonek" /></div></div>' +
+      '<div class="field"><label>Adres zamieszkania</label><input type="text" data-r="adres" /></div>';
+    el.querySelector('button').addEventListener('click', function () { el.remove(); $('rodzinaAdd').style.display = ''; });
+    wrap.appendChild(el);
+    if (wrap.children.length >= MAX_RODZINA - 1) $('rodzinaAdd').style.display = 'none';
+  }
+  $('rodzinaAdd').addEventListener('click', addRodzina);
+  function extraRodzina() {
+    return Array.prototype.map.call($('rodzinaExtra').children, function (el) {
+      var m = {};
+      el.querySelectorAll('[data-r]').forEach(function (i) { m[i.getAttribute('data-r')] = i.value.trim(); });
+      return m;
+    }).filter(function (m) { return m.imienazwisko || m.pesel || m.dataur; });
+  }
   $('p_nopesel').addEventListener('change', function () {
     var pesel = $('p_pesel');
     pesel.disabled = this.checked;
@@ -485,11 +535,20 @@
     var znip = $('z_nip');
     if (znip.value && !nipValid(znip.value)) { setErr(znip, 'Nieprawidłowy NIP'); problems.push(znip); }
 
+    var tel = $('p_telefon');
+    if (tel.value && !telDigits(tel.value)) { setErr(tel, 'Podaj polski numer: 9 cyfr, np. +48 500 600 700'); problems.push(tel); }
+
     var email = $('p_email');
     if (email.value && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.value)) { setErr(email, 'Nieprawidłowy e-mail'); problems.push(email); }
 
     var rPesel = $('r_pesel');
     if ($('r_has').checked && rPesel.value && !peselValid(rPesel.value)) { setErr(rPesel, 'Nieprawidłowy PESEL'); problems.push(rPesel); }
+    if ($('r_has').checked) $('rodzinaExtra').querySelectorAll('[data-r="pesel"]').forEach(function (i) {
+      var bad = i.value && !peselValid(i.value), e = i.parentNode.querySelector('.err');
+      i.classList.toggle('invalid', !!bad);
+      e.textContent = bad ? 'Nieprawidłowy PESEL' : ''; e.classList.toggle('show', !!bad);
+      if (bad) problems.push(i);
+    });
 
     return problems;
   }
@@ -503,6 +562,7 @@
     var fd = new FormData(form), data = {};
     fd.forEach(function (v, k) { data[k] = typeof v === 'string' ? v.trim() : v; });
     ['p_nopesel', 'm_same', 'r_has', 'p_gotowka', 'u_godziny_zmienne', 'u_bezterminowo', 'u_minimalna'].forEach(function (k) { data[k] = $(k).checked; });
+    data.r_dodatkowi = data.r_has ? extraRodzina() : [];
     // fields hidden for the chosen contract type are disabled and absent above
     if (data.u_minimalna && data.u_typ === 'zlecenie') data.u_jedn = 'godz';
     if (data.u_typ === 'praca') { data.u_jedn = 'mies'; if (data.u_bezterminowo) data.u_rodzaj = 'nieokreslony'; }

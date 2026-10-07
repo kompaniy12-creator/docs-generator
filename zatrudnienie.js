@@ -66,6 +66,7 @@
       });
       html += '</div>';
     });
+    if (p.r_has === true) html += '<div class="grid"><div><b>Członkowie rodziny do NFZ:</b> ' + (1 + (Array.isArray(p.r_dodatkowi) ? p.r_dodatkowi.length : 0)) + '</div></div>';
     if (p.u_bezterminowo === true) html += '<div class="grid"><div><b>Okres:</b> bezterminowo (czas nieokreślony)</div></div>';
     if (p.u_minimalna === true) html += '<div class="grid"><div><b>Wynagrodzenie:</b> minimalne ustawowe (' + (p.u_typ === 'praca' ? 'miesięczne' : 'stawka godzinowa') + ')</div></div>';
     if (p.u_stawka) html += '<div class="grid"><div><b>Stawka:</b> ' + (p.u_jedn === 'mies' ? 'miesięczna' : 'godzinowa') + '</div></div>';

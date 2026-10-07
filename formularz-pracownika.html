@@ -42,6 +42,9 @@
   .err{display:none;color:#b91c1c;font-size:11.5px;margin-top:4px;font-weight:500}
   .err.show{display:block}
   [data-typ][hidden]{display:none !important}
+  .rodzina-next{margin-top:14px;padding-top:14px;border-top:1px dashed #d4dbe6}
+  .rodzina-next-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:13px;font-weight:600;color:var(--brand-navy)}
+  .rodzina-next-head button{background:none;border:none;color:#b91c1c;font:inherit;font-size:12.5px;cursor:pointer}
   /* nothing but the contract-type choice until it is made */
   form.no-typ > *:not(#typBox){display:none !important}
   .check-row{display:flex;align-items:flex-start;gap:8px;margin-top:4px;font-size:13.5px;font-weight:400;color:#444;cursor:pointer}
@@ -235,9 +238,9 @@
         </div>
       </div>
       <div id="u_800" style="margin:10px 0 0;padding:10px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:13px;color:#78350f">
-        <strong>Świadczenie 800+ (cudzoziemcy):</strong> aby zachować prawo do 800+, pracownik musi być aktywny zawodowo, a podstawa jego składek (wynagrodzenie) musi wynosić co najmniej połowę minimalnego wynagrodzenia za pracę — w 2026 r. to <strong>2403 zł brutto miesięcznie</strong> (50% z 4806 zł).
+        <strong>Świadczenie 800+ (cudzoziemcy):</strong> aby zachować prawo do 800+, pracownik musi być aktywny zawodowo, a podstawa jego składek (wynagrodzenie) musi wynosić co najmniej połowę minimalnego wynagrodzenia za pracę — <span data-st="od">w 2026 r.</span> to <strong><span data-st="half">2403</span> zł brutto miesięcznie</strong> (50% z <span data-st="wage">4806</span> zł).
         <span id="u_800_calc"></span>
-        <div style="margin-top:8px"><strong>Karta pobytu (zezwolenie na pobyt czasowy i pracę):</strong> jeśli pracownik będzie ubiegał się o kartę pobytu na podstawie tej pracy, jego wynagrodzenie nie może być niższe niż minimalne wynagrodzenie za pracę — w 2026 r. to <strong>4806 zł brutto miesięcznie</strong>, niezależnie od wymiaru czasu pracy i rodzaju umowy.
+        <div style="margin-top:8px"><strong>Karta pobytu (zezwolenie na pobyt czasowy i pracę):</strong> jeśli pracownik będzie ubiegał się o kartę pobytu na podstawie tej pracy, jego wynagrodzenie nie może być niższe niż minimalne wynagrodzenie za pracę — <span data-st="od">w 2026 r.</span> to <strong><span data-st="wage">4806</span> zł brutto miesięcznie</strong>, niezależnie od wymiaru czasu pracy i rodzaju umowy.
         <span id="u_karta_calc"></span></div>
       </div>
       <p class="hint" style="margin:8px 0 0">Te dane trafią do umowy. Jeśli ich jeszcze nie znasz — zostaw puste, uzupełni je dział kadr.</p>
@@ -388,11 +391,12 @@
       <div class="row">
         <div class="field">
           <label for="p_telefon">Telefon <span class="req">*</span></label>
-          <input id="p_telefon" name="p_telefon" type="tel" required placeholder="+48 ..." />
+          <input id="p_telefon" name="p_telefon" type="tel" required placeholder="+48 000 000 000" maxlength="16" />
+          <span class="err" data-for="p_telefon"></span>
         </div>
         <div class="field">
-          <label for="p_email">E-mail</label>
-          <input id="p_email" name="p_email" type="email" />
+          <label for="p_email">E-mail <span class="req">*</span></label>
+          <input id="p_email" name="p_email" type="email" required />
           <span class="err" data-for="p_email"></span>
         </div>
       </div>
@@ -414,10 +418,12 @@
         </div>
       </div>
       <div class="field">
-        <label for="p_konto">Numer konta bankowego <span class="req">*</span></label>
-        <input id="p_konto" name="p_konto" type="text" required placeholder="PL00 0000 0000 0000 0000 0000 0000" />
-        <span class="err" data-for="p_konto"></span>
-        <span class="hint">26 cyfr (numer rachunku w Polsce).</span>
+        <div id="kontoBox">
+          <label for="p_konto">Numer konta bankowego <span class="req">*</span></label>
+          <input id="p_konto" name="p_konto" type="text" required placeholder="PL00 0000 0000 0000 0000 0000 0000" />
+          <span class="err" data-for="p_konto"></span>
+          <span class="hint">26 cyfr (numer rachunku w Polsce).</span>
+        </div>
         <label class="check-row" style="margin-top:10px"><input type="checkbox" id="p_gotowka" name="p_gotowka" /> Wynagrodzenie wypłacane gotówką (bez konta bankowego)</label>
       </div>
     </fieldset>
@@ -432,9 +438,11 @@
         </div>
         <div class="row">
           <div class="field"><label for="r_dataur">Data urodzenia</label><input id="r_dataur" name="r_dataur" type="date" /></div>
-          <div class="field"><label for="r_od">Pokrewieństwo</label><input id="r_od" name="r_od" type="text" placeholder="np. dziecko / małżonek" /></div>
+          <div class="field"><label for="r_pokrew">Pokrewieństwo</label><input id="r_pokrew" name="r_pokrew" type="text" placeholder="np. dziecko / małżonek" /></div>
         </div>
         <div class="field"><label for="r_adres">Adres zamieszkania</label><input id="r_adres" name="r_adres" type="text" /></div>
+        <div id="rodzinaExtra"></div>
+        <button type="button" id="rodzinaAdd" style="margin-top:10px;background:#fff;border:1.5px solid var(--brand-navy);color:var(--brand-navy);border-radius:8px;padding:9px 14px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer">＋ Dodaj następnego członka rodziny</button>
       </div>
     </fieldset>
 
@@ -453,6 +461,7 @@
   </footer>
 </main>
 
+<script src="stawki.js"></script>
 <script src="urzedy.js"></script>
 <script src="formularz-pracownika.js"></script>
 </body>

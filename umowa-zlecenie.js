@@ -62,6 +62,40 @@ uTyp.addEventListener('change', applyTyp);
 document.getElementById('u_jedn').addEventListener('change', (e) => { e.target.dataset.touched = '1'; });
 applyTyp();
 
+// ---------------- Further family members ----------------
+// Kept as JSON in the hidden r_dodatkowi field so autosave and history carry them.
+const rodzinaExtra = document.getElementById('rodzinaExtra');
+const rodzinaStore = document.getElementById('r_dodatkowi');
+function readRodzinaExtra() {
+  try { const a = JSON.parse(rodzinaStore.value || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+}
+function syncRodzinaExtra() {
+  rodzinaStore.value = JSON.stringify(Array.from(rodzinaExtra.children).map((el) => {
+    const m = {};
+    el.querySelectorAll('[data-r]').forEach((i) => { m[i.getAttribute('data-r')] = i.value.trim(); });
+    return m;
+  }));
+}
+function addRodzinaExtra(m) {
+  m = m || {};
+  const el = document.createElement('div');
+  el.style.cssText = 'margin-top:12px;padding-top:12px;border-top:1px dashed #d4dbe6';
+  const inp = (key, label, type) => `<div class="field"><label>${label}</label><input type="${type || 'text'}" data-r="${key}" /></div>`;
+  el.innerHTML = '<div class="row">' + inp('imienazwisko', 'Imię i nazwisko') + inp('pesel', 'PESEL') + '</div>' +
+    '<div class="row three">' + inp('dataur', 'Data urodzenia', 'date') + inp('pokrew', 'Pokrewieństwo') + inp('adres', 'Adres zamieszkania') + '</div>' +
+    '<button type="button" class="add-btn" style="margin:0;color:#b91c1c">Usuń tę osobę</button>';
+  el.querySelectorAll('[data-r]').forEach((i) => { i.value = m[i.getAttribute('data-r')] || ''; i.addEventListener('input', syncRodzinaExtra); });
+  el.querySelector('button').addEventListener('click', () => { el.remove(); syncRodzinaExtra(); });
+  rodzinaExtra.appendChild(el);
+}
+function renderRodzinaExtra() {
+  const list = readRodzinaExtra();
+  rodzinaExtra.innerHTML = '';
+  list.forEach(addRodzinaExtra);
+}
+document.getElementById('rodzinaAdd').addEventListener('click', () => { addRodzinaExtra(); syncRodzinaExtra(); });
+rodzinaStore.addEventListener('change', renderRodzinaExtra); // autosave / history restore
+
 // ---------------- Contract template of the client firm ----------------
 // A firm (by NIP) may have its own contract template per contract type, stored in
 // umowa_szablony; without one the standard contract (UMOWA_STANDARD) is used.
@@ -215,6 +249,7 @@ async function loadWorkers() {
     else { mSame.checked = true; meldunekFields.hidden = true; }
     // family-member toggle
     if (d.r_has === true || d.r_imienazwisko) { docRodzina.checked = true; rodzinaFields.hidden = false; }
+    if (Array.isArray(d.r_dodatkowi)) { rodzinaStore.value = JSON.stringify(d.r_dodatkowi); renderRodzinaExtra(); }
     if (d.u_jedn) document.getElementById('u_jedn').dataset.touched = '1';
     if (d.u_godziny_zmienne === true) document.getElementById('u_godziny_zmienne').checked = true;
     if (d.u_minimalna === true) document.getElementById('u_minimalna').checked = true;
@@ -364,7 +399,8 @@ function collectData() {
     docs: Object.keys(DOC_FIELD).reduce((o, k) => { o[k] = chk(DOC_FIELD[k]); return o; }, {}),
     rodzina: {
       od: get('r_od'), imienazwisko: get('r_imienazwisko'),
-      pesel: get('r_pesel'), dataur: get('r_dataur'), adres: get('r_adres'),
+      pesel: get('r_pesel'), dataur: get('r_dataur'), adres: get('r_adres'), pokrew: get('r_pokrew'),
+      dodatkowi: readRodzinaExtra(),
     },
   };
 }
@@ -1018,7 +1054,13 @@ function docGotowka(C, d) {
 }
 
 // 7. WNIOSEK O ZGŁOSZENIE CZŁONKÓW RODZINY — 5a
+// one application per family member
 function docCzlonkowieRodziny(C, d) {
+  [d.rodzina].concat(d.rodzina.dodatkowi || []).forEach((m) => wniosekCzlonekRodziny(C, d, m));
+}
+function wniosekCzlonekRodziny(C, d, m) {
+  const pk = (m.pokrew || '').toLowerCase();
+  const malz = /mał|malz|żon|zon|mąż|maz/.test(pk), dziecko = /dzie|syn|cór|cor/.test(pk);
   newPage(C);
   placeDate(C, d.sign.miejscowosc, d.sign.data);
   field(C, 'Imię i nazwisko', fullName(d.p));
@@ -1027,14 +1069,14 @@ function docCzlonkowieRodziny(C, d) {
   title(C, 'Wniosek o zgłoszenie członków rodziny do ubezpieczenia zdrowotnego');
   para(C, ['Zwracam się z prośbą o zgłoszenie do ubezpieczenia zdrowotnego członka rodziny od dnia: {0} .', isoToPLDots(d.rodzina.od) || DOTS], { after: 6 });
   para(C, 'Dane członka rodziny zgłaszanego do ubezpieczenia zdrowotnego:', { after: 4 });
-  field(C, 'Imię i nazwisko członka rodziny', d.rodzina.imienazwisko);
-  field(C, 'PESEL', d.rodzina.pesel);
-  field(C, 'Data urodzenia', isoToPLDots(d.rodzina.dataur));
-  field(C, 'Adres zamieszkania', d.rodzina.adres, { after: 8 });
+  field(C, 'Imię i nazwisko członka rodziny', m.imienazwisko);
+  field(C, 'PESEL', m.pesel);
+  field(C, 'Data urodzenia', isoToPLDots(m.dataur));
+  field(C, 'Adres zamieszkania', m.adres, { after: 8 });
 
   para(C, 'Stopień pokrewieństwa*:', { after: 3 });
-  checkLine(C, 'współmałżonek', false);
-  checkLine(C, 'dziecko własne, przysposobione lub dziecko współmałżonka', false);
+  checkLine(C, 'współmałżonek', malz);
+  checkLine(C, 'dziecko własne, przysposobione lub dziecko współmałżonka', dziecko && !malz);
   checkLine(C, 'inny (jaki?): ............................................................', false);
   gap(C, 4);
   para(C, 'Czy członek rodziny pozostaje we wspólnym gospodarstwie z osobą ubezpieczoną?*', { after: 3 });
@@ -1104,14 +1146,15 @@ function docWyborUmowy(C, d) {
 }
 // 9b. INFORMACJA — różnice między umową o pracę a umową zlecenia (druga strona oświadczenia)
 function docInformacjaRoznice(C, d) {
+  const st = window.Stawki.at(d.umowa.od || d.sign.data); // figures in force when the contract starts
   newPage(C);
   title(C, 'INFORMACJA');
   center(C, 'Różnice między umową o pracę a umową zlecenia', { bold: true, after: 8 });
   para(C, 'Umowa o pracę i umowa zlecenia to dwie odrębne formy zatrudnienia, oparte na różnych przepisach i dające różny zakres praw. Umowa o pracę jest regulowana Kodeksem pracy, natomiast umowa zlecenia – Kodeksem cywilnym (art. 734 i 750). O rzeczywistym charakterze zatrudnienia decyduje faktyczny sposób wykonywania pracy, a nie nazwa nadana umowie przez strony (art. 22 § 1 i § 1¹ Kodeksu pracy).', { after: 8 });
   para(C, 'Umowa o pracę', { bold: true, after: 3 });
-  para(C, 'Praca na podstawie umowy o pracę jest wykonywana osobiście, odpłatnie i pod kierownictwem pracodawcy – w wyznaczonym miejscu i czasie, według jego poleceń. W zamian pracownik korzysta z pełnej ochrony przewidzianej w Kodeksie pracy. Przysługuje mu wynagrodzenie nie niższe niż minimalne, które w 2026 roku wynosi 4 806 zł brutto miesięcznie przy pełnym etacie. Obowiązują go normy czasu pracy (8 godzin na dobę i przeciętnie 40 godzin tygodniowo), a za pracę w godzinach nadliczbowych należy się dodatek. Pracownik ma prawo do płatnego urlopu wypoczynkowego w wymiarze 20 lub 26 dni w roku, jest objęty obowiązkowym ubezpieczeniem chorobowym (zasiłek chorobowy i macierzyński), a rozwiązanie umowy wymaga zachowania okresu wypowiedzenia i – przy umowie na czas nieokreślony – uzasadnienia. Szczególną ochroną objęte są m.in. kobiety w ciąży oraz osoby w wieku przedemerytalnym. Okres zatrudnienia wlicza się do stażu pracy i do emerytury, a po zakończeniu pracy pracownik otrzymuje świadectwo pracy.', { after: 8 });
+  para(C, ['Praca na podstawie umowy o pracę jest wykonywana osobiście, odpłatnie i pod kierownictwem pracodawcy – w wyznaczonym miejscu i czasie, według jego poleceń. W zamian pracownik korzysta z pełnej ochrony przewidzianej w Kodeksie pracy. Przysługuje mu wynagrodzenie nie niższe niż minimalne, które w {0} roku wynosi {1} zł brutto miesięcznie przy pełnym etacie. Obowiązują go normy czasu pracy (8 godzin na dobę i przeciętnie 40 godzin tygodniowo), a za pracę w godzinach nadliczbowych należy się dodatek. Pracownik ma prawo do płatnego urlopu wypoczynkowego w wymiarze 20 lub 26 dni w roku, jest objęty obowiązkowym ubezpieczeniem chorobowym (zasiłek chorobowy i macierzyński), a rozwiązanie umowy wymaga zachowania okresu wypowiedzenia i – przy umowie na czas nieokreślony – uzasadnienia. Szczególną ochroną objęte są m.in. kobiety w ciąży oraz osoby w wieku przedemerytalnym. Okres zatrudnienia wlicza się do stażu pracy i do emerytury, a po zakończeniu pracy pracownik otrzymuje świadectwo pracy.', st.year, window.Stawki.zl(st.wage), window.Stawki.zl(st.hourly)], { after: 8 });
   para(C, 'Umowa zlecenia', { bold: true, after: 3 });
-  para(C, 'Umowa zlecenia opiera się na samodzielnym wykonywaniu określonych czynności – zleceniobiorca co do zasady sam organizuje swoją pracę i nie podlega kierownictwu w takim zakresie jak pracownik etatowy. Za każdą godzinę wykonywania zlecenia przysługuje wynagrodzenie nie niższe niż minimalna stawka godzinowa, która w 2026 roku wynosi 31,40 zł brutto (prawa do niej nie można się zrzec). Przy tej formie zatrudnienia nie obowiązują ustawowe normy czasu pracy ani dodatek za nadgodziny, a urlop wypoczynkowy nie przysługuje z mocy prawa. Ubezpieczenie chorobowe jest dobrowolne – zasiłek chorobowy przysługuje tylko wtedy, gdy zleceniobiorca zgłosi się do tego ubezpieczenia. Umowę zlecenia można wypowiedzieć w każdym czasie (art. 746 Kodeksu cywilnego), nie obowiązują tu okresy ani szczególna ochrona przed rozwiązaniem. Okres pracy na zleceniu nie wlicza się do stażu pracowniczego, a po jego zakończeniu wystawiany jest rachunek lub zaświadczenie, a nie świadectwo pracy.', { after: 8 });
+  para(C, ['Umowa zlecenia opiera się na samodzielnym wykonywaniu określonych czynności – zleceniobiorca co do zasady sam organizuje swoją pracę i nie podlega kierownictwu w takim zakresie jak pracownik etatowy. Za każdą godzinę wykonywania zlecenia przysługuje wynagrodzenie nie niższe niż minimalna stawka godzinowa, która w {0} roku wynosi {2} zł brutto (prawa do niej nie można się zrzec). Przy tej formie zatrudnienia nie obowiązują ustawowe normy czasu pracy ani dodatek za nadgodziny, a urlop wypoczynkowy nie przysługuje z mocy prawa. Ubezpieczenie chorobowe jest dobrowolne – zasiłek chorobowy przysługuje tylko wtedy, gdy zleceniobiorca zgłosi się do tego ubezpieczenia. Umowę zlecenia można wypowiedzieć w każdym czasie (art. 746 Kodeksu cywilnego), nie obowiązują tu okresy ani szczególna ochrona przed rozwiązaniem. Okres pracy na zleceniu nie wlicza się do stażu pracowniczego, a po jego zakończeniu wystawiany jest rachunek lub zaświadczenie, a nie świadectwo pracy.', st.year, window.Stawki.zl(st.wage), window.Stawki.zl(st.hourly)], { after: 8 });
   para(C, 'Oświadczam, że zapoznałam/zapoznałem się z powyższą informacją i została ona dla mnie zrozumiała.');
   twoSignatures(C, 'Miejscowość i data', 'Czytelny podpis');
 }
@@ -1493,6 +1536,7 @@ form.addEventListener('submit', async (e) => {
   }
 
   await umowaTpl.pending;
+  await window.Stawki.ready;
   const data = collectData();
   if (!anyDocSelected(data)) { showStatus('Zaznacz przynajmniej jeden dokument do wygenerowania.', 'error'); return; }
 
