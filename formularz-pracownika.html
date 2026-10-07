@@ -159,6 +159,34 @@
         </select>
         <span class="err" data-for="u_typ"></span>
       </div>
+      <div class="row">
+        <div class="field">
+          <label for="u_stanowisko">Stanowisko / zakres czynności</label>
+          <input id="u_stanowisko" name="u_stanowisko" type="text" placeholder="np. pracownik produkcji" />
+        </div>
+        <div class="field">
+          <label for="u_miejsce">Miejsce wykonywania pracy</label>
+          <input id="u_miejsce" name="u_miejsce" type="text" placeholder="np. Poznań, ul. ..." />
+        </div>
+      </div>
+      <div class="row three">
+        <div class="field">
+          <label for="u_od">Data rozpoczęcia</label>
+          <input id="u_od" name="u_od" type="date" />
+        </div>
+        <div class="field">
+          <label for="u_stawka">Wynagrodzenie (zł brutto)</label>
+          <input id="u_stawka" name="u_stawka" type="text" inputmode="decimal" placeholder="np. 31,40" />
+        </div>
+        <div class="field">
+          <label for="u_jedn">Stawka</label>
+          <select id="u_jedn" name="u_jedn">
+            <option value="godz">za godzinę</option>
+            <option value="mies">miesięcznie</option>
+          </select>
+        </div>
+      </div>
+      <p class="hint" style="margin:4px 0 0">Te dane trafią do umowy. Jeśli ich jeszcze nie znasz — zostaw puste, uzupełni je dział kadr.</p>
     </fieldset>
 
     <fieldset>

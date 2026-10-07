@@ -65,7 +65,8 @@
   .site-footer{margin-top:48px;padding-top:20px;border-top:1px solid #e5e5e5;text-align:center;font-size:13px}
   .site-footer a{color:#666;text-decoration:none}
   .site-footer a:hover{color:var(--brand-navy);text-decoration:underline}
-  #rodzinaFields[hidden],#meldunekFields[hidden],[data-typ][hidden]{display:none}
+  #rodzinaFields[hidden],#meldunekFields[hidden],[data-typ][hidden],#tplBox[hidden]{display:none}
+  #tplFields button{border:1px solid #d4dbe6;background:#f6f8fb;border-radius:6px;padding:3px 8px;font:inherit;font-size:12px;cursor:pointer;color:#1B3F7F}
 </style>
 </head>
 <body>
@@ -122,6 +123,26 @@
         <div class="field">
           <label for="z_ulica">Ulica i numer siedziby</label>
           <input id="z_ulica" name="z_ulica" type="text" required placeholder="np. ul. Przykładowa 1" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="z_nip">NIP firmy <span class="opt">(wybiera wzór umowy klienta)</span></label>
+          <input id="z_nip" name="z_nip" type="text" inputmode="numeric" maxlength="13" />
+        </div>
+        <div class="field">
+          <label for="z_reprezentant">Reprezentowana przez <span class="opt">(do umowy)</span></label>
+          <input id="z_reprezentant" name="z_reprezentant" type="text" placeholder="np. Jan Kowalski — Prezes Zarządu" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="z_regon">REGON <span class="opt">(opcjonalnie)</span></label>
+          <input id="z_regon" name="z_regon" type="text" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="z_krs">KRS <span class="opt">(opcjonalnie)</span></label>
+          <input id="z_krs" name="z_krs" type="text" inputmode="numeric" />
         </div>
       </div>
       <div class="row">
@@ -247,6 +268,65 @@
     </fieldset>
 
     <fieldset>
+      <legend>Umowa — warunki</legend>
+      <div class="row">
+        <div class="field">
+          <label for="u_stanowisko" data-typ-text data-zlecenie="Przedmiot zlecenia (czynności)" data-praca="Stanowisko / rodzaj pracy">Przedmiot zlecenia (czynności)</label>
+          <input id="u_stanowisko" name="u_stanowisko" type="text" placeholder="np. pracownik produkcji" />
+        </div>
+        <div class="field">
+          <label for="u_miejsce">Miejsce wykonywania</label>
+          <input id="u_miejsce" name="u_miejsce" type="text" placeholder="np. Poznań, ul. ..." />
+        </div>
+      </div>
+      <div class="row three">
+        <div class="field"><label for="u_od">Od dnia</label><input id="u_od" name="u_od" type="date" /></div>
+        <div class="field"><label for="u_do">Do dnia <span class="opt">(puste = do uzupełnienia)</span></label><input id="u_do" name="u_do" type="date" /></div>
+        <div class="field" data-typ="praca">
+          <label for="u_rodzaj">Rodzaj umowy o pracę</label>
+          <select id="u_rodzaj" name="u_rodzaj">
+            <option value="probny">na okres próbny</option>
+            <option value="okreslony" selected>na czas określony</option>
+            <option value="nieokreslony">na czas nieokreślony</option>
+          </select>
+        </div>
+      </div>
+      <div class="row three">
+        <div class="field"><label for="u_stawka">Wynagrodzenie (zł)</label><input id="u_stawka" name="u_stawka" type="text" inputmode="decimal" placeholder="np. 31,40" /></div>
+        <div class="field">
+          <label for="u_jedn">Stawka</label>
+          <select id="u_jedn" name="u_jedn">
+            <option value="godz">brutto za godzinę</option>
+            <option value="mies">brutto miesięcznie</option>
+          </select>
+        </div>
+        <div class="field"><label for="u_wyplata">Wypłata do dnia miesiąca</label><input id="u_wyplata" name="u_wyplata" type="text" inputmode="numeric" value="10" /></div>
+      </div>
+      <div class="field" data-typ="praca">
+        <label for="u_wymiar">Wymiar czasu pracy</label>
+        <input id="u_wymiar" name="u_wymiar" type="text" value="pełny etat" />
+      </div>
+      <p class="hint" id="tplStatus" style="margin:10px 0 8px">Wzór umowy: standardowy TD.</p>
+      <button type="button" id="tplToggle" class="add-btn" style="margin:0">Wzór umowy klienta…</button>
+      <div id="tplBox" hidden style="margin-top:12px">
+        <p class="hint" style="margin:0 0 8px">Wklej lub wczytaj umowę klienta i wstaw pola <code>{{…}}</code> tam, gdzie mają trafić dane. Zapisany wzór jest używany dla tej firmy (NIP) i wybranego rodzaju umowy zamiast wzoru standardowego. Formatowanie: <code># Tytuł</code>, <code>## Nagłówek</code>, <code>1. punkt</code>, <code>[podpisy]</code>.</p>
+        <div id="tplFields" style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px">
+          <button type="button">firma</button><button type="button">firma_adres</button><button type="button">firma_nip</button><button type="button">firma_regon</button><button type="button">firma_krs</button><button type="button">reprezentant</button>
+          <button type="button">imie_nazwisko</button><button type="button">adres</button><button type="button">pesel</button><button type="button">data_urodzenia</button><button type="button">dokument</button><button type="button">obywatelstwo</button><button type="button">konto</button>
+          <button type="button">stanowisko</button><button type="button">miejsce_pracy</button><button type="button">wymiar</button><button type="button">stawka</button><button type="button">jednostka</button><button type="button">termin_wyplaty</button>
+          <button type="button">rodzaj_umowy</button><button type="button">okres</button><button type="button">data_od</button><button type="button">data_do</button><button type="button">data_zawarcia</button><button type="button">miejscowosc</button>
+        </div>
+        <textarea id="tplText" rows="16" style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:12.5px" placeholder="Treść umowy klienta z polami {{imie_nazwisko}}, {{stawka}} …"></textarea>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center">
+          <button type="button" id="tplStd" class="add-btn" style="margin:0">Wstaw wzór standardowy</button>
+          <label class="add-btn" style="margin:0;cursor:pointer">Wczytaj z pliku (DOCX / TXT)<input type="file" id="tplFile" accept=".docx,.txt" hidden /></label>
+          <button type="button" id="tplSave" class="add-btn" style="margin:0">💾 Zapisz wzór tej firmy</button>
+          <button type="button" id="tplDel" class="add-btn" style="margin:0;color:#b91c1c">Usuń wzór firmy</button>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
       <legend>Miejscowość i data podpisania</legend>
       <div class="row">
         <div class="field">
@@ -263,6 +343,7 @@
     <fieldset>
       <legend>Dokumenty w komplecie</legend>
       <div class="checks">
+        <label class="check"><input type="checkbox" name="doc_umowa" checked /><span class="ct"><span data-typ-text data-zlecenie="Umowa zlecenie (treść umowy)" data-praca="Umowa o pracę (treść umowy)">Umowa zlecenie (treść umowy)</span><small>Wg wzoru klienta, a gdy go nie ma — wzoru standardowego. Warunki z sekcji „Umowa — warunki”.</small></span></label>
         <label class="check"><input type="checkbox" name="doc_kwest" checked /><span class="ct"><span>Kwestionariusz osobowy</span></span></label>
         <label class="check" data-typ="zlecenie"><input type="checkbox" name="doc_zus" checked /><span class="ct"><span>Oświadczenie zleceniobiorcy (cele podatkowe i ZUS)</span><small>Pola tożsamości wypełnione, warianty „Nie jestem/Jestem” do skreślenia ręcznie.</small></span></label>
         <label class="check" data-typ="zlecenie"><input type="checkbox" name="doc_wykonawca" checked /><span class="ct"><span>Oświadczenie wykonawcy dla celów podatkowych</span></span></label>
@@ -304,6 +385,7 @@
 
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script src="history.js"></script>
 <script src="workers.js"></script>
 <script src="wfirma.js"></script>

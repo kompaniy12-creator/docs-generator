@@ -34,10 +34,85 @@ const uTyp = document.getElementById('u_typ');
 function applyTyp() {
   const typ = uTyp.value === 'praca' ? 'praca' : 'zlecenie';
   document.querySelectorAll('[data-typ]').forEach((el) => { el.hidden = el.getAttribute('data-typ') !== typ; });
+  const jedn = document.getElementById('u_jedn');
+  if (!jedn.dataset.touched) jedn.value = typ === 'praca' ? 'mies' : 'godz';
   document.querySelectorAll('[data-typ-text]').forEach((el) => { el.textContent = el.getAttribute('data-' + typ); });
 }
 uTyp.addEventListener('change', applyTyp);
+document.getElementById('u_jedn').addEventListener('change', (e) => { e.target.dataset.touched = '1'; });
 applyTyp();
+
+// ---------------- Contract template of the client firm ----------------
+// A firm (by NIP) may have its own contract template per contract type, stored in
+// umowa_szablony; without one the standard contract (UMOWA_STANDARD) is used.
+const umowaTpl = { custom: '', key: '' };
+const tplStatus = document.getElementById('tplStatus');
+const tplBox = document.getElementById('tplBox');
+const tplText = document.getElementById('tplText');
+const zNip = document.getElementById('z_nip');
+function tplNip() { return zNip.value.replace(/\D/g, ''); }
+function tplTyp() { return uTyp.value === 'praca' ? 'praca' : 'zlecenie'; }
+function tplShow(msg) { tplStatus.textContent = msg; }
+// the submit handler awaits .pending, so an auto-generated packet never races the lookup
+function loadUmowaTpl() { umowaTpl.pending = fetchUmowaTpl(); return umowaTpl.pending; }
+async function fetchUmowaTpl() {
+  const nip = tplNip(), typ = tplTyp(), key = nip + '|' + typ;
+  umowaTpl.key = key; umowaTpl.custom = '';
+  if (nip.length !== 10) { tplShow('Wzór umowy: standardowy TD (podaj NIP firmy, aby użyć wzoru klienta).'); tplText.value = ''; return; }
+  if (!window.sb) return;
+  const r = await window.sb.from('umowa_szablony').select('tresc,updated_at').eq('nip', nip).eq('typ', typ).maybeSingle();
+  if (umowaTpl.key !== key) return; // NIP / type changed while loading
+  if (r.error) { tplShow('Nie udało się sprawdzić wzoru klienta: ' + r.error.message); return; }
+  if (r.data) {
+    umowaTpl.custom = r.data.tresc; tplText.value = r.data.tresc;
+    tplShow('Wzór umowy: wzór klienta (NIP ' + nip + '), zapisany ' + new Date(r.data.updated_at).toLocaleDateString('pl-PL') + '.');
+  } else { tplText.value = ''; tplShow('Wzór umowy: standardowy TD — ta firma nie ma własnego wzoru.'); }
+}
+zNip.addEventListener('change', loadUmowaTpl);
+uTyp.addEventListener('change', loadUmowaTpl);
+document.getElementById('tplToggle').addEventListener('click', () => { tplBox.hidden = !tplBox.hidden; });
+document.getElementById('tplStd').addEventListener('click', () => {
+  if (tplText.value.trim() && !confirm('Zastąpić treść w edytorze wzorem standardowym?')) return;
+  tplText.value = UMOWA_STANDARD[tplTyp()];
+});
+document.getElementById('tplFile').addEventListener('change', async (e) => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    if (/\.docx$/i.test(f.name)) {
+      if (!window.mammoth) throw new Error('Nie załadowano obsługi DOCX.');
+      tplText.value = (await window.mammoth.extractRawText({ arrayBuffer: await f.arrayBuffer() })).value.replace(/\n{3,}/g, '\n\n').trim();
+    } else tplText.value = (await f.text()).trim();
+    tplShow('Wczytano treść z pliku — wstaw pola {{…}} w miejscach danych i zapisz wzór.');
+  } catch (err) { tplShow('Nie udało się wczytać pliku: ' + (err.message || err)); }
+});
+document.getElementById('tplFields').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  const ins = '{{' + b.textContent + '}}', a = tplText.selectionStart, z = tplText.selectionEnd;
+  tplText.value = tplText.value.slice(0, a) + ins + tplText.value.slice(z);
+  tplText.focus(); tplText.selectionStart = tplText.selectionEnd = a + ins.length;
+});
+document.getElementById('tplSave').addEventListener('click', async () => {
+  const nip = tplNip(), tresc = tplText.value.trim();
+  if (nip.length !== 10) return tplShow('Podaj 10-cyfrowy NIP firmy, aby zapisać jej wzór.');
+  if (!tresc) return tplShow('Wzór jest pusty.');
+  const u = await window.sb.auth.getUser();
+  const r = await window.sb.from('umowa_szablony').upsert({
+    nip, typ: tplTyp(), tresc, updated_at: new Date().toISOString(),
+    updated_by: u && u.data && u.data.user ? u.data.user.id : null,
+  });
+  if (r.error) return tplShow('Błąd zapisu: ' + r.error.message);
+  await loadUmowaTpl();
+});
+document.getElementById('tplDel').addEventListener('click', async () => {
+  const nip = tplNip();
+  if (nip.length !== 10 || !umowaTpl.custom) return tplShow('Ta firma nie ma zapisanego wzoru.');
+  if (!confirm('Usunąć wzór klienta (NIP ' + nip + ') i wrócić do wzoru standardowego?')) return;
+  const r = await window.sb.from('umowa_szablony').delete().eq('nip', nip).eq('typ', tplTyp());
+  if (r.error) return tplShow('Błąd: ' + r.error.message);
+  await loadUmowaTpl();
+});
+loadUmowaTpl();
 
 // bilingual variant: on by default for non-Polish citizenship (until the user decides otherwise)
 const tOn = document.getElementById('t_on');
@@ -120,8 +195,10 @@ async function loadWorkers() {
     else { mSame.checked = true; meldunekFields.hidden = true; }
     // family-member toggle
     if (d.r_has === true || d.r_imienazwisko) { docRodzina.checked = true; rodzinaFields.hidden = false; }
+    if (d.u_jedn) document.getElementById('u_jedn').dataset.touched = '1';
     applyTyp();
     syncTlumaczenie();
+    loadUmowaTpl();
     // cash payout chosen on intake -> include the "wypłata w gotówce" request
     if (d.p_gotowka === true) {
       const dg = document.querySelector('[name="doc_gotowka"]');
@@ -190,6 +267,7 @@ async function loadWorkers() {
       setVal('z_nazwa', c.name);
       setVal('z_miasto', c.city);
       setVal('z_ulica', c.street);
+      if (c.nip) { setVal('z_nip', String(c.nip).replace(/\D/g, '')); loadUmowaTpl(); }
       setStatus('Dane Zleceniodawcy wczytane z wFirma.');
     } catch (e) {
       setStatus('Błąd: ' + (e.message || e));
@@ -218,12 +296,19 @@ function collectData() {
   return {
     typ,
     tlumaczenie: { on: chk('t_on'), jezyk: get('t_jezyk') },
+    umowa: {
+      stanowisko: get('u_stanowisko'), miejsce: get('u_miejsce'), od: get('u_od'), do: get('u_do'),
+      rodzaj: get('u_rodzaj'), wymiar: get('u_wymiar'), stawka: get('u_stawka'), jedn: get('u_jedn'),
+      wyplata: get('u_wyplata'),
+    },
+    umowaTpl: umowaTpl.custom || '',
     z: {
       nazwa: get('z_nazwa'),
       miasto: get('z_miasto'),
       ulica: get('z_ulica'),
       iodAdres: get('z_iod_adres'),
       iodEmail: get('z_iod_email'),
+      nip: get('z_nip'), regon: get('z_regon'), krs: get('z_krs'), reprezentant: get('z_reprezentant'),
     },
     p: {
       nazwisko: get('p_nazwisko'),
@@ -251,6 +336,7 @@ function collectData() {
     },
     sign: { miejscowosc: get('d_miejscowosc'), data: get('d_data') },
     docs: {
+      umowa: chk('doc_umowa'),
       kwest: chk('doc_kwest'), zus: chk('doc_zus'), wykonawca: chk('doc_wykonawca'),
       ppkInfo: chk('doc_ppk_info'), wybor: chk('doc_wybor'), rodo: chk('doc_rodo'),
       ppkRez: chk('doc_ppk_rez'), gotowka: chk('doc_gotowka'), rodzina: chk('doc_rodzina'),
@@ -343,11 +429,16 @@ function ensure(C, h) { if (C.y - h < C.margin) newPage(C); }
 // Text is a string, or [template, ...values]: only the template is translated, the
 // values ({0}, {1}… — names, addresses, dates) are inserted unchanged in both columns.
 function txt(col, text, raw) {
-  if (Array.isArray(text)) {
-    const args = text.slice(1);
-    return col.t(text[0]).replace(/\{(\d)\}/g, (m, i) => (args[i] == null ? '' : args[i]));
-  }
+  if (Array.isArray(text)) return fillArgs(col, col.t(text[0]), text.slice(1));
   return raw ? String(text == null ? '' : text) : col.t(text);
+}
+// a value may itself be a translatable phrase: { tr: 'od dnia {0} do dnia {1}', args: [...] }
+function fillArgs(col, s, args) {
+  return s.replace(/\{(\d+)\}/g, (m, i) => {
+    const a = args[i];
+    if (a == null) return '';
+    return a.tr ? fillArgs(col, col.t(a.tr), a.args || []) : a;
+  });
 }
 // second-column translation of a short caption ('' when not bilingual)
 function trOf(C, text) { return C.bi ? C.cols[1].t(text) : ''; }
@@ -516,10 +607,126 @@ function twoSignatures(C, leftCap, rightCap) {
 // Role wording per contract type. Whole sentences are kept per type (not glued
 // from words) so each one translates as a unit.
 const ROLE = {
-  zlecenie: { podpis: 'podpis zleceniobiorcy', podpisOs: 'data i podpis Zleceniobiorcy', podpisFirma: 'data i podpis Zleceniodawcy' },
-  praca: { podpis: 'podpis pracownika', podpisOs: 'data i podpis Pracownika', podpisFirma: 'data i podpis Pracodawcy' },
+  zlecenie: { strona1: 'Zleceniodawca', strona2: 'Zleceniobiorca', podpis: 'podpis zleceniobiorcy', podpisOs: 'data i podpis Zleceniobiorcy', podpisFirma: 'data i podpis Zleceniodawcy' },
+  praca: { strona1: 'Pracodawca', strona2: 'Pracownik', podpis: 'podpis pracownika', podpisOs: 'data i podpis Pracownika', podpisFirma: 'data i podpis Pracodawcy' },
 };
 const DOTS = '..............................';
+
+// 0. UMOWA — the contract itself, rendered from a text template.
+// Template syntax (the same for our standard contracts and for a client's own one):
+//   "# Tytuł", "## Nagłówek paragrafu", blank line = odstęp, "[podpisy]" = signature lines,
+//   "1. …" / "- …" = point with hanging indent, {{nazwa}} = value from the form.
+const UMOWA_STANDARD = {
+  zlecenie: `# UMOWA ZLECENIE
+zawarta w dniu {{data_zawarcia}} w miejscowości {{miejscowosc}} pomiędzy:
+{{firma}} z siedzibą: {{firma_adres}}, NIP: {{firma_nip}}, reprezentowaną przez: {{reprezentant}}, zwaną dalej „Zleceniodawcą”,
+a
+{{imie_nazwisko}}, zamieszkałym/ą: {{adres}}, PESEL: {{pesel}}, dokument tożsamości: {{dokument}}, obywatelstwo: {{obywatelstwo}}, zwanym/ą dalej „Zleceniobiorcą”.
+
+## § 1. Przedmiot umowy
+1. Zleceniodawca zleca, a Zleceniobiorca zobowiązuje się do wykonywania następujących czynności: {{stanowisko}}.
+2. Miejsce wykonywania zlecenia: {{miejsce_pracy}}.
+3. Zleceniobiorca zobowiązuje się wykonywać zlecenie z należytą starannością, zgodnie z obowiązującymi przepisami oraz wskazówkami Zleceniodawcy.
+
+## § 2. Okres obowiązywania umowy
+Umowa zostaje zawarta na okres {{okres}}.
+
+## § 3. Wynagrodzenie
+1. Za wykonanie zlecenia Zleceniobiorca otrzyma wynagrodzenie w wysokości {{stawka}} zł {{jednostka}}.
+2. Wynagrodzenie za każdą godzinę wykonywania zlecenia nie może być niższe niż minimalna stawka godzinowa obowiązująca w danym roku.
+3. Liczbę godzin wykonywania zlecenia potwierdza ewidencja godzin, którą Zleceniobiorca przedkłada Zleceniodawcy do ostatniego dnia każdego miesiąca.
+4. Wynagrodzenie jest płatne raz w miesiącu, do {{termin_wyplaty}} dnia następnego miesiąca kalendarzowego, przelewem na rachunek bankowy Zleceniobiorcy nr {{konto}} albo — na wniosek Zleceniobiorcy — gotówką.
+5. Od wynagrodzenia Zleceniodawca potrąci należne składki na ubezpieczenia społeczne i zdrowotne oraz zaliczkę na podatek dochodowy.
+
+## § 4. Wykonywanie zlecenia
+1. Zleceniobiorca może powierzyć wykonanie zlecenia osobie trzeciej wyłącznie za uprzednią pisemną zgodą Zleceniodawcy.
+2. Zleceniobiorca zobowiązuje się przestrzegać zasad bezpieczeństwa i higieny pracy obowiązujących w miejscu wykonywania zlecenia.
+3. Zleceniobiorca zobowiązuje się zachować w tajemnicy informacje uzyskane w związku z wykonywaniem zlecenia, których ujawnienie mogłoby narazić Zleceniodawcę na szkodę.
+
+## § 5. Rozwiązanie umowy
+1. Każda ze stron może wypowiedzieć umowę z zachowaniem 7-dniowego okresu wypowiedzenia.
+2. Zleceniodawca może rozwiązać umowę bez zachowania okresu wypowiedzenia w razie rażącego naruszenia jej postanowień przez Zleceniobiorcę.
+
+## § 6. Postanowienia końcowe
+1. Wszelkie zmiany umowy wymagają formy pisemnej pod rygorem nieważności.
+2. W sprawach nieuregulowanych umową stosuje się przepisy Kodeksu cywilnego.
+3. Umowę sporządzono w dwóch jednobrzmiących egzemplarzach, po jednym dla każdej ze stron.
+[podpisy]`,
+  praca: `# UMOWA O PRACĘ
+{{rodzaj_umowy}}
+zawarta w dniu {{data_zawarcia}} w miejscowości {{miejscowosc}} pomiędzy:
+{{firma}} z siedzibą: {{firma_adres}}, NIP: {{firma_nip}}, reprezentowaną przez: {{reprezentant}}, zwaną dalej „Pracodawcą”,
+a
+{{imie_nazwisko}}, zamieszkałym/ą: {{adres}}, PESEL: {{pesel}}, dokument tożsamości: {{dokument}}, obywatelstwo: {{obywatelstwo}}, zwanym/ą dalej „Pracownikiem”.
+
+## § 1. Rodzaj umowy
+1. Strony zawierają umowę o pracę {{rodzaj_umowy}}, na okres {{okres}}.
+2. Dotyczy wyłącznie umowy na okres próbny: po upływie okresu próbnego strony zamierzają zawrzeć umowę o pracę na czas określony krótszy niż 6 miesięcy / na czas określony wynoszący co najmniej 6 miesięcy i krótszy niż 12 miesięcy / na czas określony wynoszący co najmniej 12 miesięcy albo na czas nieokreślony (niepotrzebne skreślić).
+
+## § 2. Warunki zatrudnienia
+1. Rodzaj umówionej pracy (stanowisko): {{stanowisko}}.
+2. Miejsce wykonywania pracy: {{miejsce_pracy}}.
+3. Wymiar czasu pracy: {{wymiar}}.
+4. Wynagrodzenie: {{stawka}} zł {{jednostka}}, płatne do {{termin_wyplaty}} dnia następnego miesiąca kalendarzowego.
+5. Dzień rozpoczęcia pracy: {{data_od}}.
+6. Dopuszczalna liczba godzin pracy ponad określony w umowie wymiar czasu pracy, których przekroczenie uprawnia pracownika zatrudnionego w niepełnym wymiarze do dodatku jak za godziny nadliczbowe: ..............................
+
+## § 3. Obowiązki stron
+1. Pracownik zobowiązuje się wykonywać pracę sumiennie i starannie, stosować się do poleceń przełożonych dotyczących pracy, przestrzegać czasu pracy, regulaminu pracy oraz przepisów i zasad bezpieczeństwa i higieny pracy.
+2. Pracownik zobowiązuje się zachować w tajemnicy informacje, których ujawnienie mogłoby narazić Pracodawcę na szkodę.
+3. Pracodawca zobowiązuje się zatrudniać Pracownika za wynagrodzeniem i na warunkach określonych w umowie oraz zapewnić bezpieczne i higieniczne warunki pracy.
+
+## § 4. Postanowienia końcowe
+1. Wszelkie zmiany warunków umowy wymagają formy pisemnej.
+2. W sprawach nieuregulowanych umową stosuje się przepisy Kodeksu pracy.
+3. Umowę sporządzono w dwóch jednobrzmiących egzemplarzach, po jednym dla każdej ze stron.
+4. Pracownik potwierdza otrzymanie jednego egzemplarza umowy przed dopuszczeniem do pracy.
+[podpisy]`,
+};
+const UMOWA_RODZAJ = { probny: 'na okres próbny', okreslony: 'na czas określony', nieokreslony: 'na czas nieokreślony' };
+const UMOWA_JEDN = { godz: 'brutto za godzinę', mies: 'brutto miesięcznie' };
+
+// {{placeholder}} -> value. { tr } values are Polish phrases translated in the second column.
+function umowaValues(d) {
+  const u = d.umowa, od = isoToPLDots(u.od), dd = isoToPLDots(u.do);
+  const bezterm = d.typ === 'praca' && u.rodzaj === 'nieokreslony';
+  return {
+    firma: d.z.nazwa, firma_adres: [d.z.ulica, d.z.miasto].filter(Boolean).join(', '),
+    firma_nip: d.z.nip, firma_regon: d.z.regon, firma_krs: d.z.krs, reprezentant: d.z.reprezentant,
+    imie_nazwisko: fullName(d.p), pesel: d.p.pesel, data_urodzenia: isoToPLDots(d.p.dataur),
+    obywatelstwo: d.p.obywatelstwo, dokument: d.p.dowod, adres: addrOneLine(d.adres), konto: d.p.konto,
+    stanowisko: u.stanowisko && { tr: u.stanowisko }, miejsce_pracy: u.miejsce,
+    wymiar: u.wymiar && { tr: u.wymiar }, stawka: u.stawka, jednostka: { tr: UMOWA_JEDN[u.jedn] || UMOWA_JEDN.godz },
+    termin_wyplaty: u.wyplata, data_zawarcia: isoToPLDots(d.sign.data), miejscowosc: d.sign.miejscowosc,
+    data_od: od, data_do: dd,
+    rodzaj_umowy: { tr: UMOWA_RODZAJ[u.rodzaj] || UMOWA_RODZAJ.okreslony },
+    okres: bezterm ? { tr: 'od dnia {0}, bezterminowo', args: [od || DOTS] }
+      : { tr: 'od dnia {0} do dnia {1}', args: [od || DOTS, dd || DOTS] },
+  };
+}
+function docUmowa(C, d) {
+  newPage(C);
+  const vals = umowaValues(d);
+  const tpl = d.umowaTpl || UMOWA_STANDARD[d.typ];
+  tpl.split(/\r?\n/).forEach((raw) => {
+    const line = raw.trim();
+    if (!line) { gap(C, 5); return; }
+    if (/^\[podpisy\]$/i.test(line)) { twoSignatures(C, ROLE[d.typ].strona1, ROLE[d.typ].strona2); return; }
+    let m, kind = 'p', body = line;
+    if ((m = line.match(/^##\s+(.*)$/))) { kind = 'h'; body = m[1]; }
+    else if ((m = line.match(/^#\s+(.*)$/))) { kind = 't'; body = m[1]; }
+    const args = [];
+    const t = body.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (x, k) => {
+      const v = vals[k.toLowerCase()];
+      args.push(v == null || v === '' ? DOTS : v);
+      return '{' + (args.length - 1) + '}';
+    });
+    const text = args.length ? [t].concat(args) : t;
+    if (kind === 't') title(C, text);
+    else if (kind === 'h') { gap(C, 4); center(C, text, { bold: true, after: 4 }); }
+    else para(C, text, { hang: /^(\d+[.)]|[-–•])\s/.test(body) ? 14 : 0, after: 3 });
+  });
+}
 
 // 1. KWESTIONARIUSZ OSOBOWY
 function docKwestionariusz(C, d) {
@@ -932,6 +1139,7 @@ async function generateKomplet(d, tr) {
   return await doc.save();
 }
 function renderDocs(C, d) {
+  if (d.docs.umowa) docUmowa(C, d);
   if (d.docs.kwest) docKwestionariusz(C, d);
   if (d.typ === 'praca') {
     if (d.docs.pit2) docPit2(C, d);
@@ -1057,6 +1265,7 @@ form.addEventListener('submit', async (e) => {
     return;
   }
 
+  await umowaTpl.pending;
   const data = collectData();
   if (!anyDocSelected(data)) { showStatus('Zaznacz przynajmniej jeden dokument do wygenerowania.', 'error'); return; }
 
