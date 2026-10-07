@@ -39,16 +39,22 @@ const FIELDS = [
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
+  // "analiza" comes first on purpose: the model writes out what it sees on each
+  // document (incl. every date) before filling the fields, otherwise it commits to
+  // empty fields and only "notices" the dates later, in warnings.
   properties: {
+    analiza: { type: "string" },
     ...Object.fromEntries(FIELDS.map((k) => [k, { type: "string" }])),
     warnings: { type: "array", items: { type: "string" } },
   },
-  required: [...FIELDS, "warnings"],
+  required: ["analiza", ...FIELDS, "warnings"],
 };
 
 const INSTRUCTION = `Jesteś asystentem kadrowym. Z załączonych zdjęć/skanów dokumentów (polskich i zagranicznych: paszport dowolnego państwa, dowód osobisty, karta pobytu, wiza, zezwolenie na pracę) odczytaj dane osoby i zwróć je w polach.
 
 Zasady:
+- Najpierw wypełnij pole "analiza": dla każdego pliku po kolei napisz krótko, jaki to dokument i jakie daty na nim widzisz (data urodzenia, data wydania, data ważności — także odczytane ze strefy MRZ). Dopiero potem wypełnij pozostałe pola na podstawie tej analizy.
+- Jeżeli odczytałeś jakąś wartość — także z MRZ albo z niewielką niepewnością — WPISZ ją w odpowiednie pole, a wątpliwość opisz w "warnings". Nie zostawiaj pola pustego tylko dlatego, że odczyt wymaga potwierdzenia.
 - Użyj pustego ciągu "" dla pól, których nie ma na dokumencie.
 - p_dataur: format ISO RRRR-MM-DD.
 - p_pesel: 11 cyfr (jeśli widoczny; karta pobytu/paszport zwykle nie mają PESEL).

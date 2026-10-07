@@ -352,11 +352,13 @@
     var list = $('p_us_list'), hint = $('p_us_hint'), us = $('p_us');
     list.innerHTML = '';
     res.us.forEach(function (n) { var o = document.createElement('option'); o.value = n; list.appendChild(o); });
-    if (res.us.length === 1) autoSet(us, res.us[0]);
+    var one = res.us.length === 1 || res.guess;
+    if (one) autoSet(us, res.us[0]);
     else if (us.dataset.auto === us.value) { us.value = ''; us.dataset.auto = ''; }
     hint.style.display = res.us.length < 2 ? 'none' : 'block';
-    hint.textContent = res.us.length < 2 ? '' :
-      'W tym mieście granice urzędów skarbowych biegną ulicami — wybierz właściwy z listy.';
+    hint.textContent = res.us.length < 2 ? '' : (res.guess
+      ? 'Dobrano według kodu pocztowego — w tej części miasta działają dwa urzędy, sprawdź (drugi jest na liście).'
+      : 'W tym mieście granice urzędów skarbowych biegną ulicami — wybierz właściwy z listy.');
   }
   $('a_kod').addEventListener('input', fillUrzedy);
   $('a_miejscowosc').addEventListener('change', fillUrzedy);

@@ -435,7 +435,8 @@
   }
   function uniq(a) { return a.filter(function (x, i) { return x && a.indexOf(x) === i; }); }
 
-  // -> { wojewodztwo, powiat, gmina, nfz, us: [nazwy] }; pola puste gdy niejednoznaczne.
+  // -> { wojewodztwo, powiat, gmina, nfz, us: [nazwy], guess }; pola puste gdy niejednoznaczne.
+  // guess = pierwszy urząd z listy dobrano wg kodu pocztowego (do sprawdzenia).
   async function lookup(kod, miejscowosc, ulica) {
     var m = (kod || '').replace(/\D/g, '');
     if (m.length !== 5) return null;
@@ -460,12 +461,23 @@
       officesFor(w, p, g, r.dzielnica).forEach(function (o) { us.push(o.n); });
     });
     woj = uniq(woj); pow = uniq(pow); gm = uniq(gm);
+    us = uniq(us);
+    // Poznań, Stare Miasto: al. Armii Poznań splits it between two offices — the centre
+    // (codes 61-7xx / 61-8xx) belongs to Poznań-Wilda, the northern estates (6x-6xx) to
+    // Poznań-Winogrady. Derived from the postcode, so the form marks it "to verify".
+    var guess = false, WILDA = 'Urząd Skarbowy Poznań-Wilda', WINO = 'Urząd Skarbowy Poznań-Winogrady';
+    if (us.length === 2 && us.indexOf(WILDA) !== -1 && us.indexOf(WINO) !== -1) {
+      var code = m.slice(0, 2) + '-' + m.slice(2);
+      var pick = /^61-[78]/.test(code) ? WILDA : (/^6[01]-6/.test(code) ? WINO : '');
+      if (pick) { us = [pick, pick === WILDA ? WINO : WILDA]; guess = true; }
+    }
     return {
+      guess: guess,
       wojewodztwo: woj.length === 1 ? woj[0] : '',
       powiat: pow.length === 1 ? pow[0] : '',
       gmina: gm.length === 1 ? gm[0] : '',
       nfz: woj.length === 1 ? (NFZ[woj[0]] || '') : '',
-      us: uniq(us),
+      us: us,
     };
   }
 
