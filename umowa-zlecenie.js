@@ -905,28 +905,56 @@ function docInformacjaPpk(C, d) {
   twoSignatures(C, ROLE[d.typ].podpisOs, ROLE[d.typ].podpisFirma);
 }
 
-// 5. DEKLARACJA O REZYGNACJI Z WPŁAT DO PPK — 4
+// ---------------- Official forms (filled on top of the published PDF) ----------------
+// PIT-2(9): Ministerstwo Finansów (podatki.gov.pl); deklaracja o rezygnacji z PPK:
+// wzór z rozporządzenia MF, plik z mojeppk.pl. The pages are copied into the packet
+// unchanged and only the identification data is written on them — in Polish, also in
+// the bilingual variant, because the official layout has no room for a translation.
+const OFFICIAL_FORMS = { pit2: 'pit-2-template.pdf', ppkRez: 'ppk-rezygnacja-template.pdf' };
+const officialBytes = {};
+async function loadOfficial(key) {
+  if (!officialBytes[key]) {
+    const r = await fetch(OFFICIAL_FORMS[key]);
+    if (!r.ok) throw new Error('Nie udało się wczytać formularza: ' + OFFICIAL_FORMS[key]);
+    officialBytes[key] = await r.arrayBuffer();
+  }
+  return officialBytes[key];
+}
+// x-centres of the boxes of a "└────┴────┘" comb printed between x0 and x1
+function combCells(pattern, x0, x1) {
+  const cw = (x1 - x0) / pattern.length, out = [];
+  let start = -1;
+  pattern.split('').forEach((ch, i) => {
+    if (ch === '─') { if (start < 0) start = i; }
+    else if (start >= 0) { out.push(x0 + ((start + i) / 2) * cw); start = -1; }
+  });
+  return out;
+}
+// write on an official page; yTop is measured from the top edge, as in the PDF's text layout
+function stamp(C, page, text, x, yTop, size) {
+  if (!text) return;
+  C.cols[0].font.draw(page, String(text), { x, y: page.getHeight() - yTop, size: size || 10.5, color: rgb(0, 0, 0) });
+}
+function stampComb(C, page, chars, cells, yTop) {
+  const f = C.cols[0].font, size = 11;
+  String(chars).split('').slice(0, cells.length).forEach((ch, i) => {
+    f.draw(page, ch, { x: cells[i] - f.widthOfTextAtSize(ch, size) / 2, y: page.getHeight() - yTop, size, color: rgb(0, 0, 0) });
+  });
+}
+function ddmmyyyy(iso) { const p = (iso || '').split('-'); return p.length === 3 ? p[2] + p[1] + p[0] : ''; }
+const DATE_COMB = '└────┴────┘-└────┴────┘-└────┴────┴────┴────┘';
+
+// 5. DEKLARACJA O REZYGNACJI Z WPŁAT DO PPK — official form
 function docRezygnacjaPpk(C, d) {
-  newPage(C);
-  title(C, 'Deklaracja o rezygnacji z dokonywania wpłat do Pracowniczych Planów Kapitałowych (PPK)');
-  para(C, 'Deklarację należy wypełnić wielkimi literami. Deklarację składa się podmiotowi zatrudniającemu.*', { size: 9, color: rgb(0.4, 0.4, 0.4), after: 10 });
-
-  para(C, '1.  Dane dotyczące uczestnika PPK', { bold: true, after: 4 });
-  field(C, 'Imię (imiona)', d.p.imiona);
-  field(C, 'Nazwisko', d.p.nazwisko);
-  field(C, 'Seria i numer dowodu osobistego lub numer paszportu albo innego dokumentu potwierdzającego tożsamość', d.p.dowod, { after: 8 });
-
-  para(C, '2.  Nazwa podmiotu zatrudniającego', { bold: true, after: 4 });
-  field(C, 'Podmiot zatrudniający', d.z.nazwa, { after: 8 });
-
-  para(C, '3.  Oświadczenie uczestnika PPK', { bold: true, after: 4 });
-  para(C, 'Oświadczam, że rezygnuję z dokonywania wpłat do PPK oraz posiadam wiedzę o konsekwencjach złożenia niniejszej deklaracji, w tym:', { after: 4 });
-  para(C, '1)  nieotrzymania wpłaty powitalnej w wysokości 250 zł, należnej uczestnikom PPK (dotyczy uczestnika PPK, który nie nabył uprawnienia do wpłaty powitalnej przed złożeniem deklaracji);', { hang: 18, after: 3 });
-  para(C, '2)  nieotrzymania dopłat rocznych do PPK w wysokości 240 zł, należnych uczestnikom PPK po spełnieniu warunków określonych w art. 32 ustawy z dnia 4 października 2018 r. o pracowniczych planach kapitałowych (Dz. U. z 2018 r., poz. 2215, z późn. zm.);', { hang: 18, after: 3 });
-  para(C, '3)  nieotrzymania wpłat podstawowych finansowanych przez podmiot zatrudniający w wysokości 1,5 % wynagrodzenia.', { hang: 18, after: 6 });
-  twoSignatures(C, 'data i podpis uczestnika PPK', 'data złożenia deklaracji podmiotowi zatrudniającemu');
-  gap(C, 8);
-  para(C, '* Podmiot zatrudniający, o którym mowa w art. 3 ustawy z dnia 26 czerwca 1974 r. — Kodeks pracy, oznacza odpowiednio pracodawcę, nakładcę, rolnicze spółdzielnie produkcyjne lub spółdzielnie kółek rolniczych, zleceniodawcę albo podmiot, w którym działa rada nadzorcza — w stosunku do osób zatrudnionych, o których mowa w art. 2 ust. 1 pkt 18 ustawy z dnia 4 października 2018 r. o pracowniczych planach kapitałowych.', { size: 8, lh: 11, color: rgb(0.4, 0.4, 0.4) });
+  if (!C.official || !C.official.ppkRez) return;
+  const page = C.doc.addPage(C.official.ppkRez[0]);
+  C.page = null;
+  const X = 300;
+  stamp(C, page, d.p.imiona.toUpperCase(), X, 180);
+  stamp(C, page, d.p.nazwisko.toUpperCase(), X, 204);
+  stamp(C, page, d.p.pesel || isoToPLDots(d.p.dataur), X, 239);
+  stamp(C, page, (d.p.dowod || '').toUpperCase(), X, 294);
+  stamp(C, page, (d.z.nazwa || '').toUpperCase(), 90, 357);
 }
 
 // 6. WNIOSEK O WYPŁATĘ W GOTÓWCE — 3
@@ -1044,38 +1072,20 @@ function docInformacjaRoznice(C, d) {
 
 // ---------------- Umowa o pracę ----------------
 
-// P1. OŚWIADCZENIE PRACOWNIKA DLA CELÓW PODATKOWYCH (odpowiednik PIT-2)
+// P1. PIT-2(9) — official form: identification data filled in, the declarations
+// (parts C–J) are ticked by the taxpayer by hand
 function docPit2(C, d) {
-  newPage(C);
-  title(C, 'Oświadczenie dla celów obliczania miesięcznych zaliczek na podatek dochodowy (PIT-2)');
-  identityBlock(C, d, true);
-  para(C, 'Oświadczam, że (właściwe zaznaczyć znakiem „X”):', { after: 6 });
-  const tn = () => { checkLine(C, 'TAK', false, { indent: 18 }); checkLine(C, 'NIE', false, { indent: 18 }); gap(C, 3); };
-  para(C, '1.  Wnoszę o pomniejszanie miesięcznych zaliczek na podatek o kwotę stanowiącą:', { hang: 18, after: 2 });
-  checkLine(C, '1/12 kwoty zmniejszającej podatek (jeden płatnik),', false, { indent: 18 });
-  checkLine(C, '1/24 kwoty zmniejszającej podatek (dwóch płatników),', false, { indent: 18 });
-  checkLine(C, '1/36 kwoty zmniejszającej podatek (trzech płatników),', false, { indent: 18 });
-  checkLine(C, 'nie wnoszę o pomniejszanie zaliczek.', false, { indent: 18 });
-  gap(C, 3);
-  if (d.typ === 'praca') {
-    para(C, '2.  Wnoszę o stosowanie podwyższonych kosztów uzyskania przychodów, ponieważ moje miejsce stałego lub czasowego zamieszkania jest położone poza miejscowością, w której znajduje się zakład pracy, i nie uzyskuję dodatku za rozłąkę:', { hang: 18, after: 2 });
-    tn();
-  }
-  para(C, '3.  Wnoszę o niestosowanie zwolnienia z podatku dla osób do ukończenia 26. roku życia (tzw. ulga dla młodych):', { hang: 18, after: 2 });
-  tn();
-  para(C, '4.  Spełniam warunki do stosowania zwolnienia z podatku (ulga na powrót, ulga dla rodzin 4+, ulga dla pracujących seniorów) i wnoszę o jego stosowanie:', { hang: 18, after: 2 });
-  checkLine(C, 'TAK — rodzaj ulgi i okres: ............................................', false, { indent: 18 });
-  checkLine(C, 'NIE', false, { indent: 18 });
-  gap(C, 3);
-  para(C, '5.  Zamierzam opodatkować dochody wspólnie z małżonkiem albo jako osoba samotnie wychowująca dziecko i wnoszę o pobieranie zaliczek według stawki 12 %:', { hang: 18, after: 2 });
-  tn();
-  para(C, '6.  Moim miejscem zamieszkania dla celów podatkowych (rezydencja podatkowa) jest:', { hang: 18, after: 2 });
-  checkLine(C, 'Polska,', false, { indent: 18 });
-  checkLine(C, 'inne państwo (jakie?): ............................................', false, { indent: 18 });
-  gap(C, 6);
-  para(C, 'Oświadczam, że powyższe dane są zgodne ze stanem faktycznym. Zobowiązuję się niezwłocznie poinformować płatnika o każdej zmianie okoliczności mających wpływ na obliczanie zaliczek na podatek.', { size: 9.5, lh: 13, after: 2 });
-  placeLine(C, d);
-  signature(C, ROLE[d.typ].podpis, { align: 'right', top: 14 });
+  if (!C.official || !C.official.pit2) return;
+  const pages = C.official.pit2.map((pg) => C.doc.addPage(pg));
+  C.page = null;
+  const p1 = pages[0];
+  const id = d.p.pesel || d.p.nip || '';
+  stampComb(C, p1, id, combCells('└────┴────┴────┴────┴────┴────┴────┴────┴────┴────┴────┘', 59.8, 241.6), 55.5);
+  stamp(C, p1, d.p.nazwisko.toUpperCase(), 48, 222);
+  stamp(C, p1, (d.p.imiona.split(/\s+/)[0] || '').toUpperCase(), 259, 222);
+  stampComb(C, p1, ddmmyyyy(d.p.dataur), combCells(DATE_COMB, 429.3, 571.6), 220);
+  stamp(C, p1, (d.z.nazwa || '').toUpperCase(), 48, 276);
+  stampComb(C, pages[1], ddmmyyyy(d.sign.data), combCells(DATE_COMB, 107.4, 249.7), 509);
 }
 // "Miejscowość, dnia …" line on the left (data only — the same in both columns)
 function placeLine(C, d) {
@@ -1309,7 +1319,14 @@ async function generateKomplet(d, tr) {
     faces.tr = sf ? mixedFace(await doc.embedFont(sf[0]), font) : faces.pl;
     faces.trBold = sf ? mixedFace(await doc.embedFont(sf[1]), bold) : faces.plBold;
   }
-  renderDocs(makeCtx(doc, faces, tr ? ((s) => tr.map[s] || s) : null), d);
+  const C = makeCtx(doc, faces, tr ? ((s) => tr.map[s] || s) : null);
+  C.official = {};
+  for (const key of Object.keys(OFFICIAL_FORMS)) {
+    if (!d.docs[key] || DOC_ORDER[d.typ].indexOf(key) < 0) continue;
+    const src = await PDFDocument.load(await loadOfficial(key));
+    C.official[key] = await doc.copyPages(src, src.getPageIndices());
+  }
+  renderDocs(C, d);
   return await doc.save();
 }
 function renderDocs(C, d) {
