@@ -46,7 +46,7 @@ const SCHEMA = {
   required: [...FIELDS, "warnings"],
 };
 
-const INSTRUCTION = `Jesteś asystentem kadrowym. Z załączonych zdjęć/skanów polskich dokumentów tożsamości (dowód osobisty, paszport, karta pobytu) odczytaj dane osoby i zwróć je w polach.
+const INSTRUCTION = `Jesteś asystentem kadrowym. Z załączonych zdjęć/skanów dokumentów (polskich i zagranicznych: paszport dowolnego państwa, dowód osobisty, karta pobytu, wiza, zezwolenie na pracę) odczytaj dane osoby i zwróć je w polach.
 
 Zasady:
 - Użyj pustego ciągu "" dla pól, których nie ma na dokumencie.
@@ -59,10 +59,11 @@ Zasady:
 - imiona/nazwisko/miejscowości zapisz poprawną polską pisownią z polskimi znakami.
 - DATY WAŻNOŚCI (format ISO RRRR-MM-DD), odczytaj jeśli widoczne na dokumentach:
   • p_karta_do — data ważności karty pobytu ("ważna do" / "termin ważności"),
-  • p_paszport_do — data ważności paszportu ("date of expiry" / "data ważności"),
+  • p_paszport_do — data ważności paszportu. Na paszportach zagranicznych pole bywa opisane w innym języku ("Date of expiry", "Date d'expiration", "Дійсний до", "Срок действия", "Действителен до", "მოქმედების ვადა"). Jeśli pole jest nieczytelne, odczytaj datę ze strefy MRZ (dwie linie znaków "<" na dole strony ze zdjęciem): w drugiej linii, po dacie urodzenia (RRMMDD + cyfra kontrolna) i literze płci (M/F/<), następne 6 cyfr RRMMDD to data ważności. Zawsze wypełnij to pole, gdy wśród plików jest strona paszportu ze zdjęciem.
   • p_zezwolenie_do — data końca zezwolenia na pracę / wizy / decyzji / oświadczenia o powierzeniu pracy,
   • p_badania_do — data ważności orzeczenia lekarskiego / badań (medkomisja / BHP).
   Pozostaw "" jeśli dany dokument lub data nie występuje.
+- Jeśli wśród plików nie ma strony paszportu ze zdjęciem (np. przesłano tylko kartę pobytu), zostaw p_paszport_do puste i dodaj do "warnings": "Brak strony paszportu ze zdjęciem — daty ważności paszportu nie odczytano".
 - Do "warnings" dodaj uwagi o nieczytelnych lub niespójnych danych (np. PESEL nie zgadza się z datą urodzenia).`;
 
 Deno.serve(async (req) => {

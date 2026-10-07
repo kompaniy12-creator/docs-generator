@@ -29,11 +29,31 @@ const docRodzina = document.getElementById('doc_rodzina');
 const rodzinaFields = document.getElementById('rodzinaFields');
 docRodzina.addEventListener('change', () => { rodzinaFields.hidden = !docRodzina.checked; });
 
+// Documents per contract type, in the order of the office checklists
+// ("UZ — lista" and "Akta osobowe część B"); extras not on the lists come last.
+const DOC_ORDER = {
+  zlecenie: ['kwest', 'wybor', 'umowa', 'gotowka', 'rodo', 'zus', 'wykonawca', 'pit2', 'rodzina', 'ppkInfo', 'ppkRez'],
+  praca: ['kwest', 'rodo', 'bhp', 'rowne', 'umowa', 'zakres', 'warunki', 'przepisy', 'pit2', 'ppkInfo', 'ppkRez',
+    'zusPrac', 'zgodaPit', 'rodzic', 'gotowka', 'rodzina', 'zakladki'],
+};
+const DOC_FIELD = {
+  umowa: 'doc_umowa', kwest: 'doc_kwest', wybor: 'doc_wybor', gotowka: 'doc_gotowka', rodo: 'doc_rodo', zus: 'doc_zus',
+  wykonawca: 'doc_wykonawca', pit2: 'doc_pit2', rodzina: 'doc_rodzina', ppkInfo: 'doc_ppk_info', ppkRez: 'doc_ppk_rez',
+  bhp: 'doc_bhp', rowne: 'doc_rowne', zakres: 'doc_zakres', warunki: 'doc_warunki', przepisy: 'doc_przepisy',
+  zusPrac: 'doc_zus_prac', zgodaPit: 'doc_zgoda_pit', rodzic: 'doc_rodzic', zakladki: 'doc_zakladki',
+};
 // contract type -> which documents are offered
 const uTyp = document.getElementById('u_typ');
 function applyTyp() {
   const typ = uTyp.value === 'praca' ? 'praca' : 'zlecenie';
   document.querySelectorAll('[data-typ]').forEach((el) => { el.hidden = el.getAttribute('data-typ') !== typ; });
+  // document checklist: only this type's documents, in checklist order
+  const list = document.getElementById('docChecks');
+  list.querySelectorAll('label.check').forEach((l) => { l.hidden = true; });
+  DOC_ORDER[typ].forEach((k) => {
+    const l = list.querySelector('[name="' + DOC_FIELD[k] + '"]').closest('label');
+    l.hidden = false; list.appendChild(l);
+  });
   const jedn = document.getElementById('u_jedn');
   if (!jedn.dataset.touched) jedn.value = typ === 'praca' ? 'mies' : 'godz';
   document.querySelectorAll('[data-typ-text]').forEach((el) => { el.textContent = el.getAttribute('data-' + typ); });
@@ -196,6 +216,7 @@ async function loadWorkers() {
     // family-member toggle
     if (d.r_has === true || d.r_imienazwisko) { docRodzina.checked = true; rodzinaFields.hidden = false; }
     if (d.u_jedn) document.getElementById('u_jedn').dataset.touched = '1';
+    if (d.u_godziny_zmienne === true) document.getElementById('u_godziny_zmienne').checked = true;
     applyTyp();
     syncTlumaczenie();
     loadUmowaTpl();
@@ -299,7 +320,7 @@ function collectData() {
     umowa: {
       stanowisko: get('u_stanowisko'), miejsce: get('u_miejsce'), od: get('u_od'), do: get('u_do'),
       rodzaj: get('u_rodzaj'), wymiar: get('u_wymiar'), stawka: get('u_stawka'), jedn: get('u_jedn'),
-      wyplata: get('u_wyplata'),
+      wyplata: get('u_wyplata'), godziny: get('u_godziny'), godzinyZmienne: chk('u_godziny_zmienne'),
     },
     umowaTpl: umowaTpl.custom || '',
     z: {
@@ -335,13 +356,7 @@ function collectData() {
       gmina: get('m_gmina'), powiat: get('m_powiat'), woj: get('m_wojewodztwo'),
     },
     sign: { miejscowosc: get('d_miejscowosc'), data: get('d_data') },
-    docs: {
-      umowa: chk('doc_umowa'),
-      kwest: chk('doc_kwest'), zus: chk('doc_zus'), wykonawca: chk('doc_wykonawca'),
-      ppkInfo: chk('doc_ppk_info'), wybor: chk('doc_wybor'), rodo: chk('doc_rodo'),
-      ppkRez: chk('doc_ppk_rez'), gotowka: chk('doc_gotowka'), rodzina: chk('doc_rodzina'),
-      pit2: chk('doc_pit2'), zusPrac: chk('doc_zus_prac'), warunki: chk('doc_warunki'), zapoznanie: chk('doc_zapoznanie'),
-    },
+    docs: Object.keys(DOC_FIELD).reduce((o, k) => { o[k] = chk(DOC_FIELD[k]); return o; }, {}),
     rodzina: {
       od: get('r_od'), imienazwisko: get('r_imienazwisko'),
       pesel: get('r_pesel'), dataur: get('r_dataur'), adres: get('r_adres'),
@@ -416,10 +431,10 @@ function makeCtx(doc, f, tr) {
   if (bi) cols.push({ x: margin + colW + GUTTER, w: colW, font: f.tr, bold: f.trBold, t: tr });
   return { doc, cols, bi, k: bi ? 0.88 : 1, font: f.pl, page: null, W: A4[0], H: A4[1], margin, innerW, y: 0 };
 }
-function newPage(C) {
+function newPage(C, plain) {
   C.page = C.doc.addPage(A4);
   C.y = C.H - C.margin;
-  if (C.bi) { // hairline between the original and the translation
+  if (C.bi && !plain) { // hairline between the original and the translation
     const x = C.cols[1].x - GUTTER / 2;
     C.page.drawLine({ start: { x, y: C.margin - 12 }, end: { x, y: C.H - C.margin + 12 }, thickness: 0.4, color: rgb(0.82, 0.82, 0.82) });
   }
@@ -626,7 +641,8 @@ a
 ## § 1. Przedmiot umowy
 1. Zleceniodawca zleca, a Zleceniobiorca zobowiązuje się do wykonywania następujących czynności: {{stanowisko}}.
 2. Miejsce wykonywania zlecenia: {{miejsce_pracy}}.
-3. Zleceniobiorca zobowiązuje się wykonywać zlecenie z należytą starannością, zgodnie z obowiązującymi przepisami oraz wskazówkami Zleceniodawcy.
+3. Przewidywany wymiar wykonywania zlecenia: {{godziny}}.
+4. Zleceniobiorca zobowiązuje się wykonywać zlecenie z należytą starannością, zgodnie z obowiązującymi przepisami oraz wskazówkami Zleceniodawcy.
 
 ## § 2. Okres obowiązywania umowy
 Umowa zostaje zawarta na okres {{okres}}.
@@ -697,7 +713,9 @@ function umowaValues(d) {
     obywatelstwo: d.p.obywatelstwo, dokument: d.p.dowod, adres: addrOneLine(d.adres), konto: d.p.konto,
     stanowisko: u.stanowisko && { tr: u.stanowisko }, miejsce_pracy: u.miejsce,
     wymiar: u.wymiar && { tr: u.wymiar }, stawka: u.stawka, jednostka: { tr: UMOWA_JEDN[u.jedn] || UMOWA_JEDN.godz },
-    termin_wyplaty: u.wyplata, data_zawarcia: isoToPLDots(d.sign.data), miejscowosc: d.sign.miejscowosc,
+    termin_wyplaty: u.wyplata,
+    godziny: u.godzinyZmienne ? { tr: 'zmienna liczba godzin — według comiesięcznej ewidencji' }
+      : (u.godziny ? { tr: '{0} godzin miesięcznie', args: [u.godziny] } : ''), data_zawarcia: isoToPLDots(d.sign.data), miejscowosc: d.sign.miejscowosc,
     data_od: od, data_do: dd,
     rodzaj_umowy: { tr: UMOWA_RODZAJ[u.rodzaj] || UMOWA_RODZAJ.okreslony },
     okres: bezterm ? { tr: 'od dnia {0}, bezterminowo', args: [od || DOTS] }
@@ -1001,7 +1019,7 @@ function docWyborUmowy(C, d) {
 // P1. OŚWIADCZENIE PRACOWNIKA DLA CELÓW PODATKOWYCH (odpowiednik PIT-2)
 function docPit2(C, d) {
   newPage(C);
-  title(C, 'Oświadczenie pracownika dla celów obliczania miesięcznych zaliczek na podatek dochodowy (PIT-2)');
+  title(C, 'Oświadczenie dla celów obliczania miesięcznych zaliczek na podatek dochodowy (PIT-2)');
   identityBlock(C, d, true);
   para(C, 'Oświadczam, że (właściwe zaznaczyć znakiem „X”):', { after: 6 });
   const tn = () => { checkLine(C, 'TAK', false, { indent: 18 }); checkLine(C, 'NIE', false, { indent: 18 }); gap(C, 3); };
@@ -1011,8 +1029,10 @@ function docPit2(C, d) {
   checkLine(C, '1/36 kwoty zmniejszającej podatek (trzech płatników),', false, { indent: 18 });
   checkLine(C, 'nie wnoszę o pomniejszanie zaliczek.', false, { indent: 18 });
   gap(C, 3);
-  para(C, '2.  Wnoszę o stosowanie podwyższonych kosztów uzyskania przychodów, ponieważ moje miejsce stałego lub czasowego zamieszkania jest położone poza miejscowością, w której znajduje się zakład pracy, i nie uzyskuję dodatku za rozłąkę:', { hang: 18, after: 2 });
-  tn();
+  if (d.typ === 'praca') {
+    para(C, '2.  Wnoszę o stosowanie podwyższonych kosztów uzyskania przychodów, ponieważ moje miejsce stałego lub czasowego zamieszkania jest położone poza miejscowością, w której znajduje się zakład pracy, i nie uzyskuję dodatku za rozłąkę:', { hang: 18, after: 2 });
+    tn();
+  }
   para(C, '3.  Wnoszę o niestosowanie zwolnienia z podatku dla osób do ukończenia 26. roku życia (tzw. ulga dla młodych):', { hang: 18, after: 2 });
   tn();
   para(C, '4.  Spełniam warunki do stosowania zwolnienia z podatku (ulga na powrót, ulga dla rodzin 4+, ulga dla pracujących seniorów) i wnoszę o jego stosowanie:', { hang: 18, after: 2 });
@@ -1025,9 +1045,9 @@ function docPit2(C, d) {
   checkLine(C, 'Polska,', false, { indent: 18 });
   checkLine(C, 'inne państwo (jakie?): ............................................', false, { indent: 18 });
   gap(C, 6);
-  para(C, 'Oświadczam, że powyższe dane są zgodne ze stanem faktycznym. Zobowiązuję się niezwłocznie poinformować pracodawcę o każdej zmianie okoliczności mających wpływ na obliczanie zaliczek na podatek.', { size: 9.5, lh: 13, after: 2 });
+  para(C, 'Oświadczam, że powyższe dane są zgodne ze stanem faktycznym. Zobowiązuję się niezwłocznie poinformować płatnika o każdej zmianie okoliczności mających wpływ na obliczanie zaliczek na podatek.', { size: 9.5, lh: 13, after: 2 });
   placeLine(C, d);
-  signature(C, 'podpis pracownika', { align: 'right', top: 14 });
+  signature(C, ROLE[d.typ].podpis, { align: 'right', top: 14 });
 }
 // "Miejscowość, dnia …" line on the left (data only — the same in both columns)
 function placeLine(C, d) {
@@ -1091,26 +1111,152 @@ function docWarunki(C, d) {
   para(C, NOTE_SKRESLIC, { size: 8, lh: 11, color: rgb(0.4, 0.4, 0.4) });
 }
 
-// P4. OŚWIADCZENIE O ZAPOZNANIU SIĘ Z PRZEPISAMI
-function docZapoznanie(C, d) {
+// P4. OŚWIADCZENIE BHP (akta osobowe cz. B)
+function docBhp(C, d) {
   newPage(C);
   field(C, 'Imię i nazwisko', fullName(d.p));
   field(C, 'Pracodawca', d.z.nazwa, { after: 10 });
-  title(C, 'Oświadczenie pracownika o zapoznaniu się z przepisami i informacjami');
+  title(C, 'Oświadczenie pracownika o zapoznaniu się z przepisami BHP i ryzykiem zawodowym');
   para(C, 'Oświadczam, że przed dopuszczeniem do pracy:', { after: 6 });
   const pts = [
-    'zapoznałam/em się z treścią regulaminu pracy oraz regulaminu wynagradzania obowiązujących u pracodawcy (jeżeli zostały wprowadzone) i zobowiązuję się do ich przestrzegania;',
+    'odbyłam/em szkolenie wstępne w dziedzinie bezpieczeństwa i higieny pracy (instruktaż ogólny i stanowiskowy);',
     'zapoznałam/em się z przepisami oraz zasadami bezpieczeństwa i higieny pracy oraz przepisami przeciwpożarowymi obowiązującymi na moim stanowisku pracy i zobowiązuję się do ich przestrzegania;',
     'zostałam/em poinformowana/y o ryzyku zawodowym, które wiąże się z wykonywaną pracą, oraz o zasadach ochrony przed zagrożeniami;',
-    'otrzymałam/em informację o warunkach zatrudnienia, o której mowa w art. 29 § 3 Kodeksu pracy;',
-    'zapoznałam/em się z treścią przepisów dotyczących równego traktowania w zatrudnieniu;',
-    'zostałam/em poinformowana/y o obowiązku zachowania w tajemnicy informacji, których ujawnienie mogłoby narazić pracodawcę na szkodę;',
-    'zostałam/em poinformowana/y o celach, zakresie i sposobie zastosowania monitoringu u pracodawcy (jeżeli został wprowadzony).',
+    'otrzymałam/em informację o pracownikach wyznaczonych do udzielania pierwszej pomocy oraz do wykonywania działań w zakresie zwalczania pożarów i ewakuacji pracowników.',
   ];
   pts.forEach((p, i) => para(C, ['{0})  ' + p, i + 1], { hang: 18, after: 4 }));
   gap(C, 6);
   placeLine(C, d);
   signature(C, 'podpis pracownika', { align: 'right', top: 14 });
+}
+
+// P5. INFORMACJA DOT. RÓWNEGO TRAKTOWANIA (art. 94¹ KP)
+function docRowne(C, d) {
+  newPage(C);
+  field(C, 'Imię i nazwisko', fullName(d.p));
+  field(C, 'Pracodawca', d.z.nazwa, { after: 10 });
+  title(C, 'Informacja dotycząca równego traktowania w zatrudnieniu');
+  para(C, 'Zgodnie z art. 94¹ Kodeksu pracy pracodawca udostępnia pracownikom tekst przepisów dotyczących równego traktowania w zatrudnieniu. Poniżej przedstawiamy ich najważniejszą treść (rozdział IIa działu pierwszego Kodeksu pracy).', { after: 6 });
+  const pts = [
+    'Pracownicy mają równe prawa z tytułu jednakowego wypełniania takich samych obowiązków; dotyczy to w szczególności równego traktowania mężczyzn i kobiet w zatrudnieniu.',
+    'Jakakolwiek dyskryminacja w zatrudnieniu, bezpośrednia lub pośrednia, w szczególności ze względu na płeć, wiek, niepełnosprawność, rasę, religię, narodowość, przekonania polityczne, przynależność związkową, pochodzenie etniczne, wyznanie, orientację seksualną, zatrudnienie na czas określony lub nieokreślony, zatrudnienie w pełnym lub w niepełnym wymiarze czasu pracy — jest niedopuszczalna.',
+    'Pracownicy powinni być równo traktowani w zakresie nawiązania i rozwiązania stosunku pracy, warunków zatrudnienia, awansowania oraz dostępu do szkolenia w celu podnoszenia kwalifikacji zawodowych.',
+    'Dyskryminowanie bezpośrednie istnieje wtedy, gdy pracownik z jednej lub z kilku wymienionych przyczyn był, jest lub mógłby być traktowany w porównywalnej sytuacji mniej korzystnie niż inni pracownicy. Dyskryminowanie pośrednie istnieje wtedy, gdy na skutek pozornie neutralnego postanowienia, zastosowanego kryterium lub podjętego działania występują lub mogłyby wystąpić niekorzystne dysproporcje albo szczególnie niekorzystna sytuacja wobec wszystkich lub znacznej liczby pracowników należących do grupy wyróżnionej ze względu na jedną lub kilka wymienionych przyczyn.',
+    'Przejawem dyskryminowania jest także: zachęcanie innej osoby do naruszenia zasady równego traktowania lub nakazanie jej naruszenia tej zasady; molestowanie — niepożądane zachowanie, którego celem lub skutkiem jest naruszenie godności pracownika i stworzenie wobec niego zastraszającej, wrogiej, poniżającej, upokarzającej lub uwłaczającej atmosfery; molestowanie seksualne — każde niepożądane zachowanie o charakterze seksualnym lub odnoszące się do płci pracownika.',
+    'Pracownicy mają prawo do jednakowego wynagrodzenia za jednakową pracę lub za pracę o jednakowej wartości.',
+    'Osoba, wobec której pracodawca naruszył zasadę równego traktowania w zatrudnieniu, ma prawo do odszkodowania w wysokości nie niższej niż minimalne wynagrodzenie za pracę.',
+    'Skorzystanie przez pracownika z uprawnień przysługujących z tytułu naruszenia zasady równego traktowania w zatrudnieniu nie może być podstawą niekorzystnego traktowania pracownika ani powodować wobec niego jakichkolwiek negatywnych konsekwencji.',
+  ];
+  pts.forEach((p, i) => para(C, ['{0}.  ' + p, i + 1], { hang: 18, after: 3 }));
+  gap(C, 6);
+  para(C, 'Oświadczam, że zapoznałam/em się z powyższą informacją.', { after: 4 });
+  placeLine(C, d);
+  signature(C, 'podpis pracownika', { align: 'right', top: 14 });
+}
+
+// P6. ZAKRES CZYNNOŚCI
+function docZakres(C, d) {
+  newPage(C);
+  placeDate(C, d.sign.miejscowosc, d.sign.data);
+  field(C, 'Pracodawca', d.z.nazwa);
+  field(C, 'Pracownik', fullName(d.p));
+  para(C, ['Stanowisko: {0}', d.umowa.stanowisko ? { tr: d.umowa.stanowisko } : DOTS], { bold: true, after: 8 });
+  title(C, 'Zakres czynności pracownika');
+  para(C, 'Do podstawowych obowiązków pracownika na zajmowanym stanowisku należy:', { after: 6 });
+  for (let i = 1; i <= 8; i++) para(C, `${i}.  ..........................................................................................`, { raw: true, after: 5 });
+  gap(C, 4);
+  para(C, 'Pracownik podlega bezpośrednio: ..............................', { after: 6 });
+  para(C, 'Pracownik jest obowiązany wykonywać pracę sumiennie i starannie oraz stosować się do poleceń przełożonych, które dotyczą pracy, jeżeli nie są one sprzeczne z przepisami prawa lub umową o pracę (art. 100 § 1 Kodeksu pracy).', { after: 6 });
+  para(C, 'Przyjmuję powyższy zakres czynności do wiadomości i stosowania.');
+  twoSignatures(C, 'data i podpis Pracodawcy', 'data i podpis Pracownika');
+}
+
+// P7. OŚWIADCZENIE O ZAPOZNANIU SIĘ Z PRZEPISAMI ZAKŁADOWYMI
+function docPrzepisy(C, d) {
+  newPage(C);
+  field(C, 'Imię i nazwisko', fullName(d.p));
+  field(C, 'Pracodawca', d.z.nazwa, { after: 10 });
+  title(C, 'Oświadczenie pracownika o zapoznaniu się z przepisami zakładowymi');
+  para(C, 'Oświadczam, że przed dopuszczeniem do pracy:', { after: 6 });
+  const pts = [
+    'zapoznałam/em się z treścią regulaminu pracy oraz regulaminu wynagradzania obowiązujących u pracodawcy (jeżeli zostały wprowadzone) i zobowiązuję się do ich przestrzegania;',
+    'otrzymałam/em informację o warunkach zatrudnienia, o której mowa w art. 29 § 3 Kodeksu pracy;',
+    'zostałam/em poinformowana/y o obowiązku zachowania w tajemnicy informacji, których ujawnienie mogłoby narazić pracodawcę na szkodę;',
+    'zostałam/em poinformowana/y o celach, zakresie i sposobie zastosowania monitoringu u pracodawcy (jeżeli został wprowadzony);',
+    'zostałam/em poinformowana/y o wprowadzeniu kontroli trzeźwości lub kontroli na obecność środków działających podobnie do alkoholu oraz o sposobie jej przeprowadzania (jeżeli została wprowadzona);',
+    'zapoznałam/em się z obowiązującymi u pracodawcy zasadami przeciwdziałania mobbingowi i dyskryminacji;',
+    'zostałam/em poinformowana/y o zasadach odpowiedzialności materialnej za powierzone mienie oraz o zasadach przydziału odzieży roboczej i środków ochrony indywidualnej.',
+  ];
+  pts.forEach((p, i) => para(C, ['{0})  ' + p, i + 1], { hang: 18, after: 4 }));
+  gap(C, 6);
+  placeLine(C, d);
+  signature(C, 'podpis pracownika', { align: 'right', top: 14 });
+}
+
+// P8. ZGODA NA PIT W FORMIE ELEKTRONICZNEJ (lista A)
+function docZgodaPit(C, d) {
+  newPage(C);
+  placeDate(C, d.sign.miejscowosc, d.sign.data);
+  field(C, 'Imię i nazwisko', fullName(d.p));
+  field(C, 'Pracodawca', d.z.nazwa, { after: 12 });
+  title(C, 'Zgoda na przekazywanie informacji podatkowych w formie elektronicznej');
+  para(C, 'Wyrażam zgodę na przekazywanie mi przez pracodawcę imiennych informacji podatkowych (w szczególności PIT-11) w formie elektronicznej, na adres e-mail: ............................................................', { after: 6 });
+  para(C, 'Zobowiązuję się niezwłocznie poinformować pracodawcę o zmianie adresu e-mail. Zgoda może zostać wycofana w każdym czasie.');
+  signature(C, 'podpis pracownika', { align: 'right', top: 40 });
+}
+
+// P9. OŚWIADCZENIE O UPRAWNIENIACH RODZICIELSKICH (art. 148³, 178 § 2, 188 KP)
+function docRodzic(C, d) {
+  newPage(C);
+  placeDate(C, d.sign.miejscowosc, d.sign.data);
+  field(C, 'Imię i nazwisko', fullName(d.p));
+  field(C, 'Pracodawca', d.z.nazwa, { after: 12 });
+  title(C, 'Oświadczenie o korzystaniu z uprawnień rodzicielskich');
+  para(C, 'Właściwą odpowiedź zaznaczyć znakiem „X”.', { size: 9, color: rgb(0.4, 0.4, 0.4), after: 6 });
+  checkLine(C, 'Nie dotyczy — nie jestem rodzicem ani opiekunem dziecka w wieku do 14 lat.', false);
+  gap(C, 6);
+  para(C, '1.  Jako rodzic lub opiekun dziecka w wieku do 14 lat oświadczam, że ze zwolnienia od pracy w wymiarze 16 godzin albo 2 dni w roku kalendarzowym, z zachowaniem prawa do wynagrodzenia (art. 188 Kodeksu pracy):', { hang: 18, after: 2 });
+  checkLine(C, 'zamierzam korzystać,', false, { indent: 18 });
+  checkLine(C, 'nie zamierzam korzystać.', false, { indent: 18 });
+  gap(C, 6);
+  para(C, '2.  Jako rodzic lub opiekun dziecka do ukończenia przez nie 8. roku życia (art. 178 § 2 Kodeksu pracy) wyrażam zgodę / nie wyrażam zgody* na:', { hang: 18, after: 2 });
+  ['pracę w godzinach nadliczbowych,', 'pracę w porze nocnej,', 'pracę w systemie przerywanego czasu pracy,', 'delegowanie poza stałe miejsce pracy.']
+    .forEach((t) => para(C, ['–  ' + t + '  {0}', '.....................'], { indent: 18, after: 2 }));
+  gap(C, 8);
+  signature(C, 'podpis pracownika', { align: 'right', top: 30 });
+  gap(C, 8);
+  para(C, NOTE_SKRESLIC, { size: 8, lh: 11, color: rgb(0.4, 0.4, 0.4) });
+}
+
+// P10. ZAKŁADKI DO AKT OSOBOWYCH — części A–E (wewnętrzne, tylko po polsku)
+const AKTA = {
+  A: ['Kwestionariusz osobowy', 'Paszport', 'Dokumenty leg. pobyt', 'Skierowanie na badanie', 'BHP', 'Orzeczenie lekarskie'],
+  B: ['Kwestionariusz osobowy', 'RODO', 'BHP', 'Oświadczenie BHP', 'Informacja dot. równego traktowania', 'Umowa o pracę',
+    'Zakres czynności', 'Informacja o warunkach zatrudnienia', 'Oświadczenie pracownika o przepisach zakładowych', 'PIT-2',
+    'Informacja PPK', 'Rezygnacja PPK', 'ZUA', 'Powiadomienie o powierzeniu pracy'],
+  C: [], D: [], E: [],
+};
+function docZakladki(C, d) {
+  const f = C.cols[0].font, b = C.cols[0].bold, black = rgb(0, 0, 0);
+  const x0 = MARGIN, w = A4[0] - MARGIN * 2, numW = 70, rowH = 24, rows = 16;
+  Object.keys(AKTA).forEach((cz) => {
+    newPage(C, true);
+    let y = A4[1] - MARGIN - 10;
+    const mid = (t, font, size) => { font.draw(C.page, t, { x: (A4[0] - font.widthOfTextAtSize(t, size)) / 2, y, size, color: black }); };
+    mid('Akta osobowe', b, 20); y -= 28;
+    mid('część ' + cz, b, 16); y -= 34;
+    f.draw(C.page, 'Imię i nazwisko: ' + fullName(d.p), { x: x0, y, size: 12, color: black }); y -= 24;
+    const top = y;
+    for (let i = 0; i <= rows + 1; i++) C.page.drawLine({ start: { x: x0, y: top - i * rowH }, end: { x: x0 + w, y: top - i * rowH }, thickness: 0.6, color: black });
+    [x0, x0 + numW, x0 + w].forEach((x) => C.page.drawLine({ start: { x, y: top }, end: { x, y: top - (rows + 1) * rowH }, thickness: 0.6, color: black }));
+    b.draw(C.page, 'Liczba kolejna', { x: x0 + 5, y: top - 16, size: 9, color: black });
+    b.draw(C.page, 'Określenie dokumentu', { x: x0 + numW + 8, y: top - 16, size: 10, color: black });
+    AKTA[cz].forEach((name, i) => {
+      const ry = top - (i + 1) * rowH - 16;
+      f.draw(C.page, String(i + 1), { x: x0 + 28, y: ry, size: 10.5, color: black });
+      f.draw(C.page, name, { x: x0 + numW + 8, y: ry, size: 10.5, color: black });
+    });
+  });
 }
 
 // ============================================================
@@ -1139,23 +1285,14 @@ async function generateKomplet(d, tr) {
   return await doc.save();
 }
 function renderDocs(C, d) {
-  if (d.docs.umowa) docUmowa(C, d);
-  if (d.docs.kwest) docKwestionariusz(C, d);
-  if (d.typ === 'praca') {
-    if (d.docs.pit2) docPit2(C, d);
-    if (d.docs.zusPrac) docZusPracownik(C, d);
-    if (d.docs.warunki) docWarunki(C, d);
-    if (d.docs.zapoznanie) docZapoznanie(C, d);
-  } else {
-    if (d.docs.zus) docOswiadczenieZus(C, d);
-    if (d.docs.wykonawca) docOswiadczenieWykonawcy(C, d);
-    if (d.docs.wybor) docWyborUmowy(C, d);
-  }
-  if (d.docs.ppkInfo) docInformacjaPpk(C, d);
-  if (d.docs.ppkRez) docRezygnacjaPpk(C, d);
-  if (d.docs.gotowka) docGotowka(C, d);
-  if (d.docs.rodzina) docCzlonkowieRodziny(C, d);
-  if (d.docs.rodo) docRodo(C, d);
+  const fn = {
+    umowa: docUmowa, kwest: docKwestionariusz, wybor: docWyborUmowy, gotowka: docGotowka, rodo: docRodo,
+    zus: docOswiadczenieZus, wykonawca: docOswiadczenieWykonawcy, pit2: docPit2, rodzina: docCzlonkowieRodziny,
+    ppkInfo: docInformacjaPpk, ppkRez: docRezygnacjaPpk, bhp: docBhp, rowne: docRowne, zakres: docZakres,
+    warunki: docWarunki, przepisy: docPrzepisy, zusPrac: docZusPracownik, zgodaPit: docZgodaPit, rodzic: docRodzic,
+    zakladki: docZakladki,
+  };
+  DOC_ORDER[d.typ].forEach((k) => { if (d.docs[k]) fn[k](C, d); });
 }
 const KOMPLET_TITLE = { zlecenie: 'Umowa zlecenie — komplet dokumentów', praca: 'Umowa o pracę — komplet dokumentów' };
 
@@ -1244,8 +1381,7 @@ const statusEl = document.getElementById('status');
 function showStatus(msg, type) { statusEl.textContent = msg; statusEl.className = 'status ' + type; }
 
 function anyDocSelected(d) {
-  const other = d.typ === 'praca' ? ['zus', 'wykonawca', 'wybor'] : ['pit2', 'zusPrac', 'warunki', 'zapoznanie'];
-  return Object.keys(d.docs).some(k => d.docs[k] && other.indexOf(k) < 0);
+  return DOC_ORDER[d.typ].some(k => d.docs[k]);
 }
 
 form.addEventListener('submit', async (e) => {

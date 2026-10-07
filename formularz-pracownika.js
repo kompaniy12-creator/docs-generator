@@ -17,11 +17,14 @@
 
   // ---------------- Documents (categorised, required validation) ----------------
   var DOC_CATS = [
-    { key: 'tozsamosc', label: 'Dokument tożsamości (paszport)', hint: 'paszport / dowód osobisty / karta pobytu', required: true, ai: true },
-    { key: 'pobyt', label: 'Tytuł pobytowy', hint: 'karta pobytu / decyzja / wiza', required: false, ai: true },
-    { key: 'praca', label: 'Podstawa legalnej pracy', hint: 'zezwolenie na pracę / oświadczenie o powierzeniu pracy', required: false, ai: true },
-    { key: 'bhp', label: 'BHP — badanie i skierowanie', hint: 'badanie lekarskie / skierowanie', required: false },
-    { key: 'student', label: 'Dla studenta — legitymacja i zaświadczenie', hint: 'legitymacja studencka / zaświadczenie z uczelni', required: false },
+    { key: 'tozsamosc', label: 'Paszport', hint: 'paszport (strona ze zdjęciem) / dowód osobisty', required: true, ai: true },
+    { key: 'pobyt', label: 'Dokumenty legalizujące pobyt', hint: 'decyzja / karta pobytu / wiza', required: false, ai: true },
+    { key: 'praca', label: 'Dokumenty legalizujące pracę', hint: 'powiadomienie / zezwolenie na pracę / oświadczenie o powierzeniu pracy', required: false, ai: true },
+    { key: 'student', label: 'Dla studenta — zaświadczenie / legitymacja', hint: 'jeżeli posiada', required: false },
+    { key: 'bhp', label: 'Szkolenie wstępne BHP', hint: 'karta szkolenia wstępnego BHP', required: false },
+    { key: 'badania', label: 'Skierowanie i orzeczenie lekarskie', hint: 'skierowanie na badanie + orzeczenie lekarskie', required: false },
+    { key: 'swiadectwa', label: 'Świadectwa pracy', hint: 'umowa o pracę — z poprzednich miejsc pracy', required: false },
+    { key: 'dyplomy', label: 'Dyplomy i dokumenty kwalifikacji', hint: 'umowa o pracę — jeżeli posiada', required: false },
     { key: 'konto', label: 'Potwierdzenie nr konta', hint: 'opcjonalnie', required: false },
     { key: 'inne', label: 'Inne załączniki', hint: 'opcjonalnie', required: false },
   ];
@@ -236,6 +239,25 @@
   $('r_has').addEventListener('change', function () {
     $('rodzinaBlock').hidden = !this.checked;
   });
+  // hours per month: required unless the client declares monthly reporting of variable hours;
+  // live check against the 800+ threshold (50% of the minimum wage)
+  var MIN_WAGE = 4806; // minimalne wynagrodzenie za pracę 2026 (zł brutto) — zaktualizuj co roku
+  function update800() {
+    var out = $('u_800_calc');
+    var h = parseFloat(($('u_godziny').value || '').replace(',', '.'));
+    var st = parseFloat(($('u_stawka').value || '').replace(',', '.'));
+    if (!(st > 0)) { out.textContent = ''; return; }
+    var mies = $('u_jedn').value === 'mies' ? st : (h > 0 ? st * h : NaN);
+    if (isNaN(mies)) { out.textContent = ''; return; }
+    var prog = MIN_WAGE / 2;
+    out.textContent = mies >= prog
+      ? ' Przy podanych danych: ok. ' + Math.round(mies) + ' zł miesięcznie — próg jest spełniony.'
+      : ' Uwaga: przy podanych danych to ok. ' + Math.round(mies) + ' zł miesięcznie — poniżej progu ' + prog + ' zł.';
+    out.style.fontWeight = mies >= prog ? '400' : '700';
+  }
+  ['u_godziny', 'u_stawka', 'u_jedn'].forEach(function (id) { $(id).addEventListener('input', update800); $(id).addEventListener('change', update800); });
+  $('u_godziny_zmienne').addEventListener('change', function () { clearErr($('u_godziny')); });
+
   $('p_gotowka').addEventListener('change', function () {
     var konto = $('p_konto');
     konto.disabled = this.checked;
@@ -261,7 +283,7 @@
     if (digits.length !== 5 || !window.Urzedy) return;
     if (/^\d{5}$/.test(kod.value.trim())) kod.value = digits.slice(0, 2) + '-' + digits.slice(2);
     var seq = ++urzedySeq;
-    var res = await window.Urzedy.lookup(digits, $('a_miejscowosc').value);
+    var res = await window.Urzedy.lookup(digits, $('a_miejscowosc').value, $('a_ulica').value);
     if (seq !== urzedySeq || !res) return;
     autoSet($('a_wojewodztwo'), res.wojewodztwo);
     autoSet($('a_powiat'), res.powiat);
@@ -274,10 +296,11 @@
     else if (us.dataset.auto === us.value) { us.value = ''; us.dataset.auto = ''; }
     hint.style.display = res.us.length < 2 ? 'none' : 'block';
     hint.textContent = res.us.length < 2 ? '' :
-      'Pod tym kodem działa kilka urzędów skarbowych — wybierz właściwy z listy.';
+      'W tym mieście granice urzędów skarbowych biegną ulicami — wybierz właściwy z listy.';
   }
   $('a_kod').addEventListener('input', fillUrzedy);
   $('a_miejscowosc').addEventListener('change', fillUrzedy);
+  $('a_ulica').addEventListener('change', fillUrzedy);
 
   // ---------------- Validation ----------------
   function peselValid(p) {
@@ -348,6 +371,12 @@
       }
     }
 
+    var godz = $('u_godziny');
+    if (godz.value && !/^\d{1,3}$/.test(godz.value.trim())) { setErr(godz, 'Podaj liczbę godzin (np. 160)'); problems.push(godz); }
+    else if (!godz.value.trim() && !$('u_godziny_zmienne').checked) {
+      setErr(godz, 'Podaj liczbę godzin albo zaznacz, że jest zmienna'); problems.push(godz);
+    }
+
     var kod = $('a_kod');
     if (kod.value && !/^\d{2}-\d{3}$/.test(kod.value)) { setErr(kod, 'Format 00-000'); problems.push(kod); }
 
@@ -380,7 +409,7 @@
   function collect() {
     var fd = new FormData(form), data = {};
     fd.forEach(function (v, k) { data[k] = typeof v === 'string' ? v.trim() : v; });
-    ['p_nopesel', 'm_same', 'r_has', 'p_gotowka'].forEach(function (k) { data[k] = $(k).checked; });
+    ['p_nopesel', 'm_same', 'r_has', 'p_gotowka', 'u_godziny_zmienne'].forEach(function (k) { data[k] = $(k).checked; });
     return data;
   }
 

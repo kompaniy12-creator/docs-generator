@@ -4,8 +4,9 @@
    - US: wg załącznika nr 2 do rozporządzenia o terytorialnym zasięgu działania
      naczelników urzędów skarbowych (Dz.U. 2022 poz. 361). Dane wygenerowane z
      tekstu aktu: n = nazwa, w = województwo, p = całe powiaty, g = gminy części
-     powiatu, c = miasta na prawach powiatu. W miastach z kilkoma urzędami granice
-     biegną ulicami — wtedy zwracamy listę kandydatów zamiast jednego urzędu. */
+     powiatu, c = miasta na prawach powiatu, d = nazwane części (dzielnice) miasta.
+     W miastach z kilkoma urzędami część granic biegnie ulicami — gdy dzielnica nie
+     rozstrzyga, zwracamy listę kandydatów zamiast jednego urzędu. */
 (function () {
   'use strict';
   var API = 'https://kodpocztowy.intami.pl/api/';
@@ -45,11 +46,11 @@
     {"n":"Urząd Skarbowy w Trzebnicy","w":"dolnośląskie","p":["trzebnicki"]},
     {"n":"Urząd Skarbowy w Wałbrzychu","w":"dolnośląskie","p":["wałbrzyski"],"c":["Wałbrzych"]},
     {"n":"Urząd Skarbowy w Wołowie","w":"dolnośląskie","p":["wołowski"]},
-    {"n":"Urząd Skarbowy Wrocław-Fabryczna","w":"dolnośląskie","c":["Wrocław"]},
-    {"n":"Urząd Skarbowy Wrocław-Krzyki","w":"dolnośląskie","c":["Wrocław"]},
-    {"n":"Urząd Skarbowy Wrocław-Psie Pole","w":"dolnośląskie","c":["Wrocław"]},
-    {"n":"Urząd Skarbowy Wrocław-Stare Miasto","w":"dolnośląskie","c":["Wrocław"]},
-    {"n":"Urząd Skarbowy Wrocław-Śródmieście","w":"dolnośląskie","c":["Wrocław"]},
+    {"n":"Urząd Skarbowy Wrocław-Fabryczna","w":"dolnośląskie","c":["Wrocław"],"d":["Fabryczna"]},
+    {"n":"Urząd Skarbowy Wrocław-Krzyki","w":"dolnośląskie","c":["Wrocław"],"d":["Krzyki"]},
+    {"n":"Urząd Skarbowy Wrocław-Psie Pole","w":"dolnośląskie","c":["Wrocław"],"d":["Psie Pole"]},
+    {"n":"Urząd Skarbowy Wrocław-Stare Miasto","w":"dolnośląskie","c":["Wrocław"],"d":["Stare Miasto"]},
+    {"n":"Urząd Skarbowy Wrocław-Śródmieście","w":"dolnośląskie","c":["Wrocław"],"d":["Śródmieście"]},
     {"n":"Pierwszy Urząd Skarbowy we Wrocławiu","w":"dolnośląskie","p":["wrocławski"]},
     {"n":"Urząd Skarbowy w Ząbkowicach Śląskich","w":"dolnośląskie","p":["ząbkowicki"]},
     {"n":"Urząd Skarbowy w Zgorzelcu","w":"dolnośląskie","p":["zgorzelecki"]},
@@ -117,13 +118,13 @@
     {"n":"Urząd Skarbowy w Łasku","w":"łódzkie","p":["łaski"]},
     {"n":"Urząd Skarbowy w Łęczycy","w":"łódzkie","p":["łęczycki"]},
     {"n":"Urząd Skarbowy w Łowiczu","w":"łódzkie","p":["łowicki"]},
-    {"n":"Pierwszy Urząd Skarbowy Łódź-Bałuty","w":"łódzkie","c":["Łódź"]},
-    {"n":"Drugi Urząd Skarbowy Łódź-Bałuty","w":"łódzkie","c":["Łódź"]},
-    {"n":"Pierwszy Urząd Skarbowy Łódź-Górna","w":"łódzkie","c":["Łódź"]},
-    {"n":"Drugi Urząd Skarbowy Łódź-Górna","w":"łódzkie","c":["Łódź"]},
-    {"n":"Urząd Skarbowy Łódź-Polesie","w":"łódzkie","c":["Łódź"]},
-    {"n":"Urząd Skarbowy Łódź-Śródmieście","w":"łódzkie","c":["Łódź"]},
-    {"n":"Urząd Skarbowy Łódź-Widzew","w":"łódzkie","p":["łódzki wschodni"],"c":["Łódź"]},
+    {"n":"Pierwszy Urząd Skarbowy Łódź-Bałuty","w":"łódzkie","c":["Łódź"],"d":["Bałuty"]},
+    {"n":"Drugi Urząd Skarbowy Łódź-Bałuty","w":"łódzkie","c":["Łódź"],"d":["Bałuty"]},
+    {"n":"Pierwszy Urząd Skarbowy Łódź-Górna","w":"łódzkie","c":["Łódź"],"d":["Górna"]},
+    {"n":"Drugi Urząd Skarbowy Łódź-Górna","w":"łódzkie","c":["Łódź"],"d":["Górna"]},
+    {"n":"Urząd Skarbowy Łódź-Polesie","w":"łódzkie","c":["Łódź"],"d":["Polesie"]},
+    {"n":"Urząd Skarbowy Łódź-Śródmieście","w":"łódzkie","c":["Łódź"],"d":["Śródmieście"]},
+    {"n":"Urząd Skarbowy Łódź-Widzew","w":"łódzkie","p":["łódzki wschodni"],"c":["Łódź"],"d":["Widzew"]},
     {"n":"Urząd Skarbowy w Opocznie","w":"łódzkie","p":["opoczyński"]},
     {"n":"Urząd Skarbowy w Pabianicach","w":"łódzkie","p":["pabianicki"]},
     {"n":"Urząd Skarbowy w Pajęcznie","w":"łódzkie","p":["pajęczański"]},
@@ -365,12 +366,12 @@
     {"n":"Urząd Skarbowy w Ostrzeszowie","w":"wielkopolskie","p":["ostrzeszowski"]},
     {"n":"Urząd Skarbowy w Pile","w":"wielkopolskie","p":["pilski"]},
     {"n":"Urząd Skarbowy w Chodzieży","w":"wielkopolskie","p":["chodzieski"]},
-    {"n":"Urząd Skarbowy Poznań-Grunwald","w":"wielkopolskie","c":["Poznań"]},
-    {"n":"Urząd Skarbowy Poznań-Jeżyce","w":"wielkopolskie","g":{"poznański":["Rokietnica","Tarnowo Podgórne"]},"c":["Poznań"]},
-    {"n":"Urząd Skarbowy Poznań-Nowe Miasto","w":"wielkopolskie","c":["Poznań"]},
+    {"n":"Urząd Skarbowy Poznań-Grunwald","w":"wielkopolskie","c":["Poznań"],"d":["Grunwald"]},
+    {"n":"Urząd Skarbowy Poznań-Jeżyce","w":"wielkopolskie","g":{"poznański":["Rokietnica","Tarnowo Podgórne"]},"c":["Poznań"],"d":["Jeżyce"]},
+    {"n":"Urząd Skarbowy Poznań-Nowe Miasto","w":"wielkopolskie","c":["Poznań"],"d":["Nowe Miasto"]},
     {"n":"Pierwszy Urząd Skarbowy w Poznaniu","w":"wielkopolskie","g":{"poznański":["Buk","Czerwonak","Dopiewo","Kleszczewo","Komorniki","Kostrzyn","Kórnik","Mosina","Murowana Goślina","Pobiedziska","Stęszew","Swarzędz"]}},
-    {"n":"Urząd Skarbowy Poznań-Wilda","w":"wielkopolskie","g":{"poznański":["Luboń","Puszczykowo"]},"c":["Poznań"]},
-    {"n":"Urząd Skarbowy Poznań-Winogrady","w":"wielkopolskie","g":{"poznański":["Suchy Las"]},"c":["Poznań"]},
+    {"n":"Urząd Skarbowy Poznań-Wilda","w":"wielkopolskie","g":{"poznański":["Luboń","Puszczykowo"]},"c":["Poznań"],"d":["Wilda","Stare Miasto"]},
+    {"n":"Urząd Skarbowy Poznań-Winogrady","w":"wielkopolskie","g":{"poznański":["Suchy Las"]},"c":["Poznań"],"d":["Winogrady","Piątkowo","Radojewo","Umultowo","Morasko","Naramowice","Stare Miasto"]},
     {"n":"Urząd Skarbowy w Rawiczu","w":"wielkopolskie","p":["rawicki"]},
     {"n":"Urząd Skarbowy w Słupcy","w":"wielkopolskie","p":["słupecki"]},
     {"n":"Urząd Skarbowy w Szamotułach","w":"wielkopolskie","p":["szamotulski"]},
@@ -406,11 +407,16 @@
   function has(list, v) { return (list || []).some(function (x) { return norm(x) === v; }); }
 
   // offices competent for one place (województwo + powiat + gmina, lower-cased)
-  function officesFor(woj, powiat, gmina) {
+  function officesFor(woj, powiat, gmina, dzielnica) {
     var inWoj = US.filter(function (o) { return o.w === woj; });
     // miasto na prawach powiatu: the API gives the city name as the powiat
     var city = inWoj.filter(function (o) { return has(o.c, powiat) || (!powiat && has(o.c, gmina)); });
-    if (city.length) return city;
+    if (city.length) {
+      // "Poznań-Grunwald" -> "grunwald": keep the offices whose territory names that district
+      var dz = norm(dzielnica).replace(/^.*?-/, '');
+      var named = dz ? city.filter(function (o) { return has(o.d, dz); }) : [];
+      return named.length ? named : city;
+    }
     return inWoj.filter(function (o) {
       if (has(o.p, powiat)) return true;
       return Object.keys(o.g || {}).some(function (p) { return p === powiat && has(o.g[p], gmina); });
@@ -430,7 +436,7 @@
   function uniq(a) { return a.filter(function (x, i) { return x && a.indexOf(x) === i; }); }
 
   // -> { wojewodztwo, powiat, gmina, nfz, us: [nazwy] }; pola puste gdy niejednoznaczne.
-  async function lookup(kod, miejscowosc) {
+  async function lookup(kod, miejscowosc, ulica) {
     var m = (kod || '').replace(/\D/g, '');
     if (m.length !== 5) return null;
     var rows = await fetchKod(m.slice(0, 2) + '-' + m.slice(2));
@@ -439,6 +445,10 @@
     var mi = norm(miejscowosc);
     var same = rows.filter(function (r) { return mi && norm(r.miejscowosc) === mi; });
     if (same.length) rows = same;
+    // ...and by the typed street, which pins down the district in big cities
+    var ul = norm(ulica).replace(/^(ul\.|ulica|al\.|aleja|os\.|pl\.)\s*/, '');
+    var street = rows.filter(function (r) { return ul && r.ulica && norm(r.ulica) === ul; });
+    if (street.length) rows = street;
 
     var us = [], woj = [], pow = [], gm = [];
     rows.forEach(function (r) {
@@ -447,7 +457,7 @@
       if (r.powiat) pow.push(r.powiat);
       if (r.gmina) gm.push(r.gmina);
       if (!w || (!p && !g)) return;
-      officesFor(w, p, g).forEach(function (o) { us.push(o.n); });
+      officesFor(w, p, g, r.dzielnica).forEach(function (o) { us.push(o.n); });
     });
     woj = uniq(woj); pow = uniq(pow); gm = uniq(gm);
     return {

@@ -186,7 +186,21 @@
           </select>
         </div>
       </div>
-      <p class="hint" style="margin:4px 0 0">Te dane trafią do umowy. Jeśli ich jeszcze nie znasz — zostaw puste, uzupełni je dział kadr.</p>
+      <div class="row">
+        <div class="field">
+          <label for="u_godziny">Liczba godzin pracy w miesiącu <span class="req">*</span></label>
+          <input id="u_godziny" name="u_godziny" type="text" inputmode="numeric" maxlength="3" placeholder="np. 160" />
+          <span class="err" data-for="u_godziny"></span>
+        </div>
+        <div class="field" style="display:flex;align-items:flex-end">
+          <label class="check-row"><input type="checkbox" id="u_godziny_zmienne" name="u_godziny_zmienne" /> Liczba godzin jest zmienna — będę przesyłać liczbę przepracowanych godzin co miesiąc</label>
+        </div>
+      </div>
+      <div id="u_800" style="margin:10px 0 0;padding:10px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:13px;color:#78350f">
+        <strong>Świadczenie 800+ (cudzoziemcy):</strong> aby zachować prawo do 800+, pracownik musi być aktywny zawodowo, a podstawa jego składek (wynagrodzenie) musi wynosić co najmniej połowę minimalnego wynagrodzenia za pracę — w 2026 r. to <strong>2403 zł brutto miesięcznie</strong> (50% z 4806 zł).
+        <span id="u_800_calc"></span>
+      </div>
+      <p class="hint" style="margin:8px 0 0">Te dane trafią do umowy. Jeśli ich jeszcze nie znasz — zostaw puste, uzupełni je dział kadr.</p>
     </fieldset>
 
     <fieldset>
