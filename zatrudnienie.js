@@ -30,7 +30,7 @@
 
   async function load() {
     if (!window.sb) { listEl.innerHTML = '<div class="empty">Brak połączenia z serwerem.</div>'; return; }
-    var res = await window.sb.from(TABLE).select('*').order('created_at', { ascending: false }).limit(300);
+    var res = await window.sb.from(TABLE).select('*').neq('status', 'zatrudniony').order('created_at', { ascending: false }).limit(300);
     if (res.error) { listEl.innerHTML = '<div class="empty">Błąd: ' + esc(res.error.message) + '</div>'; return; }
     rows = res.data || [];
     render();

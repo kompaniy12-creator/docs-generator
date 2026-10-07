@@ -64,3 +64,10 @@ drop policy if exists zz_obj_delete_portal on storage.objects;
 create policy zz_obj_delete_portal on storage.objects
   for delete to authenticated
   using (bucket_id = 'zatrudnienie-dokumenty' and public.is_portal_user());
+
+-- Kadry users may add worker records themselves (bulk import of existing staff,
+-- status 'zatrudniony'); the public form is still limited to status = 'nowe'.
+drop policy if exists zz_insert_kadry on public.zatrudnienie_zgloszenia;
+create policy zz_insert_kadry on public.zatrudnienie_zgloszenia
+  for insert to authenticated
+  with check (public.has_portal_section('kadry'));

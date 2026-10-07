@@ -12,7 +12,7 @@
   function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function digits(s) { return (s || '').replace(/[^0-9]/g, ''); }
   function fmtDate(iso) { try { return new Date(iso).toLocaleDateString('pl-PL'); } catch (e) { return iso; } }
-  var STL = { nowe: 'Nowe', sprawdzone: 'Sprawdzone', wyslane: 'Wysłane' };
+  var STL = { nowe: 'Nowe', sprawdzone: 'Sprawdzone', wyslane: 'Wysłane', zatrudniony: 'Zatrudniony' };
 
   $('tabs').addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;

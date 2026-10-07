@@ -18,6 +18,7 @@
       { href: 'zatrudnienie.html', ico: '📥', text: 'Zgłoszenia pracowników', short: 'Zgłoszenia', badge: true, wide: true },
       { href: 'umowa-zlecenie.html', ico: '🧾', text: 'Komplet dokumentów', short: 'Komplet' },
       { href: 'rejestr.html', ico: '🏢', text: 'Rejestr i terminy', short: 'Rejestr', wide: true },
+      { href: 'import.html', ico: '📤', text: 'Import pracowników', short: 'Import', wide: true },
     ] },
     { label: 'Spółka', items: [
       { href: 'index.html#rejestracja', ico: '📋', text: 'Rejestracja spółki', short: 'Rejestracja', sec: 'rejestracja' },

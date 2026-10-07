@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>Import pracowników — TD Consulting Group</title>
+<style>
+  :root{--brand-navy:#1B3F7F;--brand-navy-dark:#15315F;--brand-green:#1FA84B;--brand-tint:#EEF3F9;}
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f6f8fb;color:#111;line-height:1.5}
+  main{max-width:1100px;margin:0 auto;padding:36px 20px 96px}
+  .back{display:inline-block;margin-bottom:14px;font-size:14px;color:#666;text-decoration:none}
+  .brand{text-align:center;margin:0 0 14px}.brand img{height:60px}
+  h1{font-size:23px;font-weight:700;margin:0 0 6px;color:var(--brand-navy);text-align:center}
+  .lead{color:#666;margin:0 auto 22px;font-size:14px;text-align:center;max-width:760px}
+  .step{background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:18px;margin:0 0 14px}
+  .step h2{font-size:15px;margin:0 0 4px;color:var(--brand-navy)}
+  .step h2 span{display:inline-flex;width:24px;height:24px;border-radius:50%;background:var(--brand-navy);color:#fff;font-size:13px;align-items:center;justify-content:center;margin-right:8px}
+  .hint{color:#7a8699;font-size:12.5px;margin:4px 0 12px}
+  label{display:block;font-size:12.5px;color:#5a6577;margin:0 0 4px}
+  input[type=text],select{width:100%;padding:10px 12px;border:1px solid #d4dbe6;border-radius:8px;font:inherit;font-size:14px;background:#fff}
+  .row{display:grid;grid-template-columns:2fr 1fr;gap:10px}
+  @media(max-width:640px){.row{grid-template-columns:1fr}}
+  .drop{border:2px dashed #b8c4d8;border-radius:12px;padding:26px;text-align:center;color:#5a6577;cursor:pointer;background:#fbfcfe}
+  .drop.drag{border-color:var(--brand-navy);background:var(--brand-tint)}
+  .drop strong{color:var(--brand-navy)}
+  .map{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px 14px}
+  .map .f.req label::after{content:" *";color:#b91c1c}
+  .map .f.on select{border-color:var(--brand-green);background:#f0fdf4}
+  .tablewrap{overflow:auto;border:1px solid #e5e9ef;border-radius:10px;margin-top:12px}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th,td{padding:7px 10px;border-bottom:1px solid #eef1f6;text-align:left;white-space:nowrap}
+  th{background:#f6f8fb;color:#5a6577;font-weight:600}
+  button{border:none;border-radius:8px;padding:11px 18px;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+  .btn-main{background:var(--brand-navy);color:#fff}
+  .btn-main:hover{background:var(--brand-navy-dark)}
+  button:disabled{opacity:.5;cursor:default}
+  .status{margin:12px 0 0;padding:12px 14px;border-radius:8px;font-size:14px;display:none}
+  .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+  .status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+  .status.info{display:block;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Import pracowników</h1>
+  <p class="lead">Przenieś pracowników firmy z wFirma (lub z innego programu) do portalu z pliku Excel / CSV. Zaimportowane osoby pojawią się w Rejestrze przy swojej firmie i na liście „Pracownik z bazy” w generatorze dokumentów.</p>
+
+  <div class="step">
+    <h2><span>1</span>Firma, do której należą pracownicy</h2>
+    <p class="hint">Jeden plik = jedna firma. Wybierz ją z bazy klientów albo wpisz ręcznie.</p>
+    <div class="row">
+      <div><label for="firma">Firma z bazy klientów</label><select id="firma"><option value="">— wybierz albo wpisz ręcznie obok —</option></select></div>
+      <div><label for="nip">NIP</label><input id="nip" type="text" inputmode="numeric" maxlength="13" /></div>
+    </div>
+    <div style="margin-top:10px"><label for="nazwa">Nazwa firmy</label><input id="nazwa" type="text" /></div>
+  </div>
+
+  <div class="step">
+    <h2><span>2</span>Plik z pracownikami</h2>
+    <p class="hint">W wFirma: <strong>Kadry → Pracownicy</strong> → ikona kół zębatych → schemat kolumn <strong>„Eksport danych pracowników”</strong> → ponownie koła zębate → <strong>Eksport do Excela</strong>. Plik nie jest nigdzie wysyłany przed kliknięciem „Importuj” — czytamy go w przeglądarce.</p>
+    <div class="drop" id="drop"><strong>Kliknij i wybierz plik</strong> albo przeciągnij go tutaj<br /><small>.xlsx, .xls, .csv — pierwszy wiersz to nagłówki kolumn</small></div>
+    <input type="file" id="file" accept=".xlsx,.xls,.csv" hidden />
+    <div id="fileInfo" class="status"></div>
+  </div>
+
+  <div class="step" id="stepMap" hidden>
+    <h2><span>3</span>Dopasowanie kolumn</h2>
+    <p class="hint">Kolumny rozpoznane automatycznie są zaznaczone na zielono — sprawdź i popraw. Pola bez kolumny zostaną puste. Wymagane jest nazwisko (albo „imię i nazwisko” w jednej kolumnie).</p>
+    <div class="map" id="map"></div>
+    <div class="tablewrap"><table id="preview"></table></div>
+  </div>
+
+  <div class="step" id="stepGo" hidden>
+    <h2><span>4</span>Import</h2>
+    <p class="hint">Osoby już obecne w portalu (ten sam PESEL albo to samo imię, nazwisko i data urodzenia w tej firmie) nie są dublowane — uzupełniamy tylko ich puste pola.</p>
+    <button type="button" class="btn-main" id="go">Importuj pracowników</button>
+    <div id="result" class="status"></div>
+  </div>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="workers.js"></script>
+<script src="import.js"></script>
+</body>
+</html>
