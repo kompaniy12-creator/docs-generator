@@ -30,7 +30,7 @@
     return '<span class="pill p-ok">za ' + d + ' dni</span>';
   }
 
-  // every dated item of every worker; a contract that already ended is history, not an alert
+  // every dated item of every worker
   function terms() {
     var out = [];
     rows.forEach(function (w) {
@@ -39,7 +39,6 @@
         var v = p[d.k];
         if (!isDate(v)) return;
         var left = daysLeft(v);
-        if (d.contract && left < 0) return;
         out.push({ w: w, doc: d.label, date: v, d: left, contract: !!d.contract });
       });
     });
@@ -86,7 +85,8 @@
   VIEWS.po = termView('Dokumenty po terminie', 'Dokument stracił ważność — pracownik może nie mieć prawa do pobytu lub pracy.', function (t) { return !t.contract && t.d < 0; });
   VIEWS.d30 = termView('Dokumenty: do 30 dni', 'Kończą się w ciągu miesiąca — trzeba działać teraz.', function (t) { return !t.contract && t.d >= 0 && t.d <= 30; });
   VIEWS.d60 = termView('Dokumenty: 31–60 dni', 'Warto już uprzedzić pracownika i pracodawcę.', function (t) { return !t.contract && t.d > 30 && t.d <= 60; });
-  VIEWS.umowy = termView('Umowy kończące się do 60 dni', 'Umowa wygasa — przedłużenie albo zakończenie współpracy.', function (t) { return t.contract && t.d <= 60; });
+  VIEWS.umowy = termView('Umowy kończące się do 60 dni', 'Umowa wygasa — przedłużenie albo zakończenie współpracy.', function (t) { return t.contract && t.d >= 0 && t.d <= 60; });
+  VIEWS.umowyPo = termView('Umowy po terminie', 'Data końca umowy już minęła, a osoba nadal jest na liście pracowników — przedłuż umowę albo zakończ zatrudnienie (także w wFirma).', function (t) { return t.contract && t.d < 0; });
   VIEWS.braki = {
     title: 'Braki w danych', hint: 'Pracownicy, którym brakuje danych potrzebnych do dokumentów lub do pilnowania terminów.',
     items: missing,
@@ -106,6 +106,7 @@
     { v: 'po', label: 'dokumenty po terminie', cls: 'red' },
     { v: 'd30', label: 'dokumenty — do 30 dni', cls: 'red' },
     { v: 'd60', label: 'dokumenty — 31–60 dni', cls: 'amber' },
+    { v: 'umowyPo', label: 'umowy po terminie', cls: 'red' },
     { v: 'umowy', label: 'umowy kończące się do 60 dni', cls: 'amber' },
     { v: 'braki', label: 'pracownicy z brakami w danych', cls: 'amber' },
     { v: 'wszyscy', label: 'pracowników w rejestrze', cls: 'green' },
