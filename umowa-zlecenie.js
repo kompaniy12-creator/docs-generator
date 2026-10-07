@@ -98,6 +98,11 @@ async function loadWorkers() {
     else { mSame.checked = true; meldunekFields.hidden = true; }
     // family-member toggle
     if (d.r_has === true || d.r_imienazwisko) { docRodzina.checked = true; rodzinaFields.hidden = false; }
+    // cash payout chosen on intake -> include the "wypłata w gotówce" request
+    if (d.p_gotowka === true) {
+      const dg = document.querySelector('[name="doc_gotowka"]');
+      if (dg) dg.checked = true;
+    }
     // signing place (required, not collected on intake) — default to employer/worker city
     const dm = document.querySelector('[name="d_miejscowosc"]');
     if (dm && !dm.value) setVal('d_miejscowosc', d.z_miasto || d.a_miejscowosc || '');

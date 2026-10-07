@@ -64,6 +64,7 @@
       });
       html += '</div>';
     });
+    if (p.p_gotowka === true) html += '<div class="grid"><div><b>Wynagrodzenie:</b> gotówką (wniosek w komplecie)</div></div>';
     var docs = r.doc_paths || [];
     html += '<div class="sec">Dokumenty (' + docs.length + ')</div><div class="docs" data-docs></div>';
     html += '<div class="actions">';

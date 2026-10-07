@@ -236,11 +236,48 @@
   $('r_has').addEventListener('change', function () {
     $('rodzinaBlock').hidden = !this.checked;
   });
+  $('p_gotowka').addEventListener('change', function () {
+    var konto = $('p_konto');
+    konto.disabled = this.checked;
+    if (this.checked) { konto.value = ''; clearErr(konto); }
+  });
   $('p_nopesel').addEventListener('change', function () {
     var pesel = $('p_pesel');
     pesel.disabled = this.checked;
     if (this.checked) { pesel.value = ''; clearErr(pesel); }
   });
+
+  // ---------------- NFZ + urząd skarbowy from the residence postcode ----------------
+  // Fills only empty fields or ones we filled ourselves, never what the user typed.
+  function autoSet(el, val) {
+    if (!val || (el.value && el.dataset.auto !== el.value)) return;
+    el.value = val; el.dataset.auto = val;
+    clearErr(el);
+  }
+  var urzedySeq = 0;
+  async function fillUrzedy() {
+    var kod = $('a_kod');
+    var digits = kod.value.replace(/\D/g, '');
+    if (digits.length !== 5 || !window.Urzedy) return;
+    if (/^\d{5}$/.test(kod.value.trim())) kod.value = digits.slice(0, 2) + '-' + digits.slice(2);
+    var seq = ++urzedySeq;
+    var res = await window.Urzedy.lookup(digits, $('a_miejscowosc').value);
+    if (seq !== urzedySeq || !res) return;
+    autoSet($('a_wojewodztwo'), res.wojewodztwo);
+    autoSet($('a_powiat'), res.powiat);
+    autoSet($('a_gmina'), res.gmina);
+    autoSet($('p_nfz'), res.nfz);
+    var list = $('p_us_list'), hint = $('p_us_hint'), us = $('p_us');
+    list.innerHTML = '';
+    res.us.forEach(function (n) { var o = document.createElement('option'); o.value = n; list.appendChild(o); });
+    if (res.us.length === 1) autoSet(us, res.us[0]);
+    else if (us.dataset.auto === us.value) { us.value = ''; us.dataset.auto = ''; }
+    hint.style.display = res.us.length < 2 ? 'none' : 'block';
+    hint.textContent = res.us.length < 2 ? '' :
+      'Pod tym kodem działa kilka urzędów skarbowych — wybierz właściwy z listy.';
+  }
+  $('a_kod').addEventListener('input', fillUrzedy);
+  $('a_miejscowosc').addEventListener('change', fillUrzedy);
 
   // ---------------- Validation ----------------
   function peselValid(p) {
@@ -343,7 +380,7 @@
   function collect() {
     var fd = new FormData(form), data = {};
     fd.forEach(function (v, k) { data[k] = typeof v === 'string' ? v.trim() : v; });
-    ['p_nopesel', 'm_same', 'r_has'].forEach(function (k) { data[k] = $(k).checked; });
+    ['p_nopesel', 'm_same', 'r_has', 'p_gotowka'].forEach(function (k) { data[k] = $(k).checked; });
     return data;
   }
 

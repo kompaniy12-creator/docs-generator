@@ -308,7 +308,9 @@
         </div>
         <div class="field">
           <label for="p_us">Urząd skarbowy <span class="req">*</span></label>
-          <input id="p_us" name="p_us" type="text" required placeholder="np. US Poznań-Grunwald" />
+          <input id="p_us" name="p_us" type="text" required placeholder="np. US Poznań-Grunwald" list="p_us_list" autocomplete="off" />
+          <datalist id="p_us_list"></datalist>
+          <span class="hint" id="p_us_hint" style="display:none"></span>
         </div>
         <div class="field">
           <label for="p_nip">NIP (jeśli posiada)</label>
@@ -321,6 +323,7 @@
         <input id="p_konto" name="p_konto" type="text" required placeholder="PL00 0000 0000 0000 0000 0000 0000" />
         <span class="err" data-for="p_konto"></span>
         <span class="hint">26 cyfr (numer rachunku w Polsce).</span>
+        <label class="check-row" style="margin-top:10px"><input type="checkbox" id="p_gotowka" name="p_gotowka" /> Wynagrodzenie wypłacane gotówką (bez konta bankowego)</label>
       </div>
     </fieldset>
 
@@ -355,6 +358,7 @@
   </footer>
 </main>
 
+<script src="urzedy.js"></script>
 <script src="formularz-pracownika.js"></script>
 </body>
 </html>
