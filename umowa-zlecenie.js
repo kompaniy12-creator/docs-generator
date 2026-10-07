@@ -1012,6 +1012,20 @@ function docWyborUmowy(C, d) {
   ensure(C, 20);
   para(C, `${d.sign.miejscowosc || '..............'}, dnia ${isoToPLDots(d.sign.data) || '..............'} r.`, { raw: true, after: 0 });
   signature(C, 'Podpis zleceniobiorcy', { align: 'right', top: 14 });
+  docInformacjaRoznice(C, d);
+}
+// 9b. INFORMACJA — różnice między umową o pracę a umową zlecenia (druga strona oświadczenia)
+function docInformacjaRoznice(C, d) {
+  newPage(C);
+  title(C, 'INFORMACJA');
+  center(C, 'Różnice między umową o pracę a umową zlecenia', { bold: true, after: 8 });
+  para(C, 'Umowa o pracę i umowa zlecenia to dwie odrębne formy zatrudnienia, oparte na różnych przepisach i dające różny zakres praw. Umowa o pracę jest regulowana Kodeksem pracy, natomiast umowa zlecenia – Kodeksem cywilnym (art. 734 i 750). O rzeczywistym charakterze zatrudnienia decyduje faktyczny sposób wykonywania pracy, a nie nazwa nadana umowie przez strony (art. 22 § 1 i § 1¹ Kodeksu pracy).', { after: 8 });
+  para(C, 'Umowa o pracę', { bold: true, after: 3 });
+  para(C, 'Praca na podstawie umowy o pracę jest wykonywana osobiście, odpłatnie i pod kierownictwem pracodawcy – w wyznaczonym miejscu i czasie, według jego poleceń. W zamian pracownik korzysta z pełnej ochrony przewidzianej w Kodeksie pracy. Przysługuje mu wynagrodzenie nie niższe niż minimalne, które w 2026 roku wynosi 4 806 zł brutto miesięcznie przy pełnym etacie. Obowiązują go normy czasu pracy (8 godzin na dobę i przeciętnie 40 godzin tygodniowo), a za pracę w godzinach nadliczbowych należy się dodatek. Pracownik ma prawo do płatnego urlopu wypoczynkowego w wymiarze 20 lub 26 dni w roku, jest objęty obowiązkowym ubezpieczeniem chorobowym (zasiłek chorobowy i macierzyński), a rozwiązanie umowy wymaga zachowania okresu wypowiedzenia i – przy umowie na czas nieokreślony – uzasadnienia. Szczególną ochroną objęte są m.in. kobiety w ciąży oraz osoby w wieku przedemerytalnym. Okres zatrudnienia wlicza się do stażu pracy i do emerytury, a po zakończeniu pracy pracownik otrzymuje świadectwo pracy.', { after: 8 });
+  para(C, 'Umowa zlecenia', { bold: true, after: 3 });
+  para(C, 'Umowa zlecenia opiera się na samodzielnym wykonywaniu określonych czynności – zleceniobiorca co do zasady sam organizuje swoją pracę i nie podlega kierownictwu w takim zakresie jak pracownik etatowy. Za każdą godzinę wykonywania zlecenia przysługuje wynagrodzenie nie niższe niż minimalna stawka godzinowa, która w 2026 roku wynosi 31,40 zł brutto (prawa do niej nie można się zrzec). Przy tej formie zatrudnienia nie obowiązują ustawowe normy czasu pracy ani dodatek za nadgodziny, a urlop wypoczynkowy nie przysługuje z mocy prawa. Ubezpieczenie chorobowe jest dobrowolne – zasiłek chorobowy przysługuje tylko wtedy, gdy zleceniobiorca zgłosi się do tego ubezpieczenia. Umowę zlecenia można wypowiedzieć w każdym czasie (art. 746 Kodeksu cywilnego), nie obowiązują tu okresy ani szczególna ochrona przed rozwiązaniem. Okres pracy na zleceniu nie wlicza się do stażu pracowniczego, a po jego zakończeniu wystawiany jest rachunek lub zaświadczenie, a nie świadectwo pracy.', { after: 8 });
+  para(C, 'Oświadczam, że zapoznałam/zapoznałem się z powyższą informacją i została ona dla mnie zrozumiała.');
+  twoSignatures(C, 'Miejscowość i data', 'Czytelny podpis');
 }
 
 // ---------------- Umowa o pracę ----------------

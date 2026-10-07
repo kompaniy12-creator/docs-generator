@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>Dostęp do portalu — TD Consulting Group</title>
+<style>
+  :root{--brand-navy:#1B3F7F;--brand-navy-dark:#15315F;--brand-green:#1FA84B;--brand-tint:#EEF3F9;}
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f6f8fb;color:#111;line-height:1.5}
+  main{max-width:860px;margin:0 auto;padding:36px 20px 96px}
+  .back{display:inline-block;margin-bottom:14px;font-size:14px;color:#666;text-decoration:none}
+  .back:hover{color:var(--brand-navy)}
+  .brand{text-align:center;margin:0 0 14px}.brand img{height:60px}
+  h1{font-size:23px;font-weight:700;margin:0 0 6px;color:var(--brand-navy);text-align:center}
+  .lead{color:#666;margin:0 auto 22px;font-size:14px;text-align:center;max-width:620px}
+  .box{background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:18px;margin:0 0 16px}
+  .box h2{font-size:15px;margin:0 0 12px;color:var(--brand-navy)}
+  .row{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end}
+  @media(max-width:640px){.row{grid-template-columns:1fr}}
+  label{display:block;font-size:12.5px;color:#5a6577;margin:0 0 4px}
+  input{width:100%;padding:10px 12px;border:1px solid #d4dbe6;border-radius:8px;font:inherit;font-size:14px}
+  input:focus{outline:none;border-color:var(--brand-navy);box-shadow:0 0 0 3px rgba(27,63,127,.12)}
+  button{border:none;border-radius:8px;padding:10px 16px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
+  .btn-main{background:var(--brand-navy);color:#fff}
+  .btn-main:hover{background:var(--brand-navy-dark)}
+  .btn-soft{background:var(--brand-tint);color:var(--brand-navy)}
+  .btn-del{background:#fff;color:#b91c1c;border:1px solid #fecaca}
+  button:disabled{opacity:.5;cursor:default}
+  .hint{color:#888;font-size:12px;margin:8px 0 0}
+  .user{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #eef1f6;flex-wrap:wrap}
+  .user:first-of-type{border-top:none}
+  .who{flex:1;min-width:200px}
+  .who strong{display:block;font-size:14.5px;color:#1b2434;word-break:break-all}
+  .who small{color:#8a97ab;font-size:12px}
+  .badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;background:#dbeafe;color:#1e40af;margin-left:6px}
+  .acts{display:flex;gap:8px;flex-wrap:wrap}
+  .acts button{padding:7px 12px;font-size:12.5px}
+  .status{margin:0 0 16px;padding:12px 14px;border-radius:8px;font-size:14px;display:none}
+  .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+  .status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+  .empty{text-align:center;color:#888;padding:24px}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Dostęp do portalu</h1>
+  <p class="lead">Kto może logować się do portalu. Nowej osobie ustawiasz hasło startowe i przekazujesz je osobiście — portal go nigdzie nie wysyła.</p>
+
+  <div id="status" class="status"></div>
+
+  <div id="adminUi" hidden>
+    <div class="box">
+      <h2>Dodaj użytkownika</h2>
+      <form id="addForm" class="row" autocomplete="off">
+        <div><label for="email">E-mail</label><input id="email" type="email" required placeholder="np. osoba@przyklad.pl" autocomplete="off" /></div>
+        <div><label for="password">Hasło startowe (min. 10 znaków)</label><input id="password" type="password" minlength="10" autocomplete="new-password" /></div>
+        <button type="submit" class="btn-main">Nadaj dostęp</button>
+      </form>
+      <p class="hint">Jeśli konto z tym adresem już istnieje (np. w innej naszej aplikacji), zostanie mu tylko nadany dostęp do portalu, a jego hasło się nie zmieni — pole hasła można wtedy zostawić puste.</p>
+    </div>
+
+    <div class="box">
+      <h2>Użytkownicy portalu</h2>
+      <div id="list"><div class="empty">Ładowanie…</div></div>
+    </div>
+  </div>
+</main>
+<script src="dostep.js"></script>
+</body>
+</html>
