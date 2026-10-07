@@ -38,7 +38,7 @@
 
   // human-friendly labels for payload keys
   var LABELS = {
-    z_nazwa: 'Firma', z_nip: 'NIP', z_miasto: 'Miejscowość', z_ulica: 'Ulica i nr',
+    u_typ: 'Rodzaj umowy', z_nazwa: 'Firma', z_nip: 'NIP', z_miasto: 'Miejscowość', z_ulica: 'Ulica i nr',
     p_imiona: 'Imię', p_nazwisko: 'Nazwisko', p_pesel: 'PESEL', p_dataur: 'Data ur.',
     p_miejsceur: 'Miejsce ur.', p_obywatelstwo: 'Obywatelstwo', p_doc_typ: 'Dokument',
     p_dowod: 'Seria i nr', p_telefon: 'Telefon', p_email: 'E-mail', p_nfz: 'NFZ',
@@ -46,8 +46,9 @@
     a_ulica: 'Ulica', a_nrdom: 'Nr domu', a_nrmiesz: 'Nr mieszk.', a_kod: 'Kod', a_miejscowosc: 'Miejscowość',
     a_gmina: 'Gmina', a_powiat: 'Powiat', a_wojewodztwo: 'Województwo',
   };
+  var TYP_LABEL = { zlecenie: 'umowa zlecenie', praca: 'umowa o pracę' };
   var GROUPS = [
-    { title: 'Pracodawca', keys: ['z_nazwa', 'z_nip', 'z_miasto', 'z_ulica'] },
+    { title: 'Pracodawca', keys: ['u_typ', 'z_nazwa', 'z_nip', 'z_miasto', 'z_ulica'] },
     { title: 'Dane osobowe', keys: ['p_imiona', 'p_nazwisko', 'p_pesel', 'p_dataur', 'p_miejsceur', 'p_obywatelstwo', 'p_doc_typ', 'p_dowod'] },
     { title: 'Adres', keys: ['a_ulica', 'a_nrdom', 'a_nrmiesz', 'a_kod', 'a_miejscowosc', 'a_gmina', 'a_powiat', 'a_wojewodztwo'] },
     { title: 'Do zatrudnienia', keys: ['p_telefon', 'p_email', 'p_nfz', 'p_us', 'p_nip', 'p_konto'] },
@@ -60,7 +61,7 @@
       html += '<div class="sec">' + g.title + '</div><div class="grid">';
       g.keys.forEach(function (k) {
         if (p[k] == null || p[k] === '') return;
-        html += '<div><b>' + esc(LABELS[k] || k) + ':</b> ' + esc(p[k]) + '</div>';
+        html += '<div><b>' + esc(LABELS[k] || k) + ':</b> ' + esc(k === 'u_typ' ? (TYP_LABEL[p[k]] || p[k]) : p[k]) + '</div>';
       });
       html += '</div>';
     });
@@ -68,7 +69,7 @@
     var docs = r.doc_paths || [];
     html += '<div class="sec">Dokumenty (' + docs.length + ')</div><div class="docs" data-docs></div>';
     html += '<div class="actions">';
-    html += '<button class="btn-gen" data-act="generuj">🧾 Generuj komplet (umowa zlecenie)</button>';
+    html += '<button class="btn-gen" data-act="generuj">🧾 Generuj komplet (' + esc(TYP_LABEL[p.u_typ] || 'umowa zlecenie') + ')</button>';
     if (r.status === 'nowe') html += '<button class="btn-rev" data-act="sprawdzone">✔ Oznacz jako sprawdzone</button>';
     if (r.status !== 'wyslane') html += '<button class="btn-send" data-act="wyslane">📤 Wyślij klientowi do podpisu</button>';
     html += '<button class="btn-del" data-act="delete">Usuń</button>';

@@ -29,6 +29,28 @@ const docRodzina = document.getElementById('doc_rodzina');
 const rodzinaFields = document.getElementById('rodzinaFields');
 docRodzina.addEventListener('change', () => { rodzinaFields.hidden = !docRodzina.checked; });
 
+// contract type -> which documents are offered
+const uTyp = document.getElementById('u_typ');
+function applyTyp() {
+  const typ = uTyp.value === 'praca' ? 'praca' : 'zlecenie';
+  document.querySelectorAll('[data-typ]').forEach((el) => { el.hidden = el.getAttribute('data-typ') !== typ; });
+  document.querySelectorAll('[data-typ-text]').forEach((el) => { el.textContent = el.getAttribute('data-' + typ); });
+}
+uTyp.addEventListener('change', applyTyp);
+applyTyp();
+
+// bilingual variant: on by default for non-Polish citizenship (until the user decides otherwise)
+const tOn = document.getElementById('t_on');
+const pObyw = document.getElementById('p_obywatelstwo');
+let tOnTouched = false;
+tOn.addEventListener('change', () => { tOnTouched = true; });
+function syncTlumaczenie() {
+  if (tOnTouched) return;
+  const o = pObyw.value.trim().toLowerCase();
+  tOn.checked = !!o && !/^pol/.test(o);
+}
+pObyw.addEventListener('input', syncTlumaczenie);
+
 // ---------------- Worker directory (own Supabase) ----------------
 function setVal(name, val) {
   const el = document.querySelector('[name="' + name + '"]');
@@ -39,7 +61,7 @@ function fillWorker(d) {
   setVal('p_nazwisko', p.nazwisko); setVal('p_imiona', p.imiona); setVal('p_dataur', p.dataur);
   setVal('p_miejsceur', p.miejsceur); setVal('p_pesel', p.pesel); setVal('p_dowod', p.dowod);
   setVal('p_nip', p.nip); setVal('p_telefon', p.telefon); setVal('p_konto', p.konto);
-  setVal('p_us', p.us); setVal('p_nfz', p.nfz);
+  setVal('p_us', p.us); setVal('p_nfz', p.nfz); setVal('p_obywatelstwo', p.obywatelstwo); syncTlumaczenie();
   setVal('a_ulica', a.ulica); setVal('a_nrdom', a.nrdom); setVal('a_nrmiesz', a.nrmiesz);
   setVal('a_kod', a.kod); setVal('a_miejscowosc', a.miejscowosc); setVal('a_gmina', a.gmina);
   setVal('a_powiat', a.powiat); setVal('a_wojewodztwo', a.woj);
@@ -98,6 +120,8 @@ async function loadWorkers() {
     else { mSame.checked = true; meldunekFields.hidden = true; }
     // family-member toggle
     if (d.r_has === true || d.r_imienazwisko) { docRodzina.checked = true; rodzinaFields.hidden = false; }
+    applyTyp();
+    syncTlumaczenie();
     // cash payout chosen on intake -> include the "wypłata w gotówce" request
     if (d.p_gotowka === true) {
       const dg = document.querySelector('[name="doc_gotowka"]');
@@ -190,7 +214,10 @@ function collectData() {
   const chk = (n) => fd.get(n) != null;
 
   const sameMeld = chk('m_same');
+  const typ = get('u_typ') === 'praca' ? 'praca' : 'zlecenie';
   return {
+    typ,
+    tlumaczenie: { on: chk('t_on'), jezyk: get('t_jezyk') },
     z: {
       nazwa: get('z_nazwa'),
       miasto: get('z_miasto'),
@@ -203,6 +230,7 @@ function collectData() {
       imiona: get('p_imiona'),
       dataur: get('p_dataur'),
       miejsceur: get('p_miejsceur'),
+      obywatelstwo: get('p_obywatelstwo'),
       pesel: get('p_pesel'),
       dowod: get('p_dowod'),
       nip: get('p_nip'),
@@ -226,6 +254,7 @@ function collectData() {
       kwest: chk('doc_kwest'), zus: chk('doc_zus'), wykonawca: chk('doc_wykonawca'),
       ppkInfo: chk('doc_ppk_info'), wybor: chk('doc_wybor'), rodo: chk('doc_rodo'),
       ppkRez: chk('doc_ppk_rez'), gotowka: chk('doc_gotowka'), rodzina: chk('doc_rodzina'),
+      pit2: chk('doc_pit2'), zusPrac: chk('doc_zus_prac'), warunki: chk('doc_warunki'), zapoznanie: chk('doc_zapoznanie'),
     },
     rodzina: {
       od: get('r_od'), imienazwisko: get('r_imienazwisko'),
@@ -249,20 +278,79 @@ function meldOrZam(d) { return addrOneLine(d.meld || d.adres); }
 // ============================================================
 //                    PDF LAYOUT ENGINE
 // ============================================================
+// Every text helper renders into C.cols: one full-width Polish column, or — in the
+// bilingual variant — Polish on the left and the translation opposite it on the
+// right. Rows of both columns advance together, so a paragraph and its translation
+// always start on the same line.
 const A4 = [595.28, 841.89];
 const MARGIN = 56;
 const SIZE = 10.5;
 const LH = 15;
+const GUTTER = 18;
 
-function makeCtx(doc, font, bold) {
-  return { doc, font, bold, page: null, W: A4[0], H: A4[1], margin: MARGIN,
-    innerW: A4[0] - MARGIN * 2, y: 0 };
+// A "face" measures and draws text with one PDF font...
+function plainFace(font) {
+  return {
+    widthOfTextAtSize: (t, s) => font.widthOfTextAtSize(t, s),
+    draw: (page, t, o) => page.drawText(t, Object.assign({ font }, o)),
+  };
+}
+// ...or with a script font (Georgian, Armenian) falling back to Roboto for the
+// characters it lacks — Latin names, digits and Polish abbreviations inside a translation.
+function mixedFace(main, fallback) {
+  const has = new Set(main.getCharacterSet());
+  const runs = (t) => {
+    const out = [];
+    for (const ch of String(t)) {
+      const f = has.has(ch.codePointAt(0)) ? main : fallback;
+      const last = out[out.length - 1];
+      if (last && last.font === f) last.text += ch; else out.push({ font: f, text: ch });
+    }
+    return out;
+  };
+  return {
+    widthOfTextAtSize: (t, s) => runs(t).reduce((w, r) => w + r.font.widthOfTextAtSize(r.text, s), 0),
+    draw: (page, t, o) => {
+      let x = o.x;
+      for (const r of runs(t)) {
+        page.drawText(r.text, Object.assign({}, o, { x, font: r.font }));
+        x += r.font.widthOfTextAtSize(r.text, o.size);
+      }
+    },
+  };
+}
+
+// f: { pl, plBold, tr, trBold } faces; tr: Polish string -> translation (or null = Polish only)
+function makeCtx(doc, f, tr) {
+  const bi = !!tr;
+  const margin = bi ? 36 : MARGIN;
+  const innerW = A4[0] - margin * 2;
+  const colW = bi ? (innerW - GUTTER) / 2 : innerW;
+  const cols = [{ x: margin, w: colW, font: f.pl, bold: f.plBold, t: (s) => s }];
+  if (bi) cols.push({ x: margin + colW + GUTTER, w: colW, font: f.tr, bold: f.trBold, t: tr });
+  return { doc, cols, bi, k: bi ? 0.88 : 1, font: f.pl, page: null, W: A4[0], H: A4[1], margin, innerW, y: 0 };
 }
 function newPage(C) {
   C.page = C.doc.addPage(A4);
   C.y = C.H - C.margin;
+  if (C.bi) { // hairline between the original and the translation
+    const x = C.cols[1].x - GUTTER / 2;
+    C.page.drawLine({ start: { x, y: C.margin - 12 }, end: { x, y: C.H - C.margin + 12 }, thickness: 0.4, color: rgb(0.82, 0.82, 0.82) });
+  }
 }
 function ensure(C, h) { if (C.y - h < C.margin) newPage(C); }
+
+// Text is a string, or [template, ...values]: only the template is translated, the
+// values ({0}, {1}… — names, addresses, dates) are inserted unchanged in both columns.
+function txt(col, text, raw) {
+  if (Array.isArray(text)) {
+    const args = text.slice(1);
+    return col.t(text[0]).replace(/\{(\d)\}/g, (m, i) => (args[i] == null ? '' : args[i]));
+  }
+  return raw ? String(text == null ? '' : text) : col.t(text);
+}
+// second-column translation of a short caption ('' when not bilingual)
+function trOf(C, text) { return C.bi ? C.cols[1].t(text) : ''; }
 
 function wrapLines(text, font, size, maxWidth) {
   const out = [];
@@ -281,67 +369,77 @@ function wrapLines(text, font, size, maxWidth) {
   return out;
 }
 
+// draw the per-column line arrays row by row, keeping the columns aligned
+function drawRows(C, blocks, lh, drawLine) {
+  const n = Math.max.apply(null, blocks.map(b => b.lines.length));
+  for (let i = 0; i < n; i++) {
+    ensure(C, lh);
+    blocks.forEach(b => { if (i < b.lines.length) drawLine(b, b.lines[i], i); });
+    C.y -= lh;
+  }
+}
+
 // paragraph at current y (left aligned, optional indent/hanging)
 function para(C, text, opt) {
   opt = opt || {};
-  const font = opt.bold ? C.bold : C.font;
-  const size = opt.size || SIZE;
-  const lh = opt.lh || LH;
-  const indent = opt.indent || 0;
-  const hang = opt.hang || 0; // extra indent for wrapped lines
-  const x0 = C.margin + indent;
-  const maxW = C.innerW - indent - (opt.rightPad || 0);
-  const lines = wrapLines(text, font, size, maxW);
-  for (let i = 0; i < lines.length; i++) {
-    ensure(C, lh);
-    const x = i === 0 ? x0 : x0 + hang;
-    C.page.drawText(lines[i], { x, y: C.y, font, size, color: opt.color || rgb(0, 0, 0) });
-    C.y -= lh;
-  }
-  if (opt.after != null) C.y -= opt.after;
+  const size = (opt.size || SIZE) * C.k;
+  const lh = (opt.lh || LH) * C.k;
+  const indent = (opt.indent || 0) * C.k;
+  const hang = (opt.hang || 0) * C.k; // extra indent for wrapped lines
+  const color = opt.color || rgb(0, 0, 0);
+  const blocks = C.cols.map(col => {
+    const face = opt.bold ? col.bold : col.font;
+    return { col, face, lines: wrapLines(txt(col, text, opt.raw), face, size, col.w - indent - hang) };
+  });
+  drawRows(C, blocks, lh, (b, line, i) => {
+    b.face.draw(C.page, line, { x: b.col.x + indent + (i === 0 ? 0 : hang), y: C.y, size, color });
+  });
+  if (opt.after != null) C.y -= opt.after * C.k;
 }
-function gap(C, h) { C.y -= h; }
+function gap(C, h) { C.y -= h * C.k; }
 function center(C, text, opt) {
   opt = opt || {};
-  const font = opt.bold ? C.bold : C.font;
-  const size = opt.size || SIZE;
-  const lh = opt.lh || LH;
-  const lines = wrapLines(text, font, size, C.innerW);
-  for (const l of lines) {
-    ensure(C, lh);
-    const w = font.widthOfTextAtSize(l, size);
-    C.page.drawText(l, { x: (C.W - w) / 2, y: C.y, font, size, color: opt.color || rgb(0, 0, 0) });
-    C.y -= lh;
-  }
-  if (opt.after != null) C.y -= opt.after;
+  const size = (opt.size || SIZE) * C.k;
+  const lh = (opt.lh || LH) * C.k;
+  const color = opt.color || rgb(0, 0, 0);
+  const blocks = C.cols.map(col => {
+    const face = opt.bold ? col.bold : col.font;
+    return { col, face, lines: wrapLines(txt(col, text), face, size, col.w) };
+  });
+  drawRows(C, blocks, lh, (b, line) => {
+    const w = b.face.widthOfTextAtSize(line, size);
+    b.face.draw(C.page, line, { x: b.col.x + (b.col.w - w) / 2, y: C.y, size, color });
+  });
+  if (opt.after != null) C.y -= opt.after * C.k;
 }
 function title(C, text) {
   center(C, text, { bold: true, size: 13.5, lh: 18 });
   gap(C, 8);
 }
-// "Label: value" — label bold optional
+// "Label: value" — bold (translated) label, then the value flowing after it
 function field(C, label, value, opt) {
   opt = opt || {};
-  const lblFont = C.bold, valFont = C.font, size = SIZE;
-  ensure(C, LH);
-  const lbl = label + ': ';
-  const lblW = lblFont.widthOfTextAtSize(lbl, size);
-  C.page.drawText(lbl, { x: C.margin, y: C.y, font: lblFont, size });
-  // value wrapped after label
-  const valX = C.margin + lblW;
-  const maxW = C.innerW - lblW;
-  const lines = wrapLines(value || '', valFont, size, maxW);
-  if (lines.length === 0) lines.push('');
-  for (let i = 0; i < lines.length; i++) {
-    if (i > 0) { C.y -= LH; ensure(C, LH); }
-    const x = i === 0 ? valX : C.margin;
-    C.page.drawText(lines[i], { x, y: C.y, font: valFont, size });
-  }
-  C.y -= LH;
-  if (opt.after != null) C.y -= opt.after;
+  const size = SIZE * C.k, lh = LH * C.k;
+  const blocks = C.cols.map(col => {
+    const segs = [{ face: col.bold, text: txt(col, label) + ':' }, { face: C.cols[0].font, text: value || '' }];
+    const lines = [[]];
+    let w = 0;
+    segs.forEach(s => String(s.text).split(/\s+/).filter(Boolean).forEach(word => {
+      let line = lines[lines.length - 1];
+      const sp = line.length ? s.face.widthOfTextAtSize(' ', size) : 0;
+      const ww = s.face.widthOfTextAtSize(word, size);
+      if (line.length && w + sp + ww > col.w) { line = []; lines.push(line); w = 0; line.push({ face: s.face, text: word, x: 0 }); w = ww; }
+      else { line.push({ face: s.face, text: word, x: w + sp }); w += sp + ww; }
+    }));
+    return { col, lines };
+  });
+  drawRows(C, blocks, lh, (b, line) => {
+    line.forEach(p => p.face.draw(C.page, p.text, { x: b.col.x + p.x, y: C.y, size, color: rgb(0, 0, 0) }));
+  });
+  if (opt.after != null) C.y -= opt.after * C.k;
 }
 function checkbox(C, x, yBaseline, checked) {
-  const s = 9;
+  const s = 9 * C.k;
   const yb = yBaseline - 1;
   C.page.drawRectangle({ x, y: yb, width: s, height: s, borderWidth: 0.8, borderColor: rgb(0, 0, 0) });
   if (checked) {
@@ -349,54 +447,79 @@ function checkbox(C, x, yBaseline, checked) {
     C.page.drawLine({ start: { x: x + 1.5, y: yb + s - 1.5 }, end: { x: x + s - 1.5, y: yb + 1.5 }, thickness: 1, color: rgb(0, 0, 0) });
   }
 }
-// checkbox + label line
+// checkbox + label line (the box is drawn once, next to the Polish original)
 function checkLine(C, label, checked, opt) {
   opt = opt || {};
-  const size = opt.size || SIZE, lh = opt.lh || LH;
-  ensure(C, lh);
-  const x = C.margin + (opt.indent || 0);
-  checkbox(C, x, C.y, !!checked);
-  const tx = x + 15;
-  const lines = wrapLines(label, C.font, size, C.innerW - (x - C.margin) - 15);
-  for (let i = 0; i < lines.length; i++) {
-    if (i > 0) { C.y -= lh; ensure(C, lh); }
-    C.page.drawText(lines[i], { x: i === 0 ? tx : tx, y: C.y, font: C.font, size });
-  }
-  C.y -= lh;
+  const size = (opt.size || SIZE) * C.k, lh = (opt.lh || LH) * C.k;
+  const off = (opt.indent || 0) * C.k, box = 15 * C.k;
+  const blocks = C.cols.map(col => ({ col, lines: wrapLines(txt(col, label), col.font, size, col.w - off - box) }));
+  drawRows(C, blocks, lh, (b, line, i) => {
+    if (i === 0 && b.col === C.cols[0]) checkbox(C, b.col.x + off, C.y, !!checked);
+    b.col.font.draw(C.page, line, { x: b.col.x + off + box, y: C.y, size, color: rgb(0, 0, 0) });
+  });
+}
+// centred grey caption under a signature line; the translation goes on a second line
+function caption(C, text, x, lineLen, size, y) {
+  const grey = rgb(0.45, 0.45, 0.45);
+  const pl = C.cols[0].font;
+  pl.draw(C.page, text, { x: x + (lineLen - pl.widthOfTextAtSize(text, size)) / 2, y, size, color: grey });
+  const tr = trOf(C, text);
+  if (!tr) return 0;
+  const f = C.cols[1].font;
+  f.draw(C.page, tr, { x: x + (lineLen - f.widthOfTextAtSize(tr, size)) / 2, y: y - size - 2, size, color: grey });
+  return size + 2;
 }
 // signature underline with caption(s)
-function signature(C, caption, opt) {
+function signature(C, cap, opt) {
   opt = opt || {};
   const lineLen = opt.lineLen || 240;
   const align = opt.align || 'left'; // left|right|center
   gap(C, opt.top != null ? opt.top : 28);
-  ensure(C, 26);
+  ensure(C, 36);
   let xStart;
   if (align === 'right') xStart = C.W - C.margin - lineLen;
   else if (align === 'center') xStart = (C.W - lineLen) / 2;
   else xStart = C.margin;
   C.page.drawLine({ start: { x: xStart, y: C.y }, end: { x: xStart + lineLen, y: C.y }, thickness: 0.6, color: rgb(0.2, 0.2, 0.2) });
   C.y -= 12;
-  const cw = C.font.widthOfTextAtSize(caption, 8.5);
-  C.page.drawText(caption, { x: xStart + (lineLen - cw) / 2, y: C.y, font: C.font, size: 8.5, color: rgb(0.45, 0.45, 0.45) });
+  C.y -= caption(C, cap, xStart, lineLen, 8.5, C.y);
   C.y -= 12;
 }
 // top-right place & date block
 function placeDate(C, miejscowosc, dataIso) {
-  ensure(C, 22);
+  ensure(C, 34);
+  const f = C.cols[0].font;
   const t = `${miejscowosc || '..........................'}, dnia ${isoToPLDots(dataIso) || '..............'} r.`;
-  const w = C.font.widthOfTextAtSize(t, SIZE);
-  C.page.drawText(t, { x: C.W - C.margin - w, y: C.y, font: C.font, size: SIZE });
+  const w = f.widthOfTextAtSize(t, SIZE);
+  f.draw(C.page, t, { x: C.W - C.margin - w, y: C.y, size: SIZE, color: rgb(0, 0, 0) });
   C.y -= 11;
-  const sub = '(miejscowość i data)';
-  const sw = C.font.widthOfTextAtSize(sub, 8);
-  C.page.drawText(sub, { x: C.W - C.margin - w + (w - sw) / 2, y: C.y, font: C.font, size: 8, color: rgb(0.5, 0.5, 0.5) });
+  C.y -= caption(C, '(miejscowość i data)', C.W - C.margin - w, w, 8, C.y);
   C.y -= 24;
+}
+function twoSignatures(C, leftCap, rightCap) {
+  gap(C, 36);
+  ensure(C, 40);
+  const lineLen = 200;
+  const xs = [C.margin, C.W - C.margin - lineLen];
+  let extra = 0;
+  [leftCap, rightCap].forEach((cap, i) => {
+    const x = xs[i];
+    C.page.drawLine({ start: { x, y: C.y }, end: { x: x + lineLen, y: C.y }, thickness: 0.6, color: rgb(0.2, 0.2, 0.2) });
+    extra = Math.max(extra, caption(C, cap, x, lineLen, 8.5, C.y - 12));
+  });
+  C.y -= 26 + extra;
 }
 
 // ============================================================
 //                    DOCUMENT RENDERERS
 // ============================================================
+// Role wording per contract type. Whole sentences are kept per type (not glued
+// from words) so each one translates as a unit.
+const ROLE = {
+  zlecenie: { podpis: 'podpis zleceniobiorcy', podpisOs: 'data i podpis Zleceniobiorcy', podpisFirma: 'data i podpis Zleceniodawcy' },
+  praca: { podpis: 'podpis pracownika', podpisOs: 'data i podpis Pracownika', podpisFirma: 'data i podpis Pracodawcy' },
+};
+const DOTS = '..............................';
 
 // 1. KWESTIONARIUSZ OSOBOWY
 function docKwestionariusz(C, d) {
@@ -407,6 +530,7 @@ function docKwestionariusz(C, d) {
   para(C, 'DANE OSOBOWE:', { bold: true, after: 6 });
   field(C, 'Nazwisko i imiona', `${d.p.nazwisko} ${d.p.imiona}`.trim());
   field(C, 'Data urodzenia', isoToPLDots(d.p.dataur));
+  field(C, 'Obywatelstwo', d.p.obywatelstwo);
   field(C, 'Numer ewidencyjny PESEL', d.p.pesel);
   field(C, 'Seria i numer dowodu osobistego / paszportu', d.p.dowod);
   field(C, 'Telefon kontaktowy', d.p.telefon, { after: 8 });
@@ -455,6 +579,11 @@ function identityBlock(C, d, withNip) {
 }
 
 const RODO_CONSENT = 'Wyrażam zgodę na przetwarzanie moich danych osobowych dla potrzeb niezbędnych do zawarcia i realizacji umowy cywilnoprawnej zgodnie z Rozporządzeniem Parlamentu Europejskiego i Rady (UE) 2016/679 z dnia 27 kwietnia 2016 r. w sprawie ochrony osób fizycznych w związku z przetwarzaniem danych osobowych i w sprawie swobodnego przepływu takich danych oraz uchylenia dyrektywy 95/46/WE (ogólne rozporządzenie o ochronie danych).';
+const PT_NIEPELNOSPR = 'Nie posiadam/Posiadam* orzeczenie o lekkim/umiarkowanym/znacznym* stopniu niepełnosprawności wydane na okres od .................. do ...................';
+const PT_EMERYT = 'Nie jestem/Jestem* emerytem lub rencistą — nr decyzji ZUS i data jego przyznania ........................................';
+const PT_STUDENT = 'Nie jestem/Jestem* uczniem lub studentem.';
+const PT_REZYDENCJA = 'Posiadam/Nie posiadam* certyfikat rezydencji podatkowej wydany na okres od .................. do ...................';
+const NOTE_SKRESLIC = '* niepotrzebne skreślić';
 
 // 2. OŚWIADCZENIE ZLECENIOBIORCY (cele podatkowe i ZUS) — 5c
 function docOswiadczenieZus(C, d) {
@@ -467,17 +596,17 @@ function docOswiadczenieZus(C, d) {
     'Nie jestem/Jestem* jednocześnie zatrudniona/ny na podstawie umowy o pracę lub równorzędnej, a moje wynagrodzenie ze stosunku pracy w kwocie brutto wynosi:',
     'Nie jestem/Jestem* jednocześnie już ubezpieczona/ny (ubezpieczenie emerytalne i rentowe) jako osoba wykonująca pracę nakładczą; umowę zlecenia lub agencyjną, wynagrodzenie z tej umowy przekracza/nie przekracza* minimalnego wynagrodzenia za pracę.',
     'Nie jestem/Jestem* już ubezpieczona/ny (ubezpieczenie emerytalne i rentowe) z innych tytułów niż w pkt 1 i 2 (np. działalność gospodarcza, KRUS) ................................ (podać tytuł).',
-    'Nie jestem/Jestem* emerytem lub rencistą — nr decyzji ZUS i data jego przyznania ........................................',
-    'Nie posiadam/Posiadam* orzeczenie o lekkim/umiarkowanym/znacznym* stopniu niepełnosprawności wydane na okres od .................. do ...................',
-    'Nie jestem/Jestem* uczniem lub studentem.',
+    PT_EMERYT,
+    PT_NIEPELNOSPR,
+    PT_STUDENT,
     'Nie jestem/Jestem* zarejestrowana/ny jako osoba bezrobotna.',
     'Nie jestem/Jestem* objęta/ty ubezpieczeniem społecznym z innego tytułu. Zgodnie z powyższym oświadczeniem z tytułu wykonywania tej umowy:',
     'Nie chcę/chcę*, aby moje przychody zostały objęte zwolnieniem z PIT**.',
-    'Posiadam/Nie posiadam* certyfikat rezydencji podatkowej wydany na okres od .................. do ...................',
+    PT_REZYDENCJA,
     'Limit kosztów autorskich zastosowanych w bieżącym roku przekracza/nie przekracza* ograniczenia rocznego***. Dotychczas zastosowano ........................................',
   ];
   for (let i = 0; i < pts.length; i++) {
-    para(C, `${i + 1}.  ${pts[i]}`, { hang: 18, after: 2 });
+    para(C, ['{0}.  ' + pts[i], i + 1], { hang: 18, after: 2 });
     if (i === 0) {
       checkLine(C, 'co najmniej minimalne wynagrodzenie,', false, { indent: 18 });
       checkLine(C, 'mniej niż minimalne wynagrodzenie.', false, { indent: 18 });
@@ -504,11 +633,11 @@ function docOswiadczenieZus(C, d) {
 // 3. OŚWIADCZENIE WYKONAWCY (cele podatkowe) — 5b
 function docOswiadczenieWykonawcy(C, d) {
   newPage(C);
-  para(C, d.z.nazwa, { size: 9.5, color: rgb(0.35, 0.35, 0.35), after: 6 });
+  para(C, d.z.nazwa, { raw: true, size: 9.5, color: rgb(0.35, 0.35, 0.35), after: 6 });
   title(C, 'Oświadczenie wykonawcy dla celów podatkowych');
   identityBlock(C, d, true);
   para(C, 'Jako Wykonawca oświadczam, że:', { after: 6 });
-  para(C, '1.  Posiadam/Nie posiadam* certyfikat rezydencji podatkowej wydany na okres od .................. do ...................', { hang: 18, after: 4 });
+  para(C, ['{0}.  ' + PT_REZYDENCJA, 1], { hang: 18, after: 4 });
   para(C, '2.  Limit kosztów autorskich zastosowanych w bieżącym roku przekracza/nie przekracza* ograniczenia rocznego***. Dotychczas zastosowano ........................................', { hang: 18, after: 2 });
   signature(C, 'podpis wykonawcy', { align: 'right', top: 18 });
 
@@ -534,20 +663,7 @@ function docInformacjaPpk(C, d) {
   para(C, '§ osoba zatrudniona, która ukończyła 55 lat i nie ukończyła jeszcze 70 lat, aby zostać uczestnikiem PPK, powinna złożyć podmiotowi zatrudniającemu wniosek o zawarcie — w jej imieniu i na jej rzecz — umowy o prowadzenie PPK,', { hang: 12, after: 4 });
   para(C, '§ uczestnik PPK, poza obowiązkową wpłatą podstawową, może zadeklarować wpłatę dodatkową do PPK w wysokości do 2 % jego wynagrodzenia,', { hang: 12, after: 4 });
   para(C, '§ uczestnik PPK, którego wynagrodzenie osiągane z różnych źródeł w danym miesiącu nie przekracza kwoty odpowiadającej 1,2-krotności minimalnego wynagrodzenia, może złożyć podmiotowi zatrudniającemu deklarację o obniżeniu wpłaty podstawowej do PPK. Obniżona wpłata podstawowa może wynosić mniej niż 2 %, ale nie mniej niż 0,5 % jego wynagrodzenia.', { hang: 12, after: 6 });
-  twoSignatures(C, 'data i podpis Zleceniobiorcy', 'data i podpis Zleceniodawcy');
-}
-function twoSignatures(C, leftCap, rightCap) {
-  gap(C, 36);
-  ensure(C, 28);
-  const lineLen = 200;
-  const cols = [C.margin, C.W - C.margin - lineLen];
-  [leftCap, rightCap].forEach((cap, i) => {
-    const x = cols[i];
-    C.page.drawLine({ start: { x, y: C.y }, end: { x: x + lineLen, y: C.y }, thickness: 0.6, color: rgb(0.2, 0.2, 0.2) });
-    const cw = C.font.widthOfTextAtSize(cap, 8.5);
-    C.page.drawText(cap, { x: x + (lineLen - cw) / 2, y: C.y - 12, font: C.font, size: 8.5, color: rgb(0.45, 0.45, 0.45) });
-  });
-  C.y -= 26;
+  twoSignatures(C, ROLE[d.typ].podpisOs, ROLE[d.typ].podpisFirma);
 }
 
 // 5. DEKLARACJA O REZYGNACJI Z WPŁAT DO PPK — 4
@@ -581,9 +697,11 @@ function docGotowka(C, d) {
   field(C, 'Imię i nazwisko składającego wniosek', fullName(d.p));
   gap(C, 16);
   title(C, 'Wniosek');
-  para(C, 'Uprzejmie wnoszę o wypłatę należnego mi wynagrodzenia w formie gotówkowej — do rąk własnych, bezpośrednio w kasie Zleceniodawcy.', { after: 6 });
+  para(C, d.typ === 'praca'
+    ? 'Uprzejmie wnoszę o wypłatę należnego mi wynagrodzenia w formie gotówkowej — do rąk własnych, bezpośrednio w kasie Pracodawcy.'
+    : 'Uprzejmie wnoszę o wypłatę należnego mi wynagrodzenia w formie gotówkowej — do rąk własnych, bezpośrednio w kasie Zleceniodawcy.', { after: 6 });
   para(C, 'Prośba obejmuje wszystkie kolejne wypłaty wynikające z ww. umowy, chyba że w przyszłości złożę odmienną dyspozycję.');
-  signature(C, 'podpis Zleceniobiorcy', { align: 'right', top: 50 });
+  signature(C, ROLE[d.typ].podpis, { align: 'right', top: 50 });
 }
 
 // 7. WNIOSEK O ZGŁOSZENIE CZŁONKÓW RODZINY — 5a
@@ -594,7 +712,7 @@ function docCzlonkowieRodziny(C, d) {
   field(C, 'PESEL', d.p.pesel);
   field(C, 'Adres zamieszkania', addrOneLine(d.adres), { after: 10 });
   title(C, 'Wniosek o zgłoszenie członków rodziny do ubezpieczenia zdrowotnego');
-  para(C, `Zwracam się z prośbą o zgłoszenie do ubezpieczenia zdrowotnego członka rodziny od dnia: ${isoToPLDots(d.rodzina.od) || '..............................'} .`, { after: 6 });
+  para(C, ['Zwracam się z prośbą o zgłoszenie do ubezpieczenia zdrowotnego członka rodziny od dnia: {0} .', isoToPLDots(d.rodzina.od) || DOTS], { after: 6 });
   para(C, 'Dane członka rodziny zgłaszanego do ubezpieczenia zdrowotnego:', { after: 4 });
   field(C, 'Imię i nazwisko członka rodziny', d.rodzina.imienazwisko);
   field(C, 'PESEL', d.rodzina.pesel);
@@ -618,26 +736,37 @@ function docCzlonkowieRodziny(C, d) {
   checkLine(C, 'niepełnosprawność stwierdzona przed 16 rokiem życia', false);
   gap(C, 8);
   para(C, 'Oświadczam, że dane zawarte w formularzu są zgodne ze stanem prawnym i faktycznym. Jestem świadom(a) odpowiedzialności karnej za podanie nieprawdy lub zatajenie prawdy. Jednocześnie zobowiązuję się do niezwłocznego powiadomienia pracodawcy w przypadku zmiany danych podanych w powyższym kwestionariuszu.', { size: 9.5, lh: 13 });
-  signature(C, 'podpis pracownika', { align: 'right', top: 16 });
+  signature(C, ROLE[d.typ].podpis, { align: 'right', top: 16 });
   gap(C, 8);
   para(C, '* właściwą odpowiedź zaznaczyć znakiem „X”.', { size: 8, lh: 11, color: rgb(0.4, 0.4, 0.4) });
 }
 
 // 8. KLAUZULA INFORMACYJNA RODO — 5d
 function docRodo(C, d) {
+  const praca = d.typ === 'praca';
   newPage(C);
-  title(C, 'Klauzula informacyjna dotycząca przetwarzania danych osobowych dla wykonawcy umowy cywilnoprawnej');
-  para(C, `1.  Zgodnie z art. 13 ust. 1 rozporządzenia Parlamentu Europejskiego i Rady (UE) 2016/679 z 27 kwietnia 2016 r. (RODO) informujemy, że administratorem Pani/Pana danych osobowych jest: ${d.z.nazwa || '..............................'} z siedzibą w ${d.z.miasto || '..............'} przy ${d.z.ulica || '..............................'}.`, { hang: 18, after: 4 });
+  title(C, praca
+    ? 'Klauzula informacyjna dotycząca przetwarzania danych osobowych dla pracownika'
+    : 'Klauzula informacyjna dotycząca przetwarzania danych osobowych dla wykonawcy umowy cywilnoprawnej');
+  para(C, ['1.  Zgodnie z art. 13 ust. 1 rozporządzenia Parlamentu Europejskiego i Rady (UE) 2016/679 z 27 kwietnia 2016 r. (RODO) informujemy, że administratorem Pani/Pana danych osobowych jest: {0} z siedzibą w {1} przy {2}.',
+    d.z.nazwa || DOTS, d.z.miasto || '..............', d.z.ulica || DOTS], { hang: 18, after: 4 });
   para(C, '2.  Na podstawie obowiązujących przepisów wyznaczyliśmy Inspektora Ochrony Danych, z którym można kontaktować się:', { hang: 18, after: 2 });
-  para(C, `–  listownie na adres: ${d.z.iodAdres || '............................................................'}`, { indent: 18, after: 2 });
-  para(C, `–  przez e-mail: ${d.z.iodEmail || '............................................................'}`, { indent: 18, after: 4 });
-  para(C, '3.  Dane osobowe pozyskane w związku z zawarciem z Panią/Panem umowy będą przetwarzane w celach: związanych z realizacją podpisanej umowy; dochodzeniem ewentualnych roszczeń i odszkodowań; udzielania odpowiedzi na pisma, wnioski i skargi; udzielania odpowiedzi w toczących się postępowaniach.', { hang: 18, after: 4 });
-  para(C, '4.  Podstawą prawną przetwarzania Pani/Pana danych jest: niezbędność do wykonania umowy lub podjęcia działań przed jej zawarciem (art. 6 ust. 1 lit. b RODO); konieczność wypełnienia obowiązku prawnego ciążącego na administratorze (art. 6 ust. 1 lit. c RODO); niezbędność do celów wynikających z prawnie uzasadnionych interesów administratora (art. 6 ust. 1 lit. f RODO).', { hang: 18, after: 4 });
+  para(C, ['–  listownie na adres: {0}', d.z.iodAdres || DOTS + DOTS], { indent: 18, after: 2 });
+  para(C, ['–  przez e-mail: {0}', d.z.iodEmail || DOTS + DOTS], { indent: 18, after: 4 });
+  if (praca) {
+    para(C, '3.  Dane osobowe pozyskane w związku z zatrudnieniem będą przetwarzane w celach: związanych z nawiązaniem i realizacją stosunku pracy; wypełnienia obowiązków pracodawcy wynikających z przepisów prawa pracy, ubezpieczeń społecznych i prawa podatkowego; dochodzenia ewentualnych roszczeń i obrony przed nimi.', { hang: 18, after: 4 });
+    para(C, '4.  Podstawą prawną przetwarzania Pani/Pana danych jest: art. 22¹ Kodeksu pracy oraz konieczność wypełnienia obowiązku prawnego ciążącego na administratorze (art. 6 ust. 1 lit. c RODO); niezbędność do wykonania umowy o pracę (art. 6 ust. 1 lit. b RODO); prawnie uzasadniony interes administratora (art. 6 ust. 1 lit. f RODO); zgoda — w zakresie danych podanych dobrowolnie (art. 6 ust. 1 lit. a RODO).', { hang: 18, after: 4 });
+  } else {
+    para(C, '3.  Dane osobowe pozyskane w związku z zawarciem z Panią/Panem umowy będą przetwarzane w celach: związanych z realizacją podpisanej umowy; dochodzeniem ewentualnych roszczeń i odszkodowań; udzielania odpowiedzi na pisma, wnioski i skargi; udzielania odpowiedzi w toczących się postępowaniach.', { hang: 18, after: 4 });
+    para(C, '4.  Podstawą prawną przetwarzania Pani/Pana danych jest: niezbędność do wykonania umowy lub podjęcia działań przed jej zawarciem (art. 6 ust. 1 lit. b RODO); konieczność wypełnienia obowiązku prawnego ciążącego na administratorze (art. 6 ust. 1 lit. c RODO); niezbędność do celów wynikających z prawnie uzasadnionych interesów administratora (art. 6 ust. 1 lit. f RODO).', { hang: 18, after: 4 });
+  }
   para(C, '5.  Pozyskane dane osobowe mogą być przekazywane: organom lub podmiotom publicznym uprawnionym do uzyskania danych na podstawie przepisów prawa (np. sądom, organom ścigania, instytucjom państwowym); podmiotom przetwarzającym je na nasze zlecenie.', { hang: 18, after: 4 });
-  para(C, '6.  Okres przetwarzania danych jest uzależniony od celu i obliczany w oparciu o: czas obowiązywania umowy; przepisy prawa obligujące do przetwarzania danych przez określony czas; okres niezbędny do obrony naszych interesów.', { hang: 18, after: 4 });
+  para(C, praca
+    ? '6.  Dane osobowe będą przechowywane przez okres zatrudnienia, a następnie przez okres przechowywania dokumentacji pracowniczej wymagany przepisami prawa (co do zasady 10 lat od końca roku kalendarzowego, w którym stosunek pracy ustał).'
+    : '6.  Okres przetwarzania danych jest uzależniony od celu i obliczany w oparciu o: czas obowiązywania umowy; przepisy prawa obligujące do przetwarzania danych przez określony czas; okres niezbędny do obrony naszych interesów.', { hang: 18, after: 4 });
   para(C, '7.  Ma Pani/Pan prawo do: dostępu do swoich danych; sprostowania danych nieprawidłowych oraz uzupełnienia niekompletnych; usunięcia danych; ograniczenia przetwarzania; wniesienia sprzeciwu wobec przetwarzania; przenoszenia danych; wniesienia skargi do Prezesa Urzędu Ochrony Danych Osobowych.', { hang: 18, after: 4 });
   para(C, '8.  W zakresie, w jakim dane są przetwarzane na podstawie zgody — ma Pani/Pan prawo wycofania zgody w dowolnym momencie. Wycofanie zgody nie wpływa na zgodność z prawem przetwarzania dokonanego przed jej wycofaniem. Zgodę można wycofać przez wysłanie oświadczenia na adres korespondencyjny bądź adres e-mail administratora.', { hang: 18, after: 6 });
-  signature(C, 'podpis zleceniobiorcy', { align: 'right', top: 16 });
+  signature(C, ROLE[d.typ].podpis, { align: 'right', top: 16 });
 }
 
 // 9. OŚWIADCZENIE O WYBORZE UMOWY ZLECENIA — 6
@@ -645,8 +774,8 @@ function docWyborUmowy(C, d) {
   newPage(C);
   title(C, 'Oświadczenie');
   para(C, 'Ja, niżej podpisany/a', { after: 2 });
-  para(C, fullName(d.p), { bold: true, after: 2 });
-  para(C, `zamieszkały/a ${addrOneLine(d.adres)},`, { after: 6 });
+  para(C, fullName(d.p), { raw: true, bold: true, after: 2 });
+  para(C, ['zamieszkały/a {0},', addrOneLine(d.adres)], { after: 6 });
   para(C, 'oświadczam, że dobrowolnie i świadomie wybrałem/am formę współpracy na podstawie umowy zlecenia. Forma ta jest zgodna z moimi oczekiwaniami oraz potrzebami wynikającymi z mojego obecnego trybu życia i innych zobowiązań.', { after: 6 });
   para(C, 'W szczególności potwierdzam, że:', { after: 4 });
   para(C, '1.  Chcę świadczyć usługi w elastycznym i lojalnym harmonogramie, który pozwala mi na łączenie wykonywanych zleceń z innymi interesami oraz obowiązkami życiowymi.', { hang: 18, after: 3 });
@@ -656,18 +785,136 @@ function docWyborUmowy(C, d) {
   para(C, 'Oświadczam, że powyższe informacje są prawdziwe i składam je dobrowolnie.', { after: 6 });
   // place & date line bottom-left
   ensure(C, 20);
-  para(C, `${d.sign.miejscowosc || '..............'}, dnia ${isoToPLDots(d.sign.data) || '..............'} r.`, { after: 0 });
+  para(C, `${d.sign.miejscowosc || '..............'}, dnia ${isoToPLDots(d.sign.data) || '..............'} r.`, { raw: true, after: 0 });
   signature(C, 'Podpis zleceniobiorcy', { align: 'right', top: 14 });
+}
+
+// ---------------- Umowa o pracę ----------------
+
+// P1. OŚWIADCZENIE PRACOWNIKA DLA CELÓW PODATKOWYCH (odpowiednik PIT-2)
+function docPit2(C, d) {
+  newPage(C);
+  title(C, 'Oświadczenie pracownika dla celów obliczania miesięcznych zaliczek na podatek dochodowy (PIT-2)');
+  identityBlock(C, d, true);
+  para(C, 'Oświadczam, że (właściwe zaznaczyć znakiem „X”):', { after: 6 });
+  const tn = () => { checkLine(C, 'TAK', false, { indent: 18 }); checkLine(C, 'NIE', false, { indent: 18 }); gap(C, 3); };
+  para(C, '1.  Wnoszę o pomniejszanie miesięcznych zaliczek na podatek o kwotę stanowiącą:', { hang: 18, after: 2 });
+  checkLine(C, '1/12 kwoty zmniejszającej podatek (jeden płatnik),', false, { indent: 18 });
+  checkLine(C, '1/24 kwoty zmniejszającej podatek (dwóch płatników),', false, { indent: 18 });
+  checkLine(C, '1/36 kwoty zmniejszającej podatek (trzech płatników),', false, { indent: 18 });
+  checkLine(C, 'nie wnoszę o pomniejszanie zaliczek.', false, { indent: 18 });
+  gap(C, 3);
+  para(C, '2.  Wnoszę o stosowanie podwyższonych kosztów uzyskania przychodów, ponieważ moje miejsce stałego lub czasowego zamieszkania jest położone poza miejscowością, w której znajduje się zakład pracy, i nie uzyskuję dodatku za rozłąkę:', { hang: 18, after: 2 });
+  tn();
+  para(C, '3.  Wnoszę o niestosowanie zwolnienia z podatku dla osób do ukończenia 26. roku życia (tzw. ulga dla młodych):', { hang: 18, after: 2 });
+  tn();
+  para(C, '4.  Spełniam warunki do stosowania zwolnienia z podatku (ulga na powrót, ulga dla rodzin 4+, ulga dla pracujących seniorów) i wnoszę o jego stosowanie:', { hang: 18, after: 2 });
+  checkLine(C, 'TAK — rodzaj ulgi i okres: ............................................', false, { indent: 18 });
+  checkLine(C, 'NIE', false, { indent: 18 });
+  gap(C, 3);
+  para(C, '5.  Zamierzam opodatkować dochody wspólnie z małżonkiem albo jako osoba samotnie wychowująca dziecko i wnoszę o pobieranie zaliczek według stawki 12 %:', { hang: 18, after: 2 });
+  tn();
+  para(C, '6.  Moim miejscem zamieszkania dla celów podatkowych (rezydencja podatkowa) jest:', { hang: 18, after: 2 });
+  checkLine(C, 'Polska,', false, { indent: 18 });
+  checkLine(C, 'inne państwo (jakie?): ............................................', false, { indent: 18 });
+  gap(C, 6);
+  para(C, 'Oświadczam, że powyższe dane są zgodne ze stanem faktycznym. Zobowiązuję się niezwłocznie poinformować pracodawcę o każdej zmianie okoliczności mających wpływ na obliczanie zaliczek na podatek.', { size: 9.5, lh: 13, after: 2 });
+  placeLine(C, d);
+  signature(C, 'podpis pracownika', { align: 'right', top: 14 });
+}
+// "Miejscowość, dnia …" line on the left (data only — the same in both columns)
+function placeLine(C, d) {
+  ensure(C, 20);
+  para(C, `${d.sign.miejscowosc || '..............'}, dnia ${isoToPLDots(d.sign.data) || '..............'} r.`, { raw: true, after: 0 });
+}
+
+// P2. OŚWIADCZENIE PRACOWNIKA DLA CELÓW ZUS
+function docZusPracownik(C, d) {
+  newPage(C);
+  title(C, 'Oświadczenie pracownika dla celów ubezpieczeń społecznych i ubezpieczenia zdrowotnego');
+  identityBlock(C, d, false);
+  para(C, 'Jako Pracownik oświadczam, że:', { after: 6 });
+  const pts = [
+    'Nie jestem/Jestem* jednocześnie zatrudniona/ny u innego pracodawcy na podstawie umowy o pracę.',
+    'Nie wykonuję/Wykonuję* umowę zlecenia lub inną umowę o świadczenie usług na rzecz innego podmiotu.',
+    'Nie prowadzę/Prowadzę* pozarolniczą działalność gospodarczą.',
+    PT_EMERYT,
+    PT_NIEPELNOSPR,
+    PT_STUDENT,
+    PT_REZYDENCJA,
+  ];
+  pts.forEach((p, i) => para(C, ['{0}.  ' + p, i + 1], { hang: 18, after: 3 }));
+  gap(C, 6);
+  para(C, 'Oświadczam, że wszystkie informacje są zgodne ze stanem faktycznym i prawnym. Zobowiązuję się niezwłocznie, nie później niż w ciągu 3 dni, poinformować Pracodawcę w formie pisemnej o wszelkich zmianach dotyczących treści niniejszego oświadczenia.', { size: 9.5, lh: 13, after: 2 });
+  placeLine(C, d);
+  signature(C, 'podpis pracownika', { align: 'right', top: 14 });
+  gap(C, 10);
+  para(C, NOTE_SKRESLIC, { size: 8, lh: 11, color: rgb(0.4, 0.4, 0.4) });
+}
+
+// P3. INFORMACJA O WARUNKACH ZATRUDNIENIA (art. 29 § 3 KP)
+function docWarunki(C, d) {
+  newPage(C);
+  placeDate(C, d.sign.miejscowosc, d.sign.data);
+  field(C, 'Pracodawca', d.z.nazwa);
+  field(C, 'Pracownik', fullName(d.p), { after: 8 });
+  title(C, 'Informacja o warunkach zatrudnienia');
+  para(C, 'Działając na podstawie art. 29 § 3 Kodeksu pracy, informuję, że:', { after: 6 });
+  const pts = [
+    'Obowiązuje Panią/Pana dobowa norma czasu pracy wynosząca 8 godzin i tygodniowa norma czasu pracy wynosząca przeciętnie 40 godzin w przeciętnie pięciodniowym tygodniu pracy, w przyjętym okresie rozliczeniowym: ..............................',
+    'Dobowy wymiar czasu pracy wynosi 8 godzin, a tygodniowy — przeciętnie 40 godzin (przy pełnym wymiarze czasu pracy; przy niepełnym wymiarze — proporcjonalnie).',
+    'Przysługują Pani/Panu przerwy w pracy: przerwa trwająca co najmniej 15 minut, wliczana do czasu pracy, jeżeli dobowy wymiar czasu pracy wynosi co najmniej 6 godzin; druga przerwa trwająca co najmniej 15 minut — przy dobowym wymiarze dłuższym niż 9 godzin; trzecia — przy dobowym wymiarze dłuższym niż 16 godzin.',
+    'Przysługuje Pani/Panu prawo do nieprzerwanego odpoczynku: dobowego — co najmniej 11 godzin, tygodniowego — co najmniej 35 godzin.',
+    'Praca w godzinach nadliczbowych jest dopuszczalna w razie konieczności prowadzenia akcji ratowniczej lub szczególnych potrzeb pracodawcy. Za pracę w godzinach nadliczbowych przysługuje, oprócz normalnego wynagrodzenia, dodatek w wysokości 100 % albo 50 % wynagrodzenia lub czas wolny od pracy — na zasadach określonych w Kodeksie pracy.',
+    'Praca zmianowa: nie dotyczy / dotyczy* — zasady przechodzenia ze zmiany na zmianę: ..............................',
+    'Miejsca wykonywania pracy i zasady przemieszczania się między nimi (w przypadku kilku miejsc pracy): ..............................',
+    'Poza składnikami określonymi w umowie o pracę przysługują Pani/Panu inne składniki wynagrodzenia oraz świadczenia pieniężne lub rzeczowe: ..............................',
+    'Wymiar przysługującego Pani/Panu płatnego urlopu wypoczynkowego wynosi 20 dni w roku kalendarzowym — przy zatrudnieniu krótszym niż 10 lat, albo 26 dni — przy zatrudnieniu co najmniej 10 lat (przy niepełnym wymiarze czasu pracy — proporcjonalnie).',
+    'Rozwiązanie stosunku pracy następuje: na mocy porozumienia stron; za wypowiedzeniem; bez wypowiedzenia; z upływem czasu, na który umowa była zawarta. Oświadczenie o wypowiedzeniu lub rozwiązaniu umowy bez wypowiedzenia wymaga formy pisemnej.',
+    'Okres wypowiedzenia umowy na okres próbny wynosi: 3 dni robocze — jeżeli okres próbny nie przekracza 2 tygodni; 1 tydzień — jeżeli jest dłuższy niż 2 tygodnie; 2 tygodnie — jeżeli wynosi 3 miesiące. Okres wypowiedzenia umowy na czas określony i na czas nieokreślony wynosi: 2 tygodnie — przy zatrudnieniu krótszym niż 6 miesięcy; 1 miesiąc — przy zatrudnieniu co najmniej 6 miesięcy; 3 miesiące — przy zatrudnieniu co najmniej 3 lata.',
+    'Prawo do szkoleń zapewnianych przez pracodawcę (ogólne zasady polityki szkoleniowej): ..............................',
+    'Układ zbiorowy pracy lub inne porozumienie zbiorowe, którym jest Pani/Pan objęta/y: nie dotyczy / dotyczy*: ..............................',
+    'Wynagrodzenie za pracę wypłacane jest raz w miesiącu, z dołu, do .......... dnia następnego miesiąca kalendarzowego — przelewem na wskazany rachunek płatniczy albo, na wniosek pracownika, do rąk własnych.',
+    'Pora nocna obejmuje czas od godz. .......... do godz. .......... . Przybycie i obecność w pracy potwierdza się przez: .............................. . Nieobecność w pracy należy usprawiedliwić niezwłocznie, nie później niż w drugim dniu nieobecności.',
+    'Składki na ubezpieczenia społeczne związane ze stosunkiem pracy odprowadzane są do Zakładu Ubezpieczeń Społecznych (ZUS).',
+  ];
+  pts.forEach((p, i) => para(C, ['{0}.  ' + p, i + 1], { hang: 18, after: 3 }));
+  twoSignatures(C, 'data i podpis Pracodawcy', 'data i podpis Pracownika (potwierdzenie otrzymania)');
+  gap(C, 8);
+  para(C, NOTE_SKRESLIC, { size: 8, lh: 11, color: rgb(0.4, 0.4, 0.4) });
+}
+
+// P4. OŚWIADCZENIE O ZAPOZNANIU SIĘ Z PRZEPISAMI
+function docZapoznanie(C, d) {
+  newPage(C);
+  field(C, 'Imię i nazwisko', fullName(d.p));
+  field(C, 'Pracodawca', d.z.nazwa, { after: 10 });
+  title(C, 'Oświadczenie pracownika o zapoznaniu się z przepisami i informacjami');
+  para(C, 'Oświadczam, że przed dopuszczeniem do pracy:', { after: 6 });
+  const pts = [
+    'zapoznałam/em się z treścią regulaminu pracy oraz regulaminu wynagradzania obowiązujących u pracodawcy (jeżeli zostały wprowadzone) i zobowiązuję się do ich przestrzegania;',
+    'zapoznałam/em się z przepisami oraz zasadami bezpieczeństwa i higieny pracy oraz przepisami przeciwpożarowymi obowiązującymi na moim stanowisku pracy i zobowiązuję się do ich przestrzegania;',
+    'zostałam/em poinformowana/y o ryzyku zawodowym, które wiąże się z wykonywaną pracą, oraz o zasadach ochrony przed zagrożeniami;',
+    'otrzymałam/em informację o warunkach zatrudnienia, o której mowa w art. 29 § 3 Kodeksu pracy;',
+    'zapoznałam/em się z treścią przepisów dotyczących równego traktowania w zatrudnieniu;',
+    'zostałam/em poinformowana/y o obowiązku zachowania w tajemnicy informacji, których ujawnienie mogłoby narazić pracodawcę na szkodę;',
+    'zostałam/em poinformowana/y o celach, zakresie i sposobie zastosowania monitoringu u pracodawcy (jeżeli został wprowadzony).',
+  ];
+  pts.forEach((p, i) => para(C, ['{0})  ' + p, i + 1], { hang: 18, after: 4 }));
+  gap(C, 6);
+  placeLine(C, d);
+  signature(C, 'podpis pracownika', { align: 'right', top: 14 });
 }
 
 // ============================================================
 //                    BUILD COMBINED PDF
 // ============================================================
-async function generateKomplet(d) {
+// tr: null (Polish only) or { map: {polish: translation}, script } for the bilingual variant
+async function generateKomplet(d, tr) {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
   const now = new Date();
-  doc.setTitle('Umowa zlecenie — komplet dokumentów');
+  doc.setTitle(KOMPLET_TITLE[d.typ]);
   doc.setAuthor('TD Consulting Group');
   doc.setProducer('TD Consulting Group — Portal dokumentów');
   doc.setCreator('TD Consulting Group — Portal dokumentów');
@@ -675,19 +922,104 @@ async function generateKomplet(d) {
   doc.setModificationDate(now);
   const font = await doc.embedFont(fontRegular);
   const bold = await doc.embedFont(fontBold);
-  const C = makeCtx(doc, font, bold);
-
+  const faces = { pl: plainFace(font), plBold: plainFace(bold) };
+  if (tr) {
+    const sf = scriptFonts[tr.script];
+    faces.tr = sf ? mixedFace(await doc.embedFont(sf[0]), font) : faces.pl;
+    faces.trBold = sf ? mixedFace(await doc.embedFont(sf[1]), bold) : faces.plBold;
+  }
+  renderDocs(makeCtx(doc, faces, tr ? ((s) => tr.map[s] || s) : null), d);
+  return await doc.save();
+}
+function renderDocs(C, d) {
   if (d.docs.kwest) docKwestionariusz(C, d);
-  if (d.docs.zus) docOswiadczenieZus(C, d);
-  if (d.docs.wykonawca) docOswiadczenieWykonawcy(C, d);
-  if (d.docs.wybor) docWyborUmowy(C, d);
+  if (d.typ === 'praca') {
+    if (d.docs.pit2) docPit2(C, d);
+    if (d.docs.zusPrac) docZusPracownik(C, d);
+    if (d.docs.warunki) docWarunki(C, d);
+    if (d.docs.zapoznanie) docZapoznanie(C, d);
+  } else {
+    if (d.docs.zus) docOswiadczenieZus(C, d);
+    if (d.docs.wykonawca) docOswiadczenieWykonawcy(C, d);
+    if (d.docs.wybor) docWyborUmowy(C, d);
+  }
   if (d.docs.ppkInfo) docInformacjaPpk(C, d);
   if (d.docs.ppkRez) docRezygnacjaPpk(C, d);
   if (d.docs.gotowka) docGotowka(C, d);
   if (d.docs.rodzina) docCzlonkowieRodziny(C, d);
   if (d.docs.rodo) docRodo(C, d);
+}
+const KOMPLET_TITLE = { zlecenie: 'Umowa zlecenie — komplet dokumentów', praca: 'Umowa o pracę — komplet dokumentów' };
 
-  return await doc.save();
+// ---------------- Translation (bilingual variant) ----------------
+// Fonts for scripts Roboto does not cover; loaded only when such a language is used.
+const SCRIPT_FONT_FILES = {
+  georgian: ['fonts/NotoSansGeorgian-Regular.ttf', 'fonts/NotoSansGeorgian-Bold.ttf'],
+  armenian: ['fonts/NotoSansArmenian-Regular.ttf', 'fonts/NotoSansArmenian-Bold.ttf'],
+};
+const scriptFonts = {};
+async function loadScriptFonts(script) {
+  const files = SCRIPT_FONT_FILES[script];
+  if (!files || scriptFonts[script]) return;
+  scriptFonts[script] = await Promise.all(files.map(f => fetch(f).then(r => {
+    if (!r.ok) throw new Error('Brak czcionki: ' + f);
+    return r.arrayBuffer();
+  })));
+}
+
+// every translatable string of the selected documents (dry run with a recording "translator")
+async function collectStrings(d) {
+  const seen = new Set();
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+  const face = plainFace(await doc.embedFont(fontRegular));
+  renderDocs(makeCtx(doc, { pl: face, plBold: face, tr: face, trBold: face }, (s) => { seen.add(s); return s; }), d);
+  return Array.from(seen).filter(s => /[A-Za-zÀ-ž]/.test(s));
+}
+
+const TR_FN = 'https://dpfxwkxpzqqjtmgqwozw.supabase.co/functions/v1/translate-docs';
+const TR_CHUNK_CHARS = 2400;
+const TR_PARALLEL = 4;
+function trCacheKey(target) { return 'tdcg_tr_v1_' + target.trim().toLowerCase(); }
+
+// target: citizenship (Polish adjective, e.g. "ukraińskie") or an explicit language name.
+// Returns { map, script, language, fallback }. Translations are cached per target in
+// this browser, so only strings not seen before are sent to the model.
+async function getTranslations(target, strings, onProgress) {
+  let cache = { map: {} };
+  try { cache = JSON.parse(localStorage.getItem(trCacheKey(target))) || cache; } catch (e) { /* ignore */ }
+  const missing = strings.filter(s => !cache.map[s]);
+  if (missing.length) {
+    const sess = await window.sb.auth.getSession();
+    const token = sess && sess.data && sess.data.session ? sess.data.session.access_token : '';
+    if (!token) throw new Error('Sesja wygasła — zaloguj się ponownie.');
+    const chunks = [];
+    let cur = [], len = 0;
+    missing.forEach(s => {
+      if (cur.length && len + s.length > TR_CHUNK_CHARS) { chunks.push(cur); cur = []; len = 0; }
+      cur.push(s); len += s.length;
+    });
+    if (cur.length) chunks.push(cur);
+    let done = 0, next = 0;
+    const worker = async () => {
+      while (next < chunks.length) {
+        const chunk = chunks[next++];
+        const res = await fetch(TR_FN, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify({ target, strings: chunk }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || ('Błąd tłumaczenia (' + res.status + ')'));
+        chunk.forEach((s, i) => { if (body.translations[i]) cache.map[s] = body.translations[i]; });
+        cache.script = body.script; cache.language = body.language; cache.fallback = !!body.fallback;
+        try { localStorage.setItem(trCacheKey(target), JSON.stringify(cache)); } catch (e) { /* quota */ }
+        if (onProgress) onProgress(++done, chunks.length);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(TR_PARALLEL, chunks.length) }, worker));
+  }
+  return cache;
 }
 
 // ---------------- ASCII helper for filename ----------------
@@ -704,7 +1036,8 @@ const statusEl = document.getElementById('status');
 function showStatus(msg, type) { statusEl.textContent = msg; statusEl.className = 'status ' + type; }
 
 function anyDocSelected(d) {
-  return Object.values(d.docs).some(Boolean);
+  const other = d.typ === 'praca' ? ['zus', 'wykonawca', 'wybor'] : ['pit2', 'zusPrac', 'warunki', 'zapoznanie'];
+  return Object.keys(d.docs).some(k => d.docs[k] && other.indexOf(k) < 0);
 }
 
 form.addEventListener('submit', async (e) => {
@@ -733,10 +1066,21 @@ form.addEventListener('submit', async (e) => {
 
   try {
     await loadFonts();
-    const bytes = await generateKomplet(data);
+    let tr = null, trNote = '';
+    if (data.tlumaczenie.on) {
+      const target = data.tlumaczenie.jezyk || data.p.obywatelstwo;
+      if (!target) throw new Error('Podaj obywatelstwo albo język tłumaczenia.');
+      const strings = await collectStrings(data);
+      submitBtn.textContent = 'Tłumaczenie…';
+      tr = await getTranslations(target, strings, (n, all) => { submitBtn.textContent = `Tłumaczenie… ${n}/${all}`; });
+      await loadScriptFonts(tr.script);
+      trNote = ` Tłumaczenie: ${tr.language || target}` + (tr.fallback ? ' (język obywatelstwa nie jest obsługiwany w PDF — użyto angielskiego)' : '') + '.';
+      submitBtn.textContent = 'Generowanie...';
+    }
+    const bytes = await generateKomplet(data, tr);
     const blob = new Blob([bytes], { type: 'application/pdf' });
     const safe = toAsciiLetters(`${data.p.nazwisko}_${data.p.imiona}`).toLowerCase() || 'zleceniobiorca';
-    const filename = `Umowa_zlecenie_komplet_${safe}_${data.sign.data || ''}.pdf`;
+    const filename = `${data.typ === 'praca' ? 'Umowa_o_prace' : 'Umowa_zlecenie'}_komplet_${safe}_${data.sign.data || ''}.pdf`;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = filename;
@@ -745,7 +1089,7 @@ form.addEventListener('submit', async (e) => {
     document.body.removeChild(a);
     URL.revokeObjectURL(a.href);
 
-    showStatus('Komplet został wygenerowany i pobrany.', 'success');
+    showStatus('Komplet został wygenerowany i pobrany.' + trNote, 'success');
 
     // Save / update the worker profile in the portal directory (non-blocking)
     if (window.Workers && window.Workers.save) {
@@ -763,13 +1107,13 @@ form.addEventListener('submit', async (e) => {
       try {
         await window.DocHistory.save({
           docType: 'umowa-zlecenie',
-          title: 'Umowa zlecenie — komplet',
+          title: data.typ === 'praca' ? 'Umowa o pracę — komplet' : 'Umowa zlecenie — komplet',
           subject: fullName(data.p),
           filename,
           payload: data,
           pdfBytes: bytes,
         });
-        showStatus('Komplet wygenerowany, pobrany i zapisany w historii.', 'success');
+        showStatus('Komplet wygenerowany, pobrany i zapisany w historii.' + trNote, 'success');
       } catch (err) {
         console.warn('History save failed:', err);
         showStatus('Komplet pobrany. (Nie udało się zapisać w historii — sprawdź połączenie.)', 'success');

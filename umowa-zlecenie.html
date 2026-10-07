@@ -6,7 +6,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-config.js"></script>
 <script src="auth-guard.js"></script>
-<title>Umowa zlecenie — komplet dokumentów — TD Consulting Group</title>
+<title>Zatrudnienie — komplet dokumentów — TD Consulting Group</title>
 <style>
   :root{
     --brand-navy:#1B3F7F;
@@ -65,17 +65,28 @@
   .site-footer{margin-top:48px;padding-top:20px;border-top:1px solid #e5e5e5;text-align:center;font-size:13px}
   .site-footer a{color:#666;text-decoration:none}
   .site-footer a:hover{color:var(--brand-navy);text-decoration:underline}
-  #rodzinaFields[hidden],#meldunekFields[hidden]{display:none}
+  #rodzinaFields[hidden],#meldunekFields[hidden],[data-typ][hidden]{display:none}
 </style>
 </head>
 <body>
 <main>
   <a href="index.html" class="back">← Powrót do portalu</a>
   <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
-  <h1>Umowa zlecenie — komplet dokumentów</h1>
-  <p class="lead">Wprowadź dane Zleceniodawcy i Zleceniobiorcy, zaznacz dokumenty do wygenerowania — system złoży gotowy komplet w jednym pliku PDF do wydruku i podpisu.</p>
+  <h1 data-typ-text data-zlecenie="Umowa zlecenie — komplet dokumentów" data-praca="Umowa o pracę — komplet dokumentów">Umowa zlecenie — komplet dokumentów</h1>
+  <p class="lead">Wybierz rodzaj umowy, wprowadź dane firmy i osoby zatrudnianej, zaznacz dokumenty — system złoży gotowy komplet w jednym pliku PDF do wydruku i podpisu.</p>
 
   <form id="form" novalidate>
+
+    <fieldset>
+      <legend>Rodzaj umowy</legend>
+      <div class="field">
+        <label for="u_typ">Komplet dokumentów do</label>
+        <select id="u_typ" name="u_typ">
+          <option value="zlecenie">Umowa zlecenie</option>
+          <option value="praca">Umowa o pracę</option>
+        </select>
+      </div>
+    </fieldset>
 
     <fieldset>
       <legend>Pracownik z bazy (opcjonalnie)</legend>
@@ -92,7 +103,7 @@
     </fieldset>
 
     <fieldset>
-      <legend>Zleceniodawca (pracodawca)</legend>
+      <legend data-typ-text data-zlecenie="Zleceniodawca (pracodawca)" data-praca="Pracodawca">Zleceniodawca (pracodawca)</legend>
       <button type="button" id="wfBtn" style="display:inline-flex;align-items:center;gap:8px;margin:0 0 14px;padding:11px 16px;background:#fff;border:1.5px solid var(--brand-navy);color:var(--brand-navy);border-radius:8px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer">📥 Wczytaj firmę z wFirma</button>
       <div id="wfPick" class="field" style="display:none">
         <label for="wfCompanies">Wybierz firmę z wFirma</label>
@@ -126,7 +137,7 @@
     </fieldset>
 
     <fieldset>
-      <legend>Zleceniobiorca — dane osobowe</legend>
+      <legend data-typ-text data-zlecenie="Zleceniobiorca — dane osobowe" data-praca="Pracownik — dane osobowe">Zleceniobiorca — dane osobowe</legend>
       <div class="row">
         <div class="field">
           <label for="p_nazwisko">Nazwisko</label>
@@ -179,6 +190,17 @@
           <input id="p_nfz" name="p_nfz" type="text" placeholder="np. 15R" />
         </div>
       </div>
+      <div class="row">
+        <div class="field">
+          <label for="p_obywatelstwo">Obywatelstwo <span class="opt">(wg paszportu)</span></label>
+          <input id="p_obywatelstwo" name="p_obywatelstwo" type="text" placeholder="np. ukraińskie" />
+        </div>
+        <div class="field">
+          <label for="t_jezyk">Język tłumaczenia <span class="opt">(puste = wg obywatelstwa)</span></label>
+          <input id="t_jezyk" name="t_jezyk" type="text" placeholder="np. rosyjski" />
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" name="t_on" id="t_on" /><span class="ct"><span>Wersja dwujęzyczna — tłumaczenie obok polskiego oryginału</span><small>Tłumaczenie przygotowuje AI na język obywatelstwa. Pierwszy komplet w danym języku trwa do ok. 2 minut, kolejne są natychmiastowe.</small></span></label>
     </fieldset>
 
     <fieldset>
@@ -242,12 +264,16 @@
       <legend>Dokumenty w komplecie</legend>
       <div class="checks">
         <label class="check"><input type="checkbox" name="doc_kwest" checked /><span class="ct"><span>Kwestionariusz osobowy</span></span></label>
-        <label class="check"><input type="checkbox" name="doc_zus" checked /><span class="ct"><span>Oświadczenie zleceniobiorcy (cele podatkowe i ZUS)</span><small>Pola tożsamości wypełnione, warianty „Nie jestem/Jestem” do skreślenia ręcznie.</small></span></label>
-        <label class="check"><input type="checkbox" name="doc_wykonawca" checked /><span class="ct"><span>Oświadczenie wykonawcy dla celów podatkowych</span></span></label>
+        <label class="check" data-typ="zlecenie"><input type="checkbox" name="doc_zus" checked /><span class="ct"><span>Oświadczenie zleceniobiorcy (cele podatkowe i ZUS)</span><small>Pola tożsamości wypełnione, warianty „Nie jestem/Jestem” do skreślenia ręcznie.</small></span></label>
+        <label class="check" data-typ="zlecenie"><input type="checkbox" name="doc_wykonawca" checked /><span class="ct"><span>Oświadczenie wykonawcy dla celów podatkowych</span></span></label>
+        <label class="check" data-typ="praca"><input type="checkbox" name="doc_pit2" checked /><span class="ct"><span>Oświadczenie pracownika dla celów podatkowych (PIT-2)</span><small>Pola wyboru do zaznaczenia ręcznie.</small></span></label>
+        <label class="check" data-typ="praca"><input type="checkbox" name="doc_zus_prac" checked /><span class="ct"><span>Oświadczenie pracownika dla celów ZUS</span></span></label>
+        <label class="check" data-typ="praca"><input type="checkbox" name="doc_warunki" checked /><span class="ct"><span>Informacja o warunkach zatrudnienia (art. 29 § 3 KP)</span><small>Wartości ustawowe; pola z kropkami do uzupełnienia ręcznie.</small></span></label>
+        <label class="check" data-typ="praca"><input type="checkbox" name="doc_zapoznanie" checked /><span class="ct"><span>Oświadczenie o zapoznaniu się z regulaminem, BHP i ryzykiem zawodowym</span></span></label>
         <label class="check"><input type="checkbox" name="doc_ppk_info" checked /><span class="ct"><span>Informacja dotycząca PPK</span></span></label>
-        <label class="check"><input type="checkbox" name="doc_wybor" checked /><span class="ct"><span>Oświadczenie o dobrowolnym wyborze umowy zlecenia</span></span></label>
+        <label class="check" data-typ="zlecenie"><input type="checkbox" name="doc_wybor" checked /><span class="ct"><span>Oświadczenie o dobrowolnym wyborze umowy zlecenia</span></span></label>
         <label class="check"><input type="checkbox" name="doc_rodo" checked /><span class="ct"><span>Klauzula informacyjna RODO</span></span></label>
-        <label class="check"><input type="checkbox" name="doc_ppk_rez" /><span class="ct"><span>Deklaracja o rezygnacji z wpłat do PPK</span><small>Dołącz, jeśli zleceniobiorca rezygnuje z PPK.</small></span></label>
+        <label class="check"><input type="checkbox" name="doc_ppk_rez" /><span class="ct"><span>Deklaracja o rezygnacji z wpłat do PPK</span><small>Dołącz, jeśli osoba rezygnuje z PPK.</small></span></label>
         <label class="check"><input type="checkbox" name="doc_gotowka" /><span class="ct"><span>Wniosek o wypłatę wynagrodzenia w gotówce</span></span></label>
         <label class="check"><input type="checkbox" name="doc_rodzina" id="doc_rodzina" /><span class="ct"><span>Wniosek o zgłoszenie członków rodziny do ubezpieczenia</span></span></label>
       </div>

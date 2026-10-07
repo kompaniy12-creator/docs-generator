@@ -149,6 +149,19 @@
     </fieldset>
 
     <fieldset>
+      <legend>Rodzaj umowy</legend>
+      <div class="field">
+        <label for="u_typ">Na jakiej podstawie ma zostać zatrudniony pracownik? <span class="req">*</span></label>
+        <select id="u_typ" name="u_typ" required>
+          <option value="">— wybierz —</option>
+          <option value="zlecenie">Umowa zlecenie</option>
+          <option value="praca">Umowa o pracę</option>
+        </select>
+        <span class="err" data-for="u_typ"></span>
+      </div>
+    </fieldset>
+
+    <fieldset>
       <legend>Dane osobowe</legend>
       <div class="row">
         <div class="field">
