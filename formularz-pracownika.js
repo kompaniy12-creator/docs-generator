@@ -166,6 +166,35 @@
     });
   }
 
+  // Phone photos are 3–8 MB each; the reader accepts ~6.5 MB in total. Photos are
+  // therefore scaled down for reading only (the originals are what gets stored).
+  var AI_MAX_SIDE = 2200, AI_MAX_BYTES = 6.5 * 1024 * 1024;
+  function forAi(file) {
+    if (!/^image\//.test(file.type) || file.type === 'image/gif') {
+      return fileToBase64(file).then(function (data) { return { mime: file.type || 'application/pdf', data: data }; });
+    }
+    return new Promise(function (resolve) {
+      var url = URL.createObjectURL(file), img = new Image();
+      var asIs = function () {
+        URL.revokeObjectURL(url);
+        // a format neither this browser nor the reader can open (e.g. HEIC on a PC): leave it out
+        if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return resolve(null);
+        fileToBase64(file).then(function (data) { resolve({ mime: file.type, data: data }); });
+      };
+      img.onload = function () {
+        var k = Math.min(1, AI_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+        if (k === 1 && file.size < 1024 * 1024) return asIs();
+        var c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        resolve({ mime: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.85).split(',')[1] });
+      };
+      img.onerror = asIs; // e.g. HEIC the browser cannot decode — send unchanged
+      img.src = url;
+    });
+  }
+
   // ---------------- AI extraction ----------------
   var aiStatus = $('aiStatus');
   function setAi(msg, type) { aiStatus.textContent = msg; aiStatus.className = 'ai-status ' + (type || ''); }
@@ -178,10 +207,17 @@
     try {
       var payload = {
         docType: $('p_doc_typ').value,
-        files: await Promise.all(src.map(async function (f) {
-          return { mime: f.type || 'image/jpeg', data: await fileToBase64(f) };
-        })),
+        files: (await Promise.all(src.map(forAi))).filter(Boolean),
       };
+      if (!payload.files.length) {
+        setAi('Tego formatu zdjęcia nie da się odczytać automatycznie. Dodaj plik JPG, PNG lub PDF — albo wpisz dane ręcznie.', 'error');
+        return;
+      }
+      var bytes = payload.files.reduce(function (n, f) { return n + f.data.length * 0.75; }, 0);
+      if (bytes > AI_MAX_BYTES) {
+        setAi('Pliki są za duże do automatycznego odczytu (łącznie ponad 6 MB). Dodaj mniejsze pliki PDF albo zdjęcia — lub wpisz dane ręcznie. Zgłoszenie można wysłać mimo to.', 'error');
+        return;
+      }
       var res = await fetch(EXTRACT_FN, {
         method: 'POST',
         headers: {

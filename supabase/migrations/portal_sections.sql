@@ -57,3 +57,8 @@ alter policy "portal storage insert" on storage.objects
   with check (bucket_id = 'portal-documents' and public.has_portal_section(public.portal_doc_section(split_part(name, '/', 1))));
 alter policy "portal storage delete" on storage.objects
   using (bucket_id = 'portal-documents' and public.has_portal_section(public.portal_doc_section(split_part(name, '/', 1))));
+
+-- pin the search path of the access-check functions (database linter 0011)
+alter function public.is_portal_user() set search_path = '';
+alter function public.has_portal_section(text) set search_path = '';
+alter function public.portal_doc_section(text) set search_path = '';
