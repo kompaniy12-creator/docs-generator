@@ -318,6 +318,29 @@
     var valid = panels.map(function (p) { return p.getAttribute('data-panel'); });
     var DEFAULT = 'rejestracja';
 
+    // hide the sections this user has no access to (see auth-guard.js)
+    function applyAccess() {
+      var acc = window.PortalAccess;
+      if (!acc) return;
+      ['rejestracja', 'biezaca', 'kadry'].forEach(function (s) {
+        if (acc.has(s)) return;
+        navItems.forEach(function (b) { if (b.getAttribute('data-target') === s) b.style.display = 'none'; });
+        valid = valid.filter(function (v) { return v !== s; });
+      });
+      if (valid.indexOf(DEFAULT) === -1) DEFAULT = valid[0];
+      // a "Dokumenty" / "Kadry" label with nothing left under it
+      Array.prototype.forEach.call(document.querySelectorAll('.nav-label'), function (l) {
+        var n = l.nextElementSibling, any = false;
+        while (n && !n.classList.contains('nav-label') && !n.classList.contains('sidebar-foot')) {
+          if (n.classList.contains('nav-item') && n.style.display !== 'none' && n.id !== 'navDostep') any = true;
+          n = n.nextElementSibling;
+        }
+        if (!any) l.style.display = 'none';
+      });
+      activate(location.hash.replace('#', '') || DEFAULT);
+    }
+    document.addEventListener('portal:access', applyAccess);
+
     function activate(target) {
       if (valid.indexOf(target) === -1) target = DEFAULT;
       navItems.forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-target') === target); });
@@ -333,6 +356,7 @@
     });
     window.addEventListener('hashchange', function () { activate(location.hash.replace('#', '')); });
     activate(location.hash.replace('#', '') || DEFAULT);
+    applyAccess();
   })();
 
   // ---- Lead form handler ----

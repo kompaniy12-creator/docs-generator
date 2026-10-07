@@ -10,6 +10,7 @@
   var listEl = document.getElementById('list');
   var ui = document.getElementById('adminUi');
   var me = null;
+  var SECTIONS = [['rejestracja', 'Rejestracja spółki'], ['biezaca', 'Bieżąca działalność'], ['kadry', 'Kadry']];
 
   function show(msg, type) { statusEl.textContent = msg; statusEl.className = 'status ' + (type || ''); }
   function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -55,7 +56,23 @@
           '<button class="btn-soft" data-act="password">Zmień hasło</button>' +
           (self ? '' : '<button class="btn-soft" data-act="admin">' + (u.admin ? 'Odbierz admina' : 'Nadaj admina') + '</button>') +
           (self ? '' : '<button class="btn-del" data-act="revoke">Odbierz dostęp</button>') +
-        '</div>';
+        '</div>' +
+        (u.admin ? '<div class="secs"><span>Sekcje: wszystkie (administrator)</span></div>'
+          : '<div class="secs"><span>Sekcje:</span>' + SECTIONS.map(function (s) {
+              var on = !u.sections || u.sections.indexOf(s[0]) !== -1;
+              return '<label><input type="checkbox" data-sec="' + s[0] + '"' + (on ? ' checked' : '') + ' /> ' + s[1] + '</label>';
+            }).join('') + '</div>');
+      row.querySelectorAll('[data-sec]').forEach(function (cb) {
+        cb.addEventListener('change', async function () {
+          var secs = Array.prototype.filter.call(row.querySelectorAll('[data-sec]'), function (x) { return x.checked; })
+            .map(function (x) { return x.getAttribute('data-sec'); });
+          try {
+            await call({ action: 'sections', id: u.id, sections: secs });
+            u.sections = secs;
+            show('Zapisano sekcje: ' + u.email + ' — ' + (secs.length ? secs.join(', ') : 'brak') + '.', 'success');
+          } catch (e) { show('Błąd: ' + e.message, 'error'); cb.checked = !cb.checked; }
+        });
+      });
       row.querySelectorAll('[data-act]').forEach(function (b) {
         b.addEventListener('click', function () { act(u, b.getAttribute('data-act'), b); });
       });
@@ -90,7 +107,9 @@
     var btn = this.querySelector('button');
     btn.disabled = true;
     try {
-      var out = await call({ action: 'add', email: email.value, password: password.value });
+      var secs = Array.prototype.filter.call(document.querySelectorAll('#addSecs input'), function (x) { return x.checked; })
+        .map(function (x) { return x.value; });
+      var out = await call({ action: 'add', email: email.value, password: password.value, sections: secs });
       show(out.existed
         ? 'Konto ' + email.value + ' już istniało — nadano dostęp do portalu (hasło bez zmian).'
         : 'Utworzono konto ' + email.value + ' z dostępem do portalu. Przekaż hasło tej osobie.', 'success');

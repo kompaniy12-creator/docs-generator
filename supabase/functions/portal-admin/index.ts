@@ -10,11 +10,17 @@
 //      { action: "revoke", id }
 //      { action: "password", id, password }
 //      { action: "admin", id, on }
+//      { action: "sections", id, sections }    array of section keys, or null = all
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const MIN_PASSWORD = 10;
+const SECTIONS = ["rejestracja", "biezaca", "kadry"];
+// null = every section; otherwise the known keys only
+function cleanSections(v: unknown): string[] | null {
+  return Array.isArray(v) ? SECTIONS.filter((s) => v.includes(s)) : null;
+}
 
 function cors(origin: string | null) {
   return {
@@ -66,6 +72,7 @@ async function getUser(id: string): Promise<AuthUser | null> {
 const isPortal = (u: AuthUser) => u.app_metadata?.portal === true;
 const view = (u: AuthUser) => ({
   id: u.id, email: u.email ?? "", admin: u.app_metadata?.portal_admin === true,
+  sections: cleanSections(u.app_metadata?.portal_sections),
   created_at: u.created_at ?? null, last_sign_in_at: u.last_sign_in_at ?? null,
 });
 
@@ -78,7 +85,7 @@ Deno.serve(async (req) => {
   const me = await caller(req);
   if (!me || me.app_metadata?.portal_admin !== true) return json({ error: "Brak uprawnień administratora." }, 403, origin);
 
-  let body: { action?: string; email?: string; password?: string; id?: string; on?: boolean };
+  let body: { action?: string; email?: string; password?: string; id?: string; on?: boolean; sections?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -99,14 +106,14 @@ Deno.serve(async (req) => {
       const existing = (await allUsers()).find((u) => (u.email ?? "").toLowerCase() === email);
       if (existing) {
         // the account already exists (maybe from another app) — grant access, keep its password
-        const r = await admin(`users/${existing.id}`, { method: "PUT", body: JSON.stringify({ app_metadata: { portal: true } }) });
+        const r = await admin(`users/${existing.id}`, { method: "PUT", body: JSON.stringify({ app_metadata: { portal: true, portal_sections: cleanSections(body.sections) } }) });
         if (!r.ok) return json({ error: "Nie udało się nadać dostępu." }, 502, origin);
         return json({ ok: true, existed: true }, 200, origin);
       }
       if (password.length < MIN_PASSWORD) return json({ error: `Hasło musi mieć co najmniej ${MIN_PASSWORD} znaków.` }, 400, origin);
       const r = await admin("users", {
         method: "POST",
-        body: JSON.stringify({ email, password, email_confirm: true, app_metadata: { portal: true } }),
+        body: JSON.stringify({ email, password, email_confirm: true, app_metadata: { portal: true, portal_sections: cleanSections(body.sections) } }),
       });
       if (!r.ok) {
         const e = await r.json().catch(() => ({}));
@@ -129,6 +136,10 @@ Deno.serve(async (req) => {
       if (password.length < MIN_PASSWORD) return json({ error: `Hasło musi mieć co najmniej ${MIN_PASSWORD} znaków.` }, 400, origin);
       const r = await admin(`users/${target.id}`, { method: "PUT", body: JSON.stringify({ password }) });
       return r.ok ? json({ ok: true }, 200, origin) : json({ error: "Nie udało się zmienić hasła." }, 502, origin);
+    }
+    if (body.action === "sections") {
+      const r = await admin(`users/${target.id}`, { method: "PUT", body: JSON.stringify({ app_metadata: { portal_sections: cleanSections(body.sections) } }) });
+      return r.ok ? json({ ok: true }, 200, origin) : json({ error: "Nie udało się zmienić sekcji." }, 502, origin);
     }
     if (body.action === "admin") {
       if (target.id === me.id) return json({ error: "Nie można zmienić własnych uprawnień administratora." }, 400, origin);

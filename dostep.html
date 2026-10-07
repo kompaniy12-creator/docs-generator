@@ -39,6 +39,10 @@
   .who small{color:#8a97ab;font-size:12px}
   .badge{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;background:#dbeafe;color:#1e40af;margin-left:6px}
   .acts{display:flex;gap:8px;flex-wrap:wrap}
+  .secs{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:13px;color:#3a4759;flex-basis:100%}
+  .secs span{color:#8a97ab;font-size:12px}
+  .secs label{display:inline-flex;align-items:center;gap:5px;margin:0;font-size:13px;color:#3a4759;cursor:pointer}
+  .secs input{width:16px;height:16px;padding:0;accent-color:var(--brand-navy)}
   .acts button{padding:7px 12px;font-size:12.5px}
   .status{margin:0 0 16px;padding:12px 14px;border-radius:8px;font-size:14px;display:none}
   .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
@@ -51,7 +55,7 @@
   <a href="index.html" class="back">← Powrót do portalu</a>
   <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
   <h1>Dostęp do portalu</h1>
-  <p class="lead">Kto może logować się do portalu. Nowej osobie ustawiasz hasło startowe i przekazujesz je osobiście — portal go nigdzie nie wysyła.</p>
+  <p class="lead">Kto może logować się do portalu. Każdej osobie wybierasz sekcje, do których ma dostęp. Nowej osobie ustawiasz hasło startowe i przekazujesz je osobiście — portal go nigdzie nie wysyła. Zmiana sekcji zaczyna działać po ponownym zalogowaniu tej osoby (najpóźniej po godzinie).</p>
 
   <div id="status" class="status"></div>
 
@@ -62,6 +66,12 @@
         <div><label for="email">E-mail</label><input id="email" type="email" required placeholder="np. osoba@przyklad.pl" autocomplete="off" /></div>
         <div><label for="password">Hasło startowe (min. 10 znaków)</label><input id="password" type="password" minlength="10" autocomplete="new-password" /></div>
         <button type="submit" class="btn-main">Nadaj dostęp</button>
+        <div class="secs" id="addSecs" style="grid-column:1/-1">
+          <span>Sekcje:</span>
+          <label><input type="checkbox" value="rejestracja" /> Rejestracja spółki</label>
+          <label><input type="checkbox" value="biezaca" /> Bieżąca działalność</label>
+          <label><input type="checkbox" value="kadry" checked /> Kadry</label>
+        </div>
       </form>
       <p class="hint">Jeśli konto z tym adresem już istnieje (np. w innej naszej aplikacji), zostanie mu tylko nadany dostęp do portalu, a jego hasło się nie zmieni — pole hasła można wtedy zostawić puste.</p>
     </div>

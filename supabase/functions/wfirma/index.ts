@@ -47,6 +47,10 @@ async function requirePortalUser(req: Request): Promise<{ ok: true } | { ok: fal
   const user = await r.json();
   const portal = user?.app_metadata?.portal === true;
   if (!portal) return { ok: false, status: 403, msg: "Brak dostępu do portalu." };
+  // section access: admins and accounts without a portal_sections list have every section
+  const secs = user?.app_metadata?.portal_sections;
+  const kadry = user?.app_metadata?.portal_admin === true || !Array.isArray(secs) || secs.includes("kadry");
+  if (!kadry) return { ok: false, status: 403, msg: "Brak dostępu do sekcji Kadry." };
   return { ok: true };
 }
 

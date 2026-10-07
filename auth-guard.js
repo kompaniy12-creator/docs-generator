@@ -23,6 +23,21 @@
     return !!(user && user.app_metadata && user.app_metadata.portal === true);
   }
 
+  // Sections: a user may be limited to some of them via app_metadata.portal_sections
+  // (no list = all; admins = all). Data is protected by RLS on the server — this
+  // only keeps people out of pages whose data they could not load anyway.
+  var PAGE_SECTION = {
+    'rejestracja.html': 'rejestracja',
+    'wynagrodzenie.html': 'biezaca', 'e-urzad.html': 'biezaca', 'pelnomocnictwo.html': 'biezaca',
+    'zalacznik-pobyt.html': 'biezaca', 'nip-8.html': 'biezaca',
+    'umowa-zlecenie.html': 'kadry', 'rejestr.html': 'kadry', 'zatrudnienie.html': 'kadry',
+  };
+  function hasSection(user, section) {
+    var m = (user && user.app_metadata) || {};
+    if (m.portal_admin === true || !Array.isArray(m.portal_sections)) return true;
+    return m.portal_sections.indexOf(section) !== -1;
+  }
+
   if (!window.sb) {
     // Config failed to load — fail closed.
     gotoLogin();
@@ -37,6 +52,13 @@
       window.sb.auth.signOut().then(function () { gotoLogin('denied=1'); });
       return;
     }
+    var page = location.pathname.split('/').pop() || 'index.html';
+    if (PAGE_SECTION[page] && !hasSection(session.user, PAGE_SECTION[page])) {
+      location.replace('index.html?brak=1');
+      return;
+    }
+    window.PortalAccess = { has: function (s) { return hasSection(session.user, s); } };
+    document.dispatchEvent(new CustomEvent('portal:access'));
     injectLogoutBar(session.user && session.user.email);
     reveal();
   }).catch(function () {

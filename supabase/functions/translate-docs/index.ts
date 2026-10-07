@@ -33,7 +33,10 @@ async function requirePortal(req: Request) {
   const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: ANON, Authorization: `Bearer ${token}` } });
   if (!r.ok) return false;
   const u = await r.json();
-  return u?.app_metadata?.portal === true;
+  // section access: admins and accounts without a portal_sections list have every section
+  const secs = u?.app_metadata?.portal_sections;
+  const kadry = u?.app_metadata?.portal_admin === true || !Array.isArray(secs) || secs.includes("kadry");
+  return u?.app_metadata?.portal === true && kadry;
 }
 
 const SCHEMA = {
