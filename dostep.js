@@ -119,5 +119,73 @@
     finally { btn.disabled = false; }
   });
 
+  // ---------------- Telegram notifications ----------------
+  var TG_FN = 'https://dpfxwkxpzqqjtmgqwozw.supabase.co/functions/v1/powiadom';
+  var $id = function (id) { return document.getElementById(id); };
+  var tgChats = [];
+  async function tgCall(body) {
+    var sess = await window.sb.auth.getSession();
+    var token = sess && sess.data && sess.data.session ? sess.data.session.access_token : '';
+    var res = await fetch(TG_FN, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: window.sb.supabaseKey || '', Authorization: 'Bearer ' + token },
+      body: JSON.stringify(body),
+    });
+    var out = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(out.error || ('Błąd ' + res.status));
+    return out;
+  }
+  function tgSay(msg) { $id('tgStatus').textContent = msg || ''; }
+  function tgRender() {
+    $id('tgSaved').innerHTML = tgChats.length
+      ? 'Powiadomienia idą na: ' + tgChats.map(function (c) { return '<strong>' + esc(c.name || c.id) + '</strong> (' + esc(c.id) + ')'; }).join(', ')
+      : '<span style="color:#b45309">Powiadomienia są wyłączone — nie wskazano czatu.</span>';
+  }
+  async function tgLoad() {
+    try {
+      var st = await tgCall({ action: 'status' });
+      $id('tgBot').textContent = st.bot ? '@' + st.bot : '(nieznany)';
+      tgChats = st.chats || [];
+      $id('tgFind').disabled = !st.can_list;
+      if (!st.can_list) $id('tgFind').title = 'Ten bot odbiera wiadomości przez webhook — wpisz ID czatu ręcznie.';
+      tgRender();
+    } catch (e) { tgSay(e.message); }
+  }
+  $id('tgFind').addEventListener('click', async function () {
+    tgSay('Szukam czatów, które ostatnio pisały do bota…');
+    try {
+      var out = await tgCall({ action: 'chats' });
+      if (out.error) return tgSay(out.error);
+      var box = $id('tgFound'); box.innerHTML = '';
+      (out.chats || []).forEach(function (c) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'btn-soft'; b.textContent = c.name + ' (' + c.id + ')';
+        b.addEventListener('click', function () { $id('tgChat').value = c.id; $id('tgChat').dataset.name = c.name; });
+        box.appendChild(b);
+      });
+      tgSay((out.chats || []).length ? 'Kliknij czat, a potem „Zapisz czat”.' : 'Brak czatów — napisz najpierw do bota (albo dodaj go do grupy i napisz tam cokolwiek), potem spróbuj ponownie.');
+    } catch (e) { tgSay(e.message); }
+  });
+  async function tgSaveList(list, okMsg) {
+    try { var out = await tgCall({ action: 'save', chats: list }); tgChats = out.chats || []; tgRender(); tgSay(okMsg); }
+    catch (e) { tgSay(e.message); }
+  }
+  $id('tgSave').addEventListener('click', function () {
+    var id = $id('tgChat').value.trim();
+    if (!/^-?\d{4,20}$/.test(id)) return tgSay('Wpisz ID czatu — same cyfry, dla grupy z minusem na początku.');
+    tgSaveList([{ id: id, name: $id('tgChat').dataset.name || '' }], 'Zapisano. Wyślij wiadomość testową, aby sprawdzić.');
+  });
+  $id('tgOff').addEventListener('click', function () {
+    if (confirm('Wyłączyć powiadomienia Telegram?')) tgSaveList([], 'Powiadomienia wyłączone.');
+  });
+  $id('tgTest').addEventListener('click', async function () {
+    tgSay('Wysyłam…');
+    try {
+      var out = await tgCall({ action: 'test' });
+      tgSay(out.error ? out.error : out.ok ? '✓ Wiadomość testowa wysłana — sprawdź Telegram.' : 'Nie udało się wysłać — sprawdź, czy bot jest w tym czacie i czy ID jest poprawne.');
+    } catch (e) { tgSay(e.message); }
+  });
+  tgLoad();
+
   load();
 })();

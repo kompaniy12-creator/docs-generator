@@ -77,6 +77,20 @@
     </div>
 
     <div class="box">
+      <h2>Powiadomienia Telegram o nowych zgłoszeniach</h2>
+      <p class="hint" style="margin:0 0 10px">Bot <strong id="tgBot">…</strong> wyśle wiadomość na wskazany czat, gdy klient prześle nowe zgłoszenie pracownika (firma, rodzaj umowy, link do portalu — bez danych osobowych pracownika). Dodaj bota do grupy kadr albo napisz do niego z prywatnego konta, a potem wskaż ten czat tutaj.</p>
+      <div id="tgSaved" style="font-size:13.5px;margin:0 0 10px"></div>
+      <div class="row" style="grid-template-columns:1fr auto auto">
+        <div><label for="tgChat">ID czatu (liczba, grupy zaczynają się od „-”)</label><input id="tgChat" type="text" inputmode="numeric" placeholder="np. -1001234567890" /></div>
+        <button type="button" class="btn-soft" id="tgFind">Znajdź czaty bota</button>
+        <button type="button" class="btn-main" id="tgSave">Zapisz czat</button>
+      </div>
+      <div id="tgFound" style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0"></div>
+      <div style="margin-top:10px"><button type="button" class="btn-soft" id="tgTest">Wyślij wiadomość testową</button> <button type="button" class="btn-del" id="tgOff">Wyłącz powiadomienia</button></div>
+      <div id="tgStatus" class="hint" style="margin:8px 0 0"></div>
+    </div>
+
+    <div class="box">
       <h2>Użytkownicy portalu</h2>
       <div id="list"><div class="empty">Ładowanie…</div></div>
     </div>

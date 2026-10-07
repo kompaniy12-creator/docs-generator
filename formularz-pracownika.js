@@ -662,13 +662,26 @@
       data.documents = documents;
 
       // 2) insert the request row
+      // our own id, so the HR team can be notified about exactly this submission
+      var zid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : null;
       var ins = await window.sb.from(TABLE).insert({
+        id: zid || undefined,
         status: 'nowe',
         worker_name: (data.p_imiona + ' ' + data.p_nazwisko).trim(),
         payload: data,
         doc_paths: docPaths,
       });
       if (ins.error) throw ins.error;
+      // Telegram notice to the HR team (best effort — never blocks the confirmation)
+      if (zid) {
+        try {
+          fetch(SUPABASE_URL + '/functions/v1/powiadom', {
+            method: 'POST', keepalive: true,
+            headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON },
+            body: JSON.stringify({ action: 'nowe', id: zid }),
+          }).catch(function () {});
+        } catch (e) { /* ignore */ }
+      }
 
       form.style.display = 'none';
       $('done').classList.add('show');
