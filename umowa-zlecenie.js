@@ -62,6 +62,47 @@ uTyp.addEventListener('change', applyTyp);
 document.getElementById('u_jedn').addEventListener('change', (e) => { e.target.dataset.touched = '1'; });
 applyTyp();
 
+// ---------------- Company + signatories from KRS (rejestr.io) ----------------
+(function initKrs() {
+  const btn = document.getElementById('krsBtn'), st = document.getElementById('krsStatus');
+  const box = document.getElementById('krsRep'), list = document.getElementById('krsOsoby');
+  const rep = document.querySelector('[name="z_reprezentant"]');
+  const syncRep = () => {
+    rep.value = Array.from(list.querySelectorAll('input:checked')).map((i) => i.value).join(' oraz ');
+    rep.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  btn.addEventListener('click', async () => {
+    btn.disabled = true; st.textContent = '⏳ Pobieram dane z KRS…';
+    try {
+      const f = await window.Firma.lookup(document.getElementById('z_nip').value);
+      if (!f.found) { st.textContent = 'Nie ma takiej firmy w KRS (jednoosobowa działalność nie jest tam wpisana) — uzupełnij dane ręcznie.'; box.hidden = true; return; }
+      setVal('z_nazwa', f.nazwa); setVal('z_miasto', f.miasto); setVal('z_ulica', f.ulica);
+      setVal('z_regon', f.regon); setVal('z_krs', f.krs);
+      const r = f.reprezentacja || {};
+      const osoby = (r.osoby || []).concat((f.prokurenci || []).map((p) => ({ imie_nazwisko: p.imie_nazwisko, funkcja: 'Prokurent' + (p.rodzaj ? ' (' + p.rodzaj + ')' : '') })));
+      document.getElementById('krsSposob').textContent = (r.organ ? r.organ + ': ' : '') + (r.sposob || 'brak informacji o sposobie reprezentacji');
+      list.innerHTML = '';
+      // a sole right to act lets us preselect the first person; a joint one needs a human choice
+      const solo = /samodzielnie|jednoosobowo|każdy/i.test(r.sposob || '') || osoby.length === 1;
+      osoby.forEach((o, i) => {
+        const l = document.createElement('label');
+        l.className = 'check';
+        l.innerHTML = '<input type="checkbox" /><span class="ct"><span></span></span>';
+        l.querySelector('input').value = window.Firma.label(o);
+        l.querySelector('input').checked = solo && i === 0;
+        l.querySelector('.ct span').textContent = window.Firma.label(o);
+        l.querySelector('input').addEventListener('change', syncRep);
+        list.appendChild(l);
+      });
+      box.hidden = !osoby.length;
+      if (osoby.length) syncRep();
+      st.textContent = '✓ Dane z KRS (' + f.zrodlo + ', stan na ' + new Date(f.pobrano).toLocaleDateString('pl-PL') + ').';
+      loadUmowaTpl();
+    } catch (e) { st.textContent = 'Błąd: ' + (e.message || e); }
+    finally { btn.disabled = false; }
+  });
+})();
+
 // ---------------- Further family members ----------------
 // Kept as JSON in the hidden r_dodatkowi field so autosave and history carry them.
 const rodzinaExtra = document.getElementById('rodzinaExtra');

@@ -135,6 +135,14 @@
           <input id="z_reprezentant" name="z_reprezentant" type="text" placeholder="np. Jan Kowalski — Prezes Zarządu" />
         </div>
       </div>
+      <button type="button" id="krsBtn" class="add-btn" style="margin:0 0 6px">🔎 Pobierz firmę i osoby uprawnione z KRS</button>
+      <div id="krsStatus" class="hint" style="margin:0 0 10px"></div>
+      <div id="krsRep" hidden style="margin:0 0 14px;padding:12px 14px;background:#f6f8fb;border:1px solid #e5e9ef;border-radius:8px">
+        <div style="font-size:12.5px;font-weight:700;color:var(--brand-navy);margin-bottom:6px">Kto podpisuje w imieniu firmy</div>
+        <div id="krsSposob" style="font-size:13px;color:#3a4759;margin-bottom:8px"></div>
+        <div id="krsOsoby" style="display:flex;flex-direction:column;gap:6px"></div>
+        <p class="hint" style="margin:8px 0 0">Zaznacz osobę (lub osoby, jeśli reprezentacja jest łączna) — trafią do pola „Reprezentowana przez”.</p>
+      </div>
       <div class="row">
         <div class="field">
           <label for="z_regon">REGON <span class="opt">(opcjonalnie)</span></label>
@@ -407,6 +415,7 @@
 <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script src="stawki.js"></script>
+<script src="firma.js"></script>
 <script src="history.js"></script>
 <script src="workers.js"></script>
 <script src="wfirma.js"></script>
