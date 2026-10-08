@@ -16,7 +16,7 @@
 
   // sec = section required (see auth-guard.js); wide = list pages that use the whole width
   var NAV = [
-    { label: 'Kadry', sec: 'kadry', items: [
+    { label: 'Kadry', ico: '👥', sec: 'kadry', items: [
       { href: 'kontrola.html', ico: '🚦', text: 'Kontrola', short: 'Kontrola', wide: true },
       { href: 'zatrudnienie.html', ico: '📥', text: 'Zgłoszenia pracowników', short: 'Zgłoszenia', badge: true, wide: true },
       { href: 'umowa-zlecenie.html', ico: '🧾', text: 'Komplet dokumentów', short: 'Komplet' },
@@ -25,21 +25,21 @@
       { href: 'wiedza.html', ico: '⚖️', text: 'Baza wiedzy — przepisy', short: 'Przepisy', wide: true },
       { href: 'historia.html?s=kadry', ico: '🕘', text: 'Historia dokumentów', short: 'Historia', wide: true },
     ] },
-    { label: 'Spółka', items: [
+    { label: 'Spółka', ico: '🏢', items: [
       { href: 'index.html#rejestracja', ico: '📋', text: 'Rejestracja spółki', short: 'Rejestracja', sec: 'rejestracja' },
       { href: 'index.html#biezaca', ico: '💼', text: 'Bieżąca działalność', short: 'Bieżąca', sec: 'biezaca',
         pages: ['wynagrodzenie.html', 'e-urzad.html', 'pelnomocnictwo.html', 'nip-8.html'] },
       { href: 'historia.html?s=spolka', ico: '🕘', text: 'Historia dokumentów', short: 'Historia', wide: true },
     ] },
-    { label: 'Legalizacja pobytu', sec: 'legalizacja', items: [
+    { label: 'Legalizacja pobytu', ico: '🛂', sec: 'legalizacja', items: [
       { href: 'zalacznik-pobyt.html', ico: '🛂', text: 'Załącznik nr 1 do wniosku o pobyt', short: 'Załącznik' },
       { href: 'historia.html?s=legalizacja', ico: '🕘', text: 'Historia dokumentów', short: 'Historia', wide: true },
     ] },
-    { label: 'Księgowość', sec: 'onboarding', items: [
+    { label: 'Księgowość', ico: '📊', sec: 'onboarding', items: [
       { href: 'onboarding.html', ico: '🚀', text: 'Onboarding klientów', short: 'Onboarding', wide: true },
       { href: 'onboarding.html?p=/deadlines', ico: '⏰', text: 'Terminy klientów', short: 'Terminy', wide: true },
     ] },
-    { label: 'Ogólne', mobile: true, items: [
+    { label: 'Ogólne', ico: '⚙️', mobile: true, items: [
       { href: 'pulpit.html', ico: '📊', text: 'Pulpit', short: 'Pulpit', admin: true, wide: true },
       { href: 'zadania.html', ico: '✅', text: 'Zadania', short: 'Zadania', wide: true, tasks: true },
       { href: 'dostep.html', ico: '🔑', text: 'Dostęp do portalu', short: 'Dostęp', admin: true, wide: true },
@@ -85,12 +85,19 @@
     // the logo in its own colours on a transparent background (logo-kolor.png)
     '.ps-logo{display:inline-block;width:96px;height:68px;background:url(logo-kolor.png) center/contain no-repeat}',
     '#psTop .ps-logo{width:50px;height:34px;flex:0 0 auto}',
-    '.ps-label{display:flex;align-items:center;justify-content:space-between;width:100%;border:none;background:none;font-family:inherit;cursor:pointer;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#6b7a90;margin:6px 0 2px;padding:9px 10px;border-radius:8px;text-align:left}',
+    // a module is a group: its header is a row of its own, and an open group is one framed panel
+    '.ps-group{margin:0 0 6px;border-radius:14px;border:1px solid transparent;transition:background .15s,border-color .15s}',
+    '.ps-group.open{background:rgba(27,63,127,.05);border-color:rgba(27,63,127,.10);padding:4px 4px 2px}',
+    '.ps-label{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:none;background:none;font-family:inherit;cursor:pointer;font-size:14px;font-weight:600;color:#3a4759;padding:9px 10px 9px 12px;border-radius:11px;text-align:left}',
+    '.ps-gname{display:flex;align-items:center;gap:11px;min-width:0}',
     '.ps-label:hover{background:rgba(27,63,127,.07);color:var(--ps-navy)}',
-    '.ps-chev{font-size:15px;line-height:1;transition:transform .15s;letter-spacing:0}',
+    '.ps-group.open>.ps-label{color:#7a8699;font-weight:600}',
+    '.ps-group.open>.ps-label .ps-ico{background:none}',
+    '.ps-chev{font-size:17px;line-height:1;transition:transform .15s;opacity:.7}',
     '.ps-group.open .ps-chev{transform:rotate(90deg)}',
     '.ps-group .ps-items{display:none}',
     '.ps-group.open .ps-items{display:block}',
+    '.ps-group.has-on:not(.open){background:rgba(27,63,127,.08)}',
     '.ps-group.has-on:not(.open) .ps-label{color:var(--ps-navy)}',
     '.ps-item{display:flex;align-items:center;gap:11px;padding:10px 12px;margin-bottom:3px;border-radius:9px;font-size:14px;font-weight:500;color:#3a4759;text-decoration:none;line-height:1.3}',
     '.ps-item:hover{background:rgba(27,63,127,.07);color:var(--ps-navy)}',
@@ -203,7 +210,7 @@
     NAV.filter(function (g) { return g.items.length; }).map(function (g) {
       // every module folds; the one with the current page is open, the rest as the user left them
       return '<div class="ps-group' + (g.mobile ? ' ps-m' : '') + '" data-group="' + esc(g.label) + '">' +
-        '<button type="button" class="ps-label" data-fold aria-expanded="false"><span>' + esc(g.label) + '</span><span class="ps-chev">›</span></button>' +
+        '<button type="button" class="ps-label" data-fold aria-expanded="false"><span class="ps-gname"><span class="ps-ico">' + ico(g.ico) + '</span>' + esc(g.label) + '</span><span class="ps-chev">›</span></button>' +
         '<div class="ps-items">' + g.items.map(function (it) { return link(it, 'ps-item'); }).join('') +
         (g.sec === 'kadry' ? '<button type="button" class="ps-item ps-copy" id="psCopy"><span class="ps-ico">' + ico('🔗') + '</span><span data-copy-text>Kopiuj link do formularza dla klienta</span></button>' : '') +
         '</div></div>';

@@ -76,7 +76,11 @@
     // dark backgrounds: light text for everything that sits directly on the background
     'html.pt-dark #psSide,html.pt-dark #psBar,html.pt-dark #psTop,html.pt-dark #psTabs{color:#fff}',
     'html.pt-dark .ps-item,html.pt-dark .ps-top,html.pt-dark #psTabs a,html.pt-dark #psTabs button{color:rgba(255,255,255,.88)}',
-    'html.pt-dark .ps-label{color:rgba(255,255,255,.62)}',
+    'html.pt-dark .ps-label{color:rgba(255,255,255,.9)}',
+    'html.pt-dark .ps-group.open{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14)}',
+    'html.pt-dark .ps-group.open>.ps-label{color:rgba(255,255,255,.58)}',
+    'html.pt-dark .ps-group.has-on:not(.open){background:rgba(255,255,255,.14)}',
+    'html.pt:not(.pt-dark) .ps-group.open{background:rgba(255,255,255,.4);border-color:var(--pt-line)}',
     'html.pt-dark .ps-item:hover,html.pt-dark .ps-top:hover,html.pt-dark .ps-label:hover{background:rgba(255,255,255,.14);color:#fff}',
     'html.pt-dark .ps-item.on,html.pt-dark .ps-top.on{background:rgba(255,255,255,.2);color:#fff}',
     'html.pt-dark .ps-group.has-on:not(.open) .ps-label{color:#fff}',
