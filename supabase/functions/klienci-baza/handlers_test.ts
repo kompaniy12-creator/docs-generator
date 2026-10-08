@@ -28,11 +28,14 @@ const USERS: Record<string, Any> = {
 };
 const now = () => new Date().toISOString();
 const T: Record<string, Any[]> = {};
-const PK: Record<string, string> = { portal_klienci: "id", klienci_baza: "id", portal_firmy_cache: "nip", portal_odpisy_cache: "krs", klienci_rejestr: "id", klienci_umowy: "id", klienci_status_historia: "id" };
+let LIMITY: Record<string, number> = {};
+let gusOdp: (n: string) => Response = () => J({});
+const PK: Record<string, string> = { klienci_umowy_usuniete: "id",  portal_klienci: "id", klienci_baza: "id", portal_firmy_cache: "nip", portal_odpisy_cache: "krs", klienci_rejestr: "id", klienci_umowy: "id", klienci_status_historia: "id" };
 const FILES: Record<string, Uint8Array> = {};
 const calls = { rio: [] as string[], gus: 0, model: 0 };
 let zarzad = [{ imie: "ANNA", nazwisko: "WZORCOWA" }];
 let modelOut: Any = {};
+let modelWait: Promise<void> | null = null;
 
 function reset() {
   const dane = (nazwa: string, n: string, forma: string, poz: number) => ({ nazwa, nip: n, forma, adres: "ul. Przykładowa 1, 00-000 Warszawa", opodatkowanie: "", telefon: "+48 600 000 000", email: "biuro@example.test", kontakt: "Osoba Testowa", miasto: "Warszawa", opiekun: "Księgowa Testowa", kadrowy: "", telegram: "", jezyk: "pl", poz });
@@ -42,6 +45,8 @@ function reset() {
     { id: N3, nip: N3, dane: dane("Usługi Testowe Jan Wzorcowy", N3, "JDG", 2), synced_at: now() },
     { id: "nazwa:przykładowa gamma", nip: "", dane: dane("Przykładowa Gamma", "", "JDG", 3), synced_at: now() },
   ];
+  LIMITY = {}; T.klienci_umowy_usuniete = [];
+  gusOdp = (n) => n === N3 ? J({ success: true, nazwa: "USŁUGI TESTOWE JAN WZORCOWY", regon: "999000013", nip: N3, adres: "ul. Przykładowa 1 /2 00-000 Warszawa" }) : J({ success: false, message: "Nie znaleziono podmiotu" }, 404);
   T.klienci_baza = []; T.klienci_rejestr = []; T.klienci_umowy = []; T.klienci_status_historia = []; T.portal_firmy_cache = []; T.portal_odpisy_cache = [];
   for (const k of Object.keys(FILES)) delete FILES[k];
   calls.rio = []; calls.gus = 0; calls.model = 0; zarzad = [{ imie: "ANNA", nazwisko: "WZORCOWA" }];
@@ -51,7 +56,7 @@ function test1(row: Any, col: string, expr: string): boolean {
   const v = col.includes("->>") ? row[col.split("->>")[0]]?.[col.split("->>")[1]] : row[col];
   const neg = expr.startsWith("not."); if (neg) expr = expr.slice(4);
   const [op, ...rest] = expr.split("."); const arg = decodeURIComponent(rest.join("."));
-  const r = op === "eq" ? String(v) === arg : op === "is" ? (arg === "null" ? v == null : String(v) === arg) : op === "lt" ? v != null && String(v) < arg : false;
+  const r = op === "eq" ? String(v) === arg : op === "neq" ? String(v) !== arg : op === "is" ? (arg === "null" ? v == null : String(v) === arg) : op === "lt" ? v != null && String(v) < arg : false;
   return neg ? !r : r;
 }
 function query(path: string): { table: string; rows: Any[]; params: URLSearchParams } {
@@ -74,6 +79,12 @@ globalThis.fetch = (async (input: Any, init: Any = {}) => {
   const url = String(input instanceof Request ? input.url : input), method = init.method ?? "GET";
   const h = new Headers(init.headers ?? {});
   if (url.startsWith("http://db.test/auth/v1/user")) { const u = USERS[(h.get("Authorization") ?? "").replace("Bearer ", "")]; return u ? J(u) : J({}, 401); }
+  if (url.startsWith("http://db.test/rest/v1/rpc/klienci_limit")) {
+    assertEquals(h.get("apikey"), "service");
+    const b = JSON.parse(init.body), n = (LIMITY[b.p_klucz] ?? 0) + b.p_ile;
+    if (n > b.p_max) return J(false);
+    LIMITY[b.p_klucz] = n; return J(true);
+  }
   if (url.startsWith("http://db.test/rest/v1/rpc/klienci_ustaw_status")) {
     assertEquals(h.get("apikey"), "service");
     const b = JSON.parse(init.body), k = T.klienci_baza.find((x) => x.id === b.p_id);
@@ -86,7 +97,7 @@ globalThis.fetch = (async (input: Any, init: Any = {}) => {
     assertEquals(h.get("apikey"), "service");
     const { table, rows, params } = query(url.slice("http://db.test/rest/v1/".length));
     if (method === "GET") { const sel = params.get("select") ?? "*"; return J(sel === "*" || sel.includes(">") ? rows : rows.map((r) => Object.fromEntries(sel.split(",").map((c) => [c, r[c]])))); }
-    if (method === "PATCH") { const b = JSON.parse(init.body); for (const r of rows) Object.assign(r, b); return new Response(null, { status: 204 }); }
+    if (method === "PATCH") { const b = JSON.parse(init.body); for (const r of rows) Object.assign(r, b); return (h.get("Prefer") ?? "").includes("representation") ? J(rows) : new Response(null, { status: 204 }); }
     if (method === "DELETE") { T[table] = T[table].filter((r) => !rows.includes(r)); return new Response(null, { status: 204 }); }
     if (method === "POST") {
       const b = JSON.parse(init.body), pk = PK[table];
@@ -100,7 +111,9 @@ globalThis.fetch = (async (input: Any, init: Any = {}) => {
     }
   }
   if (url.startsWith("http://db.test/storage/v1/object/klienci-umowy/")) {
-    const f = FILES[decodeURIComponent(url.split("/klienci-umowy/")[1])];
+    const sciezka = decodeURIComponent(url.split("/klienci-umowy/")[1]);
+    if (method === "DELETE") { if (!FILES[sciezka]) return J({}, 404); delete FILES[sciezka]; return J({}); }
+    const f = FILES[sciezka];
     return f ? new Response(f as Any, { headers: { "content-length": String(f.length) } }) : J({}, 404);
   }
   if (url.startsWith("https://rejestr.io/api/v2/org/")) {
@@ -108,13 +121,14 @@ globalThis.fetch = (async (input: Any, init: Any = {}) => {
     if (p.includes(N2)) return J({}, 404);
     if (p.endsWith("/krs-rozdzialy/ogolny")) return J({
       organ_reprezentacji: { _obiekty: { a: { nazwa_organu_reprezentacji_podmiotu: { _wartosc: "ZARZĄD" }, sposob_reprezentacji_podmiotu: { _wartosc: "KAŻDY CZŁONEK ZARZĄDU SAMODZIELNIE" },
-        dane_osob: { _obiekty: Object.fromEntries(zarzad.map((z, i) => [i, { person: { _wartosc: z }, funkcja_w_organie: { _wartosc: { nazwa: "PREZES ZARZĄDU" } } }])) } } } },
+        dane_osob: { _obiekty: Object.fromEntries(zarzad.map((z, i) => [i, { person: { _wartosc: { ...z, data_urodzenia: "1980-01-01" } }, funkcja_w_organie: { _wartosc: { nazwa: "PREZES ZARZĄDU" } } }])) } } } },
       wysokosc_kapitalu_zakladowego: { _wartosc: { kwota: "5000.00" } },
     });
     return J({ numery: { nip: N1, regon: "999000001", krs: "0000999001" }, nazwy: { pelna: "PRZYKŁADOWA ALFA SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ" }, adres: { ulica: "ul. Przykładowa", nr_domu: "1", kod: "00-000", miejscowosc: "Warszawa" },
       stan: { forma_prawna: "SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ", czy_wykreslona: false }, krs_wpisy: { pierwszy_data: "2019-03-04" } });
   }
-  if (url.startsWith("https://dataport.pl/")) { calls.gus++; return url.endsWith(N3) ? J({ success: true, nazwa: "USŁUGI TESTOWE JAN WZORCOWY", regon: "999000013", nip: N3, adres: "ul. Przykładowa 1 /2 00-000 Warszawa" }) : J({ success: false }, 404); }
+  if (url.startsWith("https://dataport.pl/")) { calls.gus++; return gusOdp(url.split("/").pop()!); }
+  if (url === "https://api.anthropic.com/v1/messages" && modelWait) await modelWait;
   if (url === "https://api.anthropic.com/v1/messages") {
     calls.model++;
     const b = JSON.parse(init.body);
@@ -164,13 +178,16 @@ Deno.test("lista: synchronizacja z arkusza; pracownik bez uprawnień administrat
   const k = await call("ksieg", { action: "lista" });
   assertEquals(k.b.ja, { email: "ksieg@example.test", admin: false, kontakty: false });
   assertEquals(k.b.umowy, undefined);
-  for (const x of k.b.klienci) { assertEquals(x.audyt, undefined); assertEquals(x.historia, undefined); assertEquals(x.kontakt, undefined); }
+  for (const x of k.b.klienci) { assertEquals(x.audyt, undefined); assertEquals(x.historia, undefined); assertEquals(x.kontakt, undefined); for (const pole of ["zmienil", "zmieniono_at", "rejestr_blad", "rejestr_at", "arkusz_at", "created_at"]) assert(!(pole in x), pole); }
+  // a sole trader's address only for Kadry / administrators
+  assertEquals(k.b.klienci.find((x: Any) => x.id === N3).adres, null); assert(k.b.klienci.find((x: Any) => x.id === N1).adres);
+  assert(a.b.klienci.find((x: Any) => x.id === N3).adres);
   assertEquals((await call("kadry", { action: "lista" })).b.klienci[0].kontakt.telefon, "+48 600 000 000");
 });
 
 Deno.test("czynności administratora są zamknięte dla pozostałych", async () => {
   reset(); await call("admin", { action: "lista" });
-  for (const body of [{ action: "status", id: N1, status: "zakonczony", koniec_od: "2026-09-30" }, { action: "rejestr", id: N1 }, { action: "rejestr_wszystkie", dry: false }, { action: "rejestr_wszystkie", dry: true }, { action: "rozpoznaj", id: crypto.randomUUID() }, { action: "braki_csv" }]) {
+  for (const body of [{ action: "status", id: N1, status: "zakonczony", koniec_od: "2026-09-30" }, { action: "rejestr", id: N1 }, { action: "rejestr_wszystkie", dry: false }, { action: "rejestr_wszystkie", dry: true }, { action: "rozpoznaj", id: crypto.randomUUID() }, { action: "braki_csv" }, { action: "sync" }, { action: "usun_umowe", id: crypto.randomUUID() }]) {
     for (const kto of ["kadry", "ksieg"]) assertEquals((await call(kto, body)).status, 403, body.action);
   }
   assertEquals(T.klienci_baza.find((k) => k.id === N1).status, "obslugiwany");
@@ -214,6 +231,8 @@ Deno.test("rejestr: plan i koszt bez pobierania; pobranie; zmiana zarządu tworz
   assertEquals(run.zrobione.map((z: Any) => [z.id, z.ok, z.zrodlo]), [[N1, true, "krs"], [N2, true, "gus"], [N3, true, "gus"]]);
   assertEquals(run.pozostalo, 0);
   assertEquals(calls.rio.filter((p) => p.includes(N1) || p.startsWith("0000999001")).length, 3); // org + chapter + basic record
+  assertEquals(LIMITY.rejestr, 7); // 3 + 3 + 1 counted against the daily cap
+  assert(!JSON.stringify(T.klienci_rejestr).match(/dataUr|data_urodzenia|1980-01-01/)); // no birth dates are kept
   assertEquals(T.klienci_rejestr.length, 3);
   const s = T.klienci_rejestr.find((r) => r.klient === N1);
   assertEquals([s.krs, s.kapital, s.data_rejestracji, s.stan, s.reprezentacja], ["0000999001", 5000, "2019-03-04", "aktywna", "KAŻDY CZŁONEK ZARZĄDU SAMODZIELNIE"]);
@@ -226,7 +245,9 @@ Deno.test("rejestr: plan i koszt bez pobierania; pobranie; zmiana zarządu tworz
   const drugi = (await call("admin", { action: "rejestr_wszystkie", dry: false })).b;
   assertEquals([drugi.zrobione.length, drugi.pominiete.swieze], [0, 3]); assertEquals(calls.rio.length + calls.gus, przed);
 
-  // one client, on request: throttled within a minute
+  // one client, on request: once a day
+  assertEquals((await call("admin", { action: "rejestr", id: N1 })).status, 429);
+  T.klienci_baza.find((k) => k.id === N1).rejestr_at = new Date(Date.now() - 3600000).toISOString();
   assertEquals((await call("admin", { action: "rejestr", id: N1 })).status, 429);
   T.klienci_baza.find((k) => k.id === N1).rejestr_at = "2026-01-01T00:00:00Z";
   zarzad = [{ imie: "PIOTR", nazwisko: "PRZYKŁADOWY" }];
@@ -236,6 +257,7 @@ Deno.test("rejestr: plan i koszt bez pobierania; pobranie; zmiana zarządu tworz
   assertEquals(mig.length, 2); assertEquals(mig[0].zmiany[0].pole, "skład organu reprezentacji");
   const alfa = (await call("ksieg", { action: "lista" })).b.klienci.find((k: Any) => k.id === N1);
   assert(alfa.ostrzezenia.some((o: string) => o.includes("skład organu reprezentacji"))); assertEquals(alfa.rej_historia.length, 1); assertEquals(alfa.rej.dane, undefined);
+  assert(alfa.rej.adres); assertEquals((await call("ksieg", { action: "lista" })).b.klienci.find((k: Any) => k.id === N3).rej.adres, null);
   // unchanged on the next reading: the snapshot is confirmed, not duplicated
   T.klienci_baza.find((k) => k.id === N1).rejestr_at = "2026-01-01T00:00:00Z";
   assertEquals((await call("admin", { action: "rejestr", id: N1 })).b.zmiany, 0);
@@ -243,53 +265,154 @@ Deno.test("rejestr: plan i koszt bez pobierania; pobranie; zmiana zarządu tworz
   assertEquals((await call("admin", { action: "rejestr", id: "nazwa:przykładowa gamma" })).b.ok, false);
 });
 
-Deno.test("rejestr: awaria rejestr.io zapisuje błąd i nie zapętla płatnych zapytań", async () => {
+Deno.test("rejestr: awaria rejestr.io zapisuje błąd, przerywa pobieranie i nie zapętla płatnych zapytań", async () => {
   reset(); await call("admin", { action: "lista" });
   const orig = globalThis.fetch;
   globalThis.fetch = ((u: Any, i: Any) => String(u).startsWith("https://rejestr.io/") ? Promise.resolve(new Response("x", { status: 500 })) : orig(u, i)) as typeof fetch;
   try {
     const run = (await call("admin", { action: "rejestr_wszystkie", dry: false })).b;
-    assertEquals(run.zrobione.filter((z: Any) => !z.ok).length, 2);
+    assertEquals(run.zrobione.map((z: Any) => [z.id, z.ok, z.dostawca]), [[N1, false, true]]); // stopped at the first firm
+    assert(run.przerwano.includes("500")); assertEquals(run.pozostalo, 3);
     assert(T.klienci_baza.find((k) => k.id === N1).rejestr_blad.includes("500"));
-    const drugi = (await call("admin", { action: "rejestr_wszystkie", dry: false })).b;
-    assertEquals([drugi.zrobione.length, drugi.pominiete.po_bledzie], [0, 2]);
+    assertEquals(calls.gus, 0); assertEquals(T.klienci_rejestr.length, 0);
+    // the upstream text is for administrators only
+    assert((await call("admin", { action: "lista" })).b.klienci.find((k: Any) => k.id === N1).ostrzezenia.some((o: string) => o.includes("500")));
+    const o = (await call("ksieg", { action: "lista" })).b.klienci.find((k: Any) => k.id === N1).ostrzezenia;
+    assert(o.includes("Ostatnie pobranie z rejestru nie powiodło się.")); assert(!JSON.stringify(o).includes("500"));
   } finally { globalThis.fetch = orig; }
 });
 
-Deno.test("rozpoznaj: NIP zgodny -> przypisany; niepewny odczyt, sama częściowa nazwa, NIP biura -> do sprawdzenia", async () => {
+Deno.test("rejestr: nieaktywny klucz GUS to błąd, a nie „nie znaleziono” — bez migawki, pobieranie przerwane", async () => {
+  reset(); await call("admin", { action: "lista" });
+  T.portal_klienci = T.portal_klienci.filter((k) => k.id === N3 || k.id === "nazwa:przykładowa gamma");
+  T.portal_klienci.push({ id: nip("999000024"), nip: nip("999000024"), dane: { ...T.portal_klienci[0].dane, nazwa: "Handel Przykładowy Ewa Testowa", nip: nip("999000024") }, synced_at: now() });
+  T.klienci_baza = []; await call("admin", { action: "sync" });
+  gusOdp = () => J({ success: false, message: "Klucz API jest nieaktywny" });
+  const run = (await call("admin", { action: "rejestr_wszystkie", dry: false })).b;
+  assertEquals(run.zrobione.length, 1); assertEquals([run.zrobione[0].ok, run.zrobione[0].dostawca], [false, true]);
+  assert(run.przerwano.includes("Klucz API jest nieaktywny"));
+  assertEquals(calls.gus, 1); assertEquals(T.klienci_rejestr.length, 0); assertEquals(run.pozostalo, 2);
+  assert(T.klienci_baza.find((k) => k.id === run.zrobione[0].id).rejestr_blad.includes("nieaktywny"));
+  // other unknown answers are errors too; only a clear "not found" is stored as not found
+  for (const odp of [J({ success: false }), J({}), J({ success: false, message: "Przekroczono limit zapytań" }, 429)]) {
+    reset(); await call("admin", { action: "lista" }); gusOdp = () => odp.clone();
+    T.klienci_baza.find((k) => k.id === N3).rejestr_at = null;
+    assertEquals((await call("admin", { action: "rejestr", id: N3 })).b.ok, false); assertEquals(T.klienci_rejestr.length, 0);
+  }
+  reset(); await call("admin", { action: "lista" }); gusOdp = () => J({ success: false, message: "Nie znaleziono podmiotu o podanym NIP" });
+  assertEquals((await call("admin", { action: "rejestr", id: N3 })).b.ok, true); assertEquals(T.klienci_rejestr[0].znaleziono, false);
+});
+
+Deno.test("rejestr: dzienny limit płatnych zapytań zatrzymuje pobieranie przed pierwszym zapytaniem", async () => {
+  reset(); await call("admin", { action: "lista" });
+  LIMITY.rejestr = 299;
+  const run = (await call("admin", { action: "rejestr_wszystkie", dry: false })).b;
+  assertEquals(run.zrobione.length, 1); assert(run.przerwano.includes("limit")); assertEquals(calls.rio.length + calls.gus, 0);
+  assertEquals(T.klienci_baza.find((k) => k.id === N1).rejestr_blad, null); // not an error of the firm
+  assertEquals((await call("admin", { action: "rejestr", id: N1 })).b.ok, false); assertEquals(calls.rio.length, 0);
+});
+
+Deno.test("rozpoznaj: przypisanie tylko gdy zgadza się numer ORAZ nazwa; audyt liczy dopiero dokument potwierdzony przez człowieka", async () => {
   reset(); await call("admin", { action: "lista" });
   modelOut = ODCZYT();
   const id = skan();
   assertEquals((await call("admin", { action: "rozpoznaj", id })).b, { ok: true, status: "przypisany" });
   const u = T.klienci_umowy.find((x) => x.id === id);
-  assertEquals([u.klient, u.rodzaj, u.obejmuje, u.data_zawarcia, u.bezterminowa, u.kontrahent_nip, u.stron], [N1, "ksiegowosc", ["ksiegowosc", "powierzenie"], "2024-01-15", true, N1, 4]);
-  assertEquals(u.ai.kandydaci[0], { id: N1, nazwa: "Przykładowa Alfa sp. z o.o.", nip: N1, wynik: 100, powod: "NIP" });
-  const a = (await call("admin", { action: "lista" })).b.klienci.find((k: Any) => k.id === N1).audyt;
+  assertEquals([u.klient, u.rodzaj, u.obejmuje, u.data_zawarcia, u.bezterminowa, u.kontrahent_nip, u.stron, u.sprawdzil], [N1, "ksiegowosc", ["ksiegowosc", "powierzenie"], "2024-01-15", true, N1, 4, null]);
+  assertEquals(u.ai.kandydaci[0], { id: N1, nazwa: "Przykładowa Alfa sp. z o.o.", nip: N1, wynik: 100, powod: "NIP i nazwa", numer: true, nazwaOk: true });
+  assertEquals(u.ai.kto, "admin@example.test"); assertEquals(LIMITY["odczyt:admin@example.test"], 1);
+  // read by the machine, checked by nobody: the audit does not turn green
+  let a = (await call("admin", { action: "lista" })).b.klienci.find((k: Any) => k.id === N1).audyt;
+  assertEquals([a.ma.umowa, a.ma.powierzenie, a.pozycje.find((p: Any) => p.kod === "umowa").stan, a.pozycje.find((p: Any) => p.kod === "powierzenie").stan], [false, false, "uwaga", "uwaga"]);
+  assert(a.pozycje.find((p: Any) => p.kod === "umowa").tekst.includes("odczyt automatyczny — niepotwierdzony"));
+  Object.assign(u, { sprawdzil: "admin@example.test", sprawdzono_at: now() });
+  a = (await call("admin", { action: "lista" })).b.klienci.find((k: Any) => k.id === N1).audyt;
   assertEquals([a.ma.umowa, a.ma.powierzenie, a.pozycje.find((p: Any) => p.kod === "umowa").stan], [true, true, "ok"]);
 
-  modelOut = ODCZYT({ pewnosc: "niska" });
-  const id2 = skan(); await call("admin", { action: "rozpoznaj", id: id2 });
-  assertEquals([T.klienci_umowy.find((x) => x.id === id2).status, T.klienci_umowy.find((x) => x.id === id2).klient], ["do_sprawdzenia", null]);
-
-  modelOut = ODCZYT({ klient: { nazwa: "Jan Wzorcowy", nip: "", krs: "", reprezentanci: [] } });
-  const id3 = skan(); await call("admin", { action: "rozpoznaj", id: id3 });
-  const u3 = T.klienci_umowy.find((x) => x.id === id3);
-  assertEquals([u3.status, u3.klient, u3.ai.kandydaci[0].id], ["do_sprawdzenia", null, N3]);
-
-  // the model put the office's own NIP as the client's: ignored, the name decides
+  const po = async (odczyt: Any, klient: string | null = null) => { modelOut = odczyt; const i = skan(klient); await call("admin", { action: "rozpoznaj", id: i }); const x = T.klienci_umowy.find((y) => y.id === i); return [x.status, x.klient]; };
+  // the NIP alone (a different or unread name) never files a document
+  assertEquals(await po(ODCZYT({ klient: { nazwa: "Zupełnie Inna Firma sp. z o.o.", nip: N1, krs: "", reprezentanci: [] } })), ["do_sprawdzenia", null]);
+  assertEquals(await po(ODCZYT({ klient: { nazwa: "", nip: N1, krs: "", reprezentanci: [] } })), ["do_sprawdzenia", null]);
+  assertEquals(await po(ODCZYT({ klient: { nazwa: "", nip: "", krs: "0000999001", reprezentanci: [] } })), ["do_sprawdzenia", null]);
+  // neither does the name alone
+  assertEquals(await po(ODCZYT({ klient: { nazwa: "Przykładowa Beta sp. z o.o.", nip: "", krs: "", reprezentanci: [] } })), ["do_sprawdzenia", null]);
+  assertEquals(await po(ODCZYT({ klient: { nazwa: "Jan Wzorcowy", nip: "", krs: "", reprezentanci: [] } })), ["do_sprawdzenia", null]);
+  // nor an unsure reading
+  assertEquals(await po(ODCZYT({ pewnosc: "niska" })), ["do_sprawdzenia", null]);
+  // the model put the office's own NIP as the client's: ignored
   modelOut = ODCZYT({ klient: { nazwa: "Przykładowa Beta sp. z o.o.", nip: BIURO, krs: "", reprezentanci: [] } });
   const id4 = skan(); await call("admin", { action: "rozpoznaj", id: id4 });
   const u4 = T.klienci_umowy.find((x) => x.id === id4);
-  assertEquals([u4.status, u4.klient, u4.kontrahent_nip], ["przypisany", N2, null]);
+  assertEquals([u4.status, u4.klient, u4.kontrahent_nip, u4.ai.kandydaci[0].id], ["do_sprawdzenia", null, null, N2]);
 
-  // the uploader pointed at a client; the document carries another client's valid NIP -> a person decides
+  // the uploader pointed at a client: one agreeing thing is enough …
+  assertEquals(await po(ODCZYT({ klient: { nazwa: "Przykładowa Beta sp. z o.o.", nip: "", krs: "", reprezentanci: [] } }), N2), ["przypisany", N2]);
+  assertEquals(await po(ODCZYT({ klient: { nazwa: "", nip: N3, krs: "", reprezentanci: [] } }), N3), ["przypisany", N3]);
+  // … but another client's number in the document, or nothing readable, leaves it to a person
+  assertEquals(await po(ODCZYT(), N2), ["do_sprawdzenia", N2]);
+  assertEquals(await po(ODCZYT({ klient: { nazwa: "", nip: "", krs: "", reprezentanci: [] }, pewnosc: "srednia" }), N3), ["do_sprawdzenia", N3]);
+});
+
+Deno.test("rozpoznaj: ponowny odczyt — odmowa bez force; potwierdzony dokument zachowuje pola; blokada; dzienny limit", async () => {
+  reset(); await call("admin", { action: "lista" });
   modelOut = ODCZYT();
-  const id5 = skan(N2); await call("admin", { action: "rozpoznaj", id: id5 });
-  assertEquals([T.klienci_umowy.find((x) => x.id === id5).status, T.klienci_umowy.find((x) => x.id === id5).klient], ["do_sprawdzenia", N2]);
-  // pointed at, nothing readable about the client -> filed where the uploader said
-  modelOut = ODCZYT({ klient: { nazwa: "", nip: "", krs: "", reprezentanci: [] }, pewnosc: "srednia" });
-  const id6 = skan(N3); await call("admin", { action: "rozpoznaj", id: id6 });
-  assertEquals([T.klienci_umowy.find((x) => x.id === id6).status, T.klienci_umowy.find((x) => x.id === id6).klient], ["przypisany", N3]);
+  const id = skan(); await call("admin", { action: "rozpoznaj", id });
+  const u = T.klienci_umowy.find((x) => x.id === id);
+  assertEquals(calls.model, 1);
+  // filed by the machine: again only with force
+  assertEquals((await call("admin", { action: "rozpoznaj", id })).status, 409); assertEquals(calls.model, 1);
+  modelOut = ODCZYT({ rodzaj: "kadry", obejmuje: ["kadry"] });
+  assertEquals((await call("admin", { action: "rozpoznaj", id, force: true })).b.status, "przypisany");
+  assertEquals([u.rodzaj, calls.model], ["kadry", 2]);
+
+  // a person corrected and confirmed it
+  Object.assign(u, { rodzaj: "powierzenie", obejmuje: ["powierzenie"], data_zawarcia: "2023-05-05", klient: N2, uwagi: "poprawione ręcznie", sprawdzil: "admin@example.test", sprawdzono_at: "2026-10-09T09:00:00Z" });
+  assertEquals((await call("admin", { action: "rozpoznaj", id })).status, 409);
+  modelOut = ODCZYT({ rodzaj: "inne", data_zawarcia: "2020-01-01", uwagi: "inne uwagi" });
+  const r = await call("admin", { action: "rozpoznaj", id, force: true });
+  assertEquals(r.b, { ok: true, status: "przypisany", tylko_odczyt: true });
+  assertEquals([u.status, u.klient, u.rodzaj, u.obejmuje, u.data_zawarcia, u.uwagi, u.sprawdzil, u.sprawdzono_at], ["przypisany", N2, "powierzenie", ["powierzenie"], "2023-05-05", "poprawione ręcznie", "admin@example.test", "2026-10-09T09:00:00Z"]);
+  assertEquals([u.ai.odczyt.rodzaj, u.ai.odczyt.data_zawarcia, u.ai.odczyt.klient, u.ai.odczyt.status], ["inne", "2020-01-01", undefined, undefined]);
+  // a failed re-read of a confirmed document does not turn it into an error
+  const orig = globalThis.fetch;
+  globalThis.fetch = ((x: Any, i: Any) => String(x).startsWith("https://api.anthropic.com/") ? Promise.resolve(new Response("x", { status: 529 })) : orig(x, i)) as typeof fetch;
+  try { assert((await call("admin", { action: "rozpoznaj", id, force: true })).b.error.includes("529")); } finally { globalThis.fetch = orig; }
+  assertEquals([u.status, u.uwagi, u.rodzaj], ["przypisany", "poprawione ręcznie", "powierzenie"]);
+
+  // two requests at once: one reading
+  modelOut = ODCZYT(); const id2 = skan(); const przed = calls.model;
+  let pusc = () => {}; modelWait = new Promise<void>((ok) => { pusc = ok; });
+  const oba = Promise.all([call("admin", { action: "rozpoznaj", id: id2 }), call("admin", { action: "rozpoznaj", id: id2 })]);
+  await new Promise((ok) => setTimeout(ok, 20)); pusc(); modelWait = null;
+  const wyn = await oba;
+  assertEquals(calls.model - przed, 1);
+  assertEquals(wyn.map((w) => w.b.error ?? w.b.status).sort(), ["Ten dokument jest właśnie odczytywany.", "przypisany"]);
+
+  // the daily cap per user
+  LIMITY["odczyt:admin@example.test"] = 150;
+  const id3 = skan(), m = calls.model;
+  assertEquals((await call("admin", { action: "rozpoznaj", id: id3 })).status, 429); assertEquals(calls.model, m);
+  assertEquals(T.klienci_umowy.find((x) => x.id === id3).status, "nowy");
+});
+
+Deno.test("usun_umowe: najpierw plik, potem wiersz, wpis kto / kiedy / skrót pliku", async () => {
+  reset(); await call("admin", { action: "lista" });
+  const id = skan(N1), path = T.klienci_umowy.find((x) => x.id === id).path;
+  assertEquals((await call("ksieg", { action: "usun_umowe", id })).status, 403);
+  assertEquals((await call("admin", { action: "usun_umowe", id: "x" })).status, 400);
+  // the file cannot be removed: nothing changes
+  const orig = globalThis.fetch;
+  globalThis.fetch = ((x: Any, i: Any) => String(x).includes("/storage/") && i?.method === "DELETE" ? Promise.resolve(new Response("x", { status: 500 })) : orig(x, i)) as typeof fetch;
+  try { assertEquals((await call("admin", { action: "usun_umowe", id })).status, 502); } finally { globalThis.fetch = orig; }
+  assert(FILES[path]); assertEquals(T.klienci_umowy.length, 1); assertEquals(T.klienci_umowy_usuniete.length, 0);
+  assertEquals((await call("admin", { action: "usun_umowe", id })).b, { ok: true, zapisano_w_rejestrze: true });
+  assertEquals(FILES[path], undefined); assertEquals(T.klienci_umowy.length, 0);
+  const w = T.klienci_umowy_usuniete[0];
+  assertEquals([w.usunal, w.umowa_id, w.klient, w.path, w.sha256.length], ["admin@example.test", id, N1, path, 64]);
+  assertEquals((await call("admin", { action: "usun_umowe", id })).status, 404);
+  // a row whose file is already gone can still be removed
+  const id2 = skan(); delete FILES[T.klienci_umowy.find((x) => x.id === id2).path];
+  assertEquals((await call("admin", { action: "usun_umowe", id: id2 })).b.ok, true); assertEquals(T.klienci_umowy_usuniete[1].sha256, null);
 });
 
 Deno.test("rozpoznaj: obca ścieżka, za duży plik, nie-PDF, równoległy odczyt, zły identyfikator — bez wywołania modelu", async () => {

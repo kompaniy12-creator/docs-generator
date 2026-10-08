@@ -223,7 +223,14 @@ async function sendFirm(k: Klient, firma: string, nip: string, items: Item[], by
 type Plan = { nip: string; firma: string; email: string; items: Item[] };
 async function plan(rows: Row[], dzis: string): Promise<{ plans: Plan[]; klienciBlad: string }> {
   const sent = await sentKeys();
-  const due = windowItems(rows, dzis).filter((i) => !sent.has(key(i)));
+  // Baza klientów: a firm whose service ended on or before today gets no reminders (a suspended one still does).
+  // When the list cannot be read, nobody is skipped.
+  const koniec = new Set<string>();
+  try {
+    const z = await db(`klienci_baza?select=nip&status=eq.zakonczony&koniec_od=lte.${dzis}`);
+    if (z.ok) for (const k of await z.json()) if (k.nip) koniec.add(String(k.nip));
+  } catch (e) { console.error("klienci_baza", e); }
+  const due = windowItems(rows, dzis).filter((i) => !sent.has(key(i)) && !koniec.has(i.nip));
   let klienci = new Map<string, Klient>(), klienciBlad = "";
   try { klienci = await loadKlienci(); } catch (e) { klienciBlad = String((e as Error)?.message ?? e); }
   const by = new Map<string, Plan>();

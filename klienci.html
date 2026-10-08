@@ -144,7 +144,7 @@
   <section id="t-umowy" hidden>
     <div class="box">
       <h2>Wgraj umowy i pełnomocnictwa</h2>
-      <p class="hint">PDF, JPEG albo PNG, do 24 MB na plik; jeden plik = jeden dokument. Portal odczyta strony, rodzaj i daty i przypisze dokument do klienta, gdy zgadza się NIP albo nazwa jest jednoznaczna — reszta trafia do sprawdzenia.</p>
+      <p class="hint">PDF, JPEG albo PNG, do 24 MB na plik; jeden plik = jeden dokument. Portal odczyta strony, rodzaj i daty i przypisze dokument do klienta, gdy zgadzają się jednocześnie numer (NIP albo KRS) i nazwa — reszta trafia do sprawdzenia. Każdy dokument liczy się w audycie dopiero po sprawdzeniu i zatwierdzeniu przez człowieka.</p>
       <div class="drop" id="drop"><b>Przeciągnij pliki tutaj</b>albo kliknij, aby wybrać z dysku<input type="file" id="file" accept="application/pdf,image/jpeg,image/png" multiple hidden /></div>
       <p class="hint warn" style="margin:10px 0 0">Uwaga (RODO): treść skanu jest wysyłana do odczytu do zewnętrznego dostawcy AI (Anthropic). Umowy zawierają dane osobowe — imiona i nazwiska osób podpisujących, a u przedsiębiorców jednoosobowych także adres, PESEL lub numer dowodu. Wgrywaj tylko dokumenty klientów biura.</p>
       <div class="uprow">
@@ -238,6 +238,6 @@
     <div class="row"><button type="button" id="rjCancel">Zamknij</button><button type="button" class="go" id="rjGo" disabled>Pobierz</button></div>
   </div>
 </div>
-<script src="klienci.js?v=1"></script>
+<script src="klienci.js?v=2"></script>
 </body>
 </html>

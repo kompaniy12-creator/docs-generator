@@ -50,7 +50,7 @@
   }
 
   // ---------------- state ----------------
-  var klienci = [], okres = zamykany(), me = '', gotowe = false, bladTabeli = '';
+  var klienci = [], wszyscy = [], okres = zamykany(), me = '', gotowe = false, bladTabeli = '';
   var zam = {};    // what is shown: zam[okres][nip] = row (also optimistic, not yet confirmed)
   var potw = {};   // last state confirmed by the server, to go back to when a save fails
   var wczytane = {}, kolejki = {}, wToku = {}, otwarty = -1;
@@ -176,6 +176,22 @@
       if (c.nip) { if (seen[c.nip]) return false; seen[c.nip] = 1; }
       return true;
     });
+    // Baza klientów: a client whose service has ended stays on the board up to the month it ended in.
+    // When that table cannot be read, everybody is shown.
+    try {
+      var ob = await window.sb.from('klienci_obsluga').select('nip,koniec_od').eq('status', 'zakonczony');
+      var kon = {};
+      (ob.data || []).forEach(function (o) { if (o.nip && o.koniec_od) kon[o.nip] = String(o.koniec_od).slice(0, 7); });
+      klienci.forEach(function (c) { c.koniec = kon[c.nip] || ''; });
+    } catch (e) {}
+    wszyscy = klienci;
+    naOkres();
+  }
+  // the clients of the chosen period: without those whose service ended in an earlier month
+  function naOkres() {
+    var l = wszyscy.filter(function (c) { return !c.koniec || c.koniec >= okres; });
+    if (l.length !== klienci.length) zamknij();
+    klienci = l;
     klienci.forEach(function (c, i) { c.i = i; });
   }
   // the chosen period and the five before it (history, carried-over "nie dotyczy")
@@ -199,7 +215,7 @@
   }
   async function zmienOkres(o) {
     if (o > biezacy()) return;
-    okres = o; rysuj();
+    okres = o; naOkres(); rysuj();
     try { await wczytajOkresy(o); bladTabeli = ''; } catch (e) { bladTabeli = e.message || String(e); }
     if (okres === o) rysuj();
   }

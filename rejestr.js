@@ -26,13 +26,21 @@
   $('search').addEventListener('input', function (e) { q = e.target.value.toLowerCase().trim(); render(); });
   // firm filters: with / without workers, by account manager (opiekun), sort order — remembered per browser
   var FKEY = 'tdcg_rejestr_filtry';
-  var ff = { prac: '', opiekun: '', sort: '' };
+  var ff = { prac: '', opiekun: '', sort: '', obs: '' };
   try { ff = Object.assign(ff, JSON.parse(localStorage.getItem(FKEY) || '{}')); } catch (e) {}
   var hasF = !!$('fPrac'); // a page cached before the filters existed has no controls
-  if (!hasF) ff = { prac: '', opiekun: '', sort: '' };
-  ['fPrac', 'fOpiekun', 'fSort'].forEach(function (id) {
+  if (!hasF) ff = { prac: '', opiekun: '', sort: '', obs: '' };
+  // service status from Baza klientów (klienci_obsluga): koniec[nip] = the day the service ended
+  var koniec = {};
+  function zakonczona(f) { var d = koniec[digits(f.nip)]; return d && d <= new Date().toISOString().slice(0, 10) ? d : ''; }
+  if (hasF) {
+    var lab = document.createElement('label');
+    lab.innerHTML = 'Obsługa <select id="fObs"><option value="">wszystkie</option><option value="tak">obsługiwane</option><option value="nie">obsługa zakończona</option></select>';
+    $('firmFilters').insertBefore(lab, $('fCount'));
+  }
+  ['fPrac', 'fOpiekun', 'fSort', 'fObs'].forEach(function (id) {
     if (hasF) $(id).addEventListener('change', function () {
-      ff = { prac: $('fPrac').value, opiekun: $('fOpiekun').value, sort: $('fSort').value };
+      ff = { prac: $('fPrac').value, opiekun: $('fOpiekun').value, sort: $('fSort').value, obs: $('fObs').value };
       try { localStorage.setItem(FKEY, JSON.stringify(ff)); } catch (e) {}
       renderFirmy();
     });
@@ -46,7 +54,7 @@
       list.map(function (n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join('') +
       (names[''] ? '<option value="__brak">bez opiekuna</option>' : '');
     if (ff.opiekun && ff.opiekun !== '__brak' && list.indexOf(ff.opiekun) === -1) ff.opiekun = '';
-    $('fPrac').value = ff.prac; $('fOpiekun').value = ff.opiekun; $('fSort').value = ff.sort;
+    $('fPrac').value = ff.prac; $('fOpiekun').value = ff.opiekun; $('fSort').value = ff.sort; $('fObs').value = ff.obs || '';
   }
 
   async function load() {
@@ -71,6 +79,11 @@
         if (!w.data || w.data.length < 1000) break;
       }
     } catch (e) { workers = []; }
+    // which firms the office no longer serves; when this cannot be read, every firm shows as served
+    try {
+      var ob = await window.sb.from('klienci_obsluga').select('nip,koniec_od').eq('status', 'zakonczony');
+      (ob.data || []).forEach(function (o) { if (o.nip && o.koniec_od) koniec[o.nip] = String(o.koniec_od).slice(0, 10); });
+    } catch (e) {}
     regroup();
     fillOpiekun();
     render();
@@ -177,6 +190,8 @@
       var n = workersFor(f).length, op = (f.opiekun || '').trim();
       if (ff.prac === 'tak' && !n) return false;
       if (ff.prac === 'nie' && n) return false;
+      if (ff.obs === 'tak' && zakonczona(f)) return false;
+      if (ff.obs === 'nie' && !zakonczona(f)) return false;
       if (ff.opiekun === '__brak') return !op;
       return !ff.opiekun || op === ff.opiekun;
     });
@@ -200,6 +215,7 @@
           '<div class="firm-main"><strong>' + esc(f.nazwa) + '</strong>' +
             '<small>NIP ' + esc(f.nip || '—') + (f.miasto ? ' · ' + esc(f.miasto) : '') +
             (f.opiekun ? ' · opiekun: ' + esc(f.opiekun) : '') + '</small></div>' +
+          (zakonczona(f) ? '<span class="pill zero">obsługa zakończona od ' + esc(zakonczona(f).split('-').reverse().join('.')) + '</span>' : '') +
           '<span class="pill' + (ws.length ? '' : ' zero') + '">' + ws.length + ' prac.</span>' +
           '<span class="chev">›</span>' +
         '</div>' +

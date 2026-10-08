@@ -48,39 +48,58 @@ export function nazwaZawiera(a: string, b: string): boolean {
 
 // ---------------------------------------------------------------- contract -> client
 export type KlientM = { id: string; nip?: string | null; nazwa: string; krs?: string | null; rej_nazwa?: string | null };
-export type Kandydat = { id: string; nazwa: string; nip: string; wynik: number; powod: string };
+export type Kandydat = { id: string; nazwa: string; nip: string; wynik: number; powod: string; numer: boolean; nazwaOk: boolean };
 
-// How well each client fits the counterparty read from a contract. NIP decides, then the KRS number,
+// How well each client fits the counterparty read from a contract. NIP ranks first, then the KRS number,
 // then the name; a NIP that was read and belongs to nobody (or to somebody else) blocks a name match.
+// `numer`: the NIP or KRS number agrees; `nazwaOk`: the name agrees with the sheet or the register.
 export function dopasuj(odczyt: { nazwa?: string; nip?: string; krs?: string }, klienci: KlientM[]): Kandydat[] {
   const nip = digits(odczyt.nip), krs = digits(odczyt.krs).replace(/^0+/, ""), nazwa = nazwaKlucz(odczyt.nazwa);
   const nipWazny = nipOk(nip);
   const out: Kandydat[] = [];
   for (const k of klienci) {
     const kn = digits(k.nip);
-    let wynik = 0, powod = "";
-    if (nipWazny && kn === nip) { wynik = 100; powod = "NIP"; }
-    else if (krs.length >= 4 && digits(k.krs).replace(/^0+/, "") === krs) { wynik = 90; powod = "KRS"; }
-    else if (nazwa) {
-      const a = nazwaKlucz(k.nazwa), b = nazwaKlucz(k.rej_nazwa);
-      if ((a && a === nazwa) || (b && b === nazwa)) { wynik = 70; powod = "nazwa"; }
-      else if ((a && nazwaZawiera(a, nazwa)) || (b && nazwaZawiera(b, nazwa))) { wynik = 50; powod = "nazwa (częściowo)"; }
+    let wynik = 0, powod = "", numer = false;
+    const a = nazwaKlucz(k.nazwa), b = nazwaKlucz(k.rej_nazwa);
+    const cala = !!nazwa && ((!!a && a === nazwa) || (!!b && b === nazwa));
+    const nazwaOk = cala || (!!nazwa && ((!!a && nazwaZawiera(a, nazwa)) || (!!b && nazwaZawiera(b, nazwa))));
+    if (nipWazny && kn === nip) { wynik = 100; numer = true; powod = nazwaOk ? "NIP i nazwa" : "NIP (nazwa inna albo nieodczytana)"; }
+    else if (krs.length >= 4 && digits(k.krs).replace(/^0+/, "") === krs) { wynik = 90; numer = true; powod = nazwaOk ? "KRS i nazwa" : "KRS (nazwa inna albo nieodczytana)"; }
+    else if (nazwaOk) {
+      wynik = cala ? 70 : 50; powod = cala ? "nazwa" : "nazwa (częściowo)";
       // the document carries a valid NIP and this client has a different one: the same name is not enough
-      if (wynik && nipWazny && kn.length === 10 && kn !== nip) { wynik = 40; powod += ", inny NIP"; }
+      if (nipWazny && kn.length === 10 && kn !== nip) { wynik = 40; powod += ", inny NIP"; }
     }
-    if (wynik) out.push({ id: k.id, nazwa: k.nazwa, nip: kn, wynik, powod });
+    if (wynik) out.push({ id: k.id, nazwa: k.nazwa, nip: kn, wynik, powod, numer, nazwaOk });
   }
   return out.sort((x, y) => y.wynik - x.wynik || x.nazwa.localeCompare(y.nazwa, "pl"));
 }
 
-// Filed automatically only when the NIP or KRS number agrees, or exactly one client carries that name
-// and nobody else comes close — and never when the reading itself was unsure.
-export function pewnyKlient(kand: Kandydat[], pewnosc: string): string | null {
+// Filed automatically only when TWO things read from the scan agree with one client: its NIP or KRS number
+// AND its name (a number alone can be misread, or be the number of another party of the document).
+// Never on the name alone, never when the reading itself was unsure, never when two clients fit.
+// `wskazany`: the client the uploader pointed at — then one agreeing thing is enough, and it must be that client.
+export function pewnyKlient(kand: Kandydat[], pewnosc: string, wskazany: string | null = null): string | null {
   if (pewnosc === "niska" || !kand.length) return null;
-  const [a, b] = kand;
-  if (a.wynik >= 90) return b && b.wynik >= 90 ? null : a.id;
-  if (a.wynik === 70 && (!b || b.wynik < 50)) return a.id;
-  return null;
+  if (wskazany) {
+    const w = kand.find((k) => k.id === wskazany);
+    // somebody else's number in the document overrules the uploader's hint
+    if (!w || w.wynik < 50 || kand.some((k) => k.id !== wskazany && k.numer)) return null;
+    return wskazany;
+  }
+  const pelne = kand.filter((k) => k.numer && k.nazwaOk);
+  return pelne.length === 1 && kand.filter((k) => k.numer).length === 1 ? pelne[0].id : null;
+}
+
+// Birth dates and PESEL numbers have no place in what we keep from a register answer.
+export function bezDanychOsobowych<T>(v: T): T {
+  if (Array.isArray(v)) return v.map(bezDanychOsobowych) as unknown as T;
+  if (v && typeof v === "object") {
+    const o: Any = {};
+    for (const [k, x] of Object.entries(v as Any)) if (!/^(dataur|data_?urodzenia|dataurodzenia|pesel|urodzony|data_ur)$/i.test(k)) o[k] = bezDanychOsobowych(x);
+    return o;
+  }
+  return v;
 }
 
 // ---------------------------------------------------------------- register extract
@@ -102,6 +121,7 @@ export function stanFirmy(nazwa: unknown, org: Any): string {
   if (/\bw upadlosci\b/.test(n) || s.w_upadlosci === true || s.czy_w_upadlosci === true) return "w upadłości";
   if (/\bw likwidacji\b/.test(n) || s.w_likwidacji === true || s.czy_w_likwidacji === true) return "w likwidacji";
   if (/\bw restrukturyzacji\b/.test(n)) return "w restrukturyzacji";
+  if (s.w_zawieszeniu === true) return "zawieszona";
   return "aktywna";
 }
 // from the answer of getFirma (shape v2) and, when we have it, rejestr.io's basic record of the organisation
@@ -199,11 +219,11 @@ export function planOdswiezenia(klienci: Any[], cache: Record<string, string>, d
 }
 
 // ---------------------------------------------------------------- warnings from the register (every portal user sees them)
-export function ostrzezeniaRejestru(k: Any, rej: Any | null, teraz: number): string[] {
+export function ostrzezeniaRejestru(k: Any, rej: Any | null, teraz: number, szczegoly = true): string[] {
   const o: string[] = [];
   if (!k.w_arkuszu && k.status !== "zakonczony") o.push("Klienta nie ma już w arkuszu klientów, a obsługa nie jest oznaczona jako zakończona.");
   if (!nipOk(digits(k.nip))) { if (k.status !== "zakonczony") o.push("Brak poprawnego NIP w arkuszu klientów — nie można sprawdzić rejestru."); return o; }
-  if (k.rejestr_blad) o.push("Ostatnie pobranie z rejestru nie powiodło się: " + k.rejestr_blad);
+  if (k.rejestr_blad) o.push("Ostatnie pobranie z rejestru nie powiodło się" + (szczegoly ? ": " + k.rejestr_blad : "."));
   if (!rej) { if (!k.rejestr_blad) o.push("Dane z rejestru nie zostały jeszcze pobrane."); return o; }
   if (!rej.znaleziono) { o.push(rej.zrodlo === "krs" ? "Nie znaleziono firmy w KRS pod tym NIP." : "Nie znaleziono firmy w rejestrze REGON pod tym NIP."); return o; }
   if (rej.stan && rej.stan !== "aktywna") o.push("Stan firmy według rejestru: " + rej.stan + ".");
@@ -225,10 +245,15 @@ const wygasla = (u: Any, dzis: string) => u.bezterminowa !== true && isDate(u.ob
 const osobaKlucz = (s: unknown) => norm(s).split(" ").filter(Boolean).sort().join(" ");
 const taSamaOsoba = (a: string, b: string) => { const A = osobaKlucz(a), B = osobaKlucz(b); return !!A && !!B && (A === B || nazwaZawiera(A, B)); };
 
-// umowy: the client's documents with status 'przypisany'; rejestry: its snapshots, newest first; dzis: YYYY-MM-DD
-export function audytKlienta(k: Any, rejestry: Any[], umowy: Any[], dzis: string): Audyt {
+// umowy: the client's documents with status 'przypisany'; rejestry: its snapshots, newest first; dzis: YYYY-MM-DD.
+// Only a document a person has confirmed (`sprawdzil`) can satisfy an item or cancel a contract; what the
+// machine read and nobody checked is reported as "odczyt automatyczny — niepotwierdzony" and leaves the item open.
+export function audytKlienta(k: Any, rejestry: Any[], wszystkie: Any[], dzis: string): Audyt {
   const poz: Poz[] = [];
   const rej = rejestry[0] ?? null;
+  const umowy = wszystkie.filter((u) => !!u.sprawdzil), auto = wszystkie.filter((u) => !u.sprawdzil);
+  const AUTO = " — odczyt automatyczny — niepotwierdzony; otwórz dokument i zatwierdź.";
+  const autoUsl = auto.filter((u) => u.rodzaj !== "wypowiedzenie" && u.rodzaj !== "aneks" && (obejmuje(u, "ksiegowosc") || obejmuje(u, "kadry")));
   const uslugowe = umowy.filter((u) => u.rodzaj !== "wypowiedzenie" && u.rodzaj !== "aneks" && (obejmuje(u, "ksiegowosc") || obejmuje(u, "kadry")));
   const wypow = umowy.filter((u) => u.rodzaj === "wypowiedzenie");
   // a notice of termination filed later than the contract (or undated) puts the contract in doubt
@@ -237,7 +262,9 @@ export function audytKlienta(k: Any, rejestry: Any[], umowy: Any[], dzis: string
   const opis = (u: Any) => (isDate(u.data_zawarcia) ? "z dnia " + pl(u.data_zawarcia) : "bez odczytanej daty");
 
   // 1. a service contract at all
-  if (!uslugowe.length) poz.push({ kod: "umowa", stan: "brak", tekst: "Brak umowy o świadczenie usług (księgowych lub kadrowo-płacowych) w bazie." });
+  if (!uslugowe.length) poz.push(autoUsl.length
+    ? { kod: "umowa", stan: "uwaga", tekst: "Umowa o świadczenie usług " + opis(autoUsl[0]) + AUTO }
+    : { kod: "umowa", stan: "brak", tekst: "Brak umowy o świadczenie usług (księgowych lub kadrowo-płacowych) w bazie." });
   else if (!czynne.length) {
     const u = uslugowe[0], w = wypowiedziana(u);
     poz.push({ kod: "umowa", stan: "brak", tekst: wygasla(u, dzis) ? "Umowa " + opis(u) + " wygasła " + pl(u.obowiazuje_do) + " — brak obowiązującej umowy." : "Do umowy " + opis(u) + " jest wypowiedzenie" + (w && isDate(w.data_zawarcia) ? " z dnia " + pl(w.data_zawarcia) : "") + " — brak obowiązującej umowy." });
@@ -253,16 +280,22 @@ export function audytKlienta(k: Any, rejestry: Any[], umowy: Any[], dzis: string
   }
 
   // 2. entrusting personal data (art. 28 ust. 3 RODO): a separate contract or a clause in the service contract
-  const pow = umowy.filter((u) => u.rodzaj !== "wypowiedzenie" && obejmuje(u, "powierzenie") && !wygasla(u, dzis));
+  const jestPow = (u: Any) => u.rodzaj !== "wypowiedzenie" && obejmuje(u, "powierzenie") && !wygasla(u, dzis);
+  const pow = umowy.filter(jestPow), autoPow = auto.filter(jestPow);
   poz.push(pow.length
     ? { kod: "powierzenie", stan: "ok", tekst: "Powierzenie przetwarzania danych osobowych: " + pow.map((u) => (u.rodzaj === "powierzenie" ? "umowa " : "postanowienia w umowie ") + opis(u)).join("; ") + "." }
+    : autoPow.length ? { kod: "powierzenie", stan: "uwaga", tekst: "Powierzenie przetwarzania danych osobowych (dokument " + opis(autoPow[0]) + ")" + AUTO }
     : { kod: "powierzenie", stan: "brak", tekst: "Brak umowy powierzenia przetwarzania danych osobowych (art. 28 ust. 3 RODO)." });
 
   // 3. powers of attorney and authorisations
-  const peln = umowy.filter((u) => u.rodzaj === "pelnomocnictwo" || u.rodzaj === "upowaznienie");
+  const jestPeln = (u: Any) => u.rodzaj === "pelnomocnictwo" || u.rodzaj === "upowaznienie";
+  const peln = umowy.filter(jestPeln), autoPeln = auto.filter(jestPeln);
   poz.push(peln.length
     ? { kod: "pelnomocnictwo", stan: "ok", tekst: "Pełnomocnictwa / upoważnienia w bazie: " + peln.map((u) => (u.podtyp || (u.rodzaj === "upowaznienie" ? "upoważnienie" : "pełnomocnictwo")) + (isDate(u.data_zawarcia) ? " (" + pl(u.data_zawarcia) + ")" : "")).join(", ") + "." }
+    : autoPeln.length ? { kod: "pelnomocnictwo", stan: "uwaga", tekst: "Pełnomocnictwa / upoważnienia (" + autoPeln.length + ")" + AUTO }
     : { kod: "pelnomocnictwo", stan: "uwaga", tekst: "Brak pełnomocnictw i upoważnień w bazie (UPL-1, ZUS PEL, e-Urząd / KSeF)." });
+  // a notice of termination nobody has confirmed cancels nothing — it is only pointed out
+  if (auto.some((u) => u.rodzaj === "wypowiedzenie")) poz.push({ kod: "wypowiedzenie", stan: "uwaga", tekst: "W bazie jest wypowiedzenie / rozwiązanie umowy" + AUTO });
 
   // 4.–6. the newest contract in force against the register
   const u = [...czynne].sort((a, b) => String(b.data_zawarcia ?? "").localeCompare(String(a.data_zawarcia ?? "")))[0];

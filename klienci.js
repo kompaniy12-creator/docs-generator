@@ -3,7 +3,8 @@
    Everything comes from the `klienci-baza` edge function (one `lista` call); the function alone
    changes the service status and reads the registers. Contract scans are handled like the personnel
    files (akta.js): the file goes to the private bucket klienci-umowy, a row to klienci_umowy, the
-   function reads it; sure matches are filed at once, the rest wait in "Do sprawdzenia".
+   function reads it; a match on the number and the name is filed at once, the rest wait in
+   "Do sprawdzenia". What the machine filed counts in the audit only after a person confirms it.
    Contracts, the audit and the status history exist only for portal administrators. */
 (function () {
   'use strict';
@@ -40,6 +41,8 @@
   }
   function klient(id) { return klienci.filter(function (k) { return k.id === id; })[0] || null; }
   function umowyKlienta(id) { return umowy.filter(function (u) { return u.klient === id && u.status === 'przypisany'; }); }
+  // filed and confirmed by a person; everything else waits for somebody to look at it
+  function gotowy(u) { return u.status === 'przypisany' && !!u.sprawdzil; }
 
   // ---------------- load ----------------
   var kolejka = null;
@@ -106,7 +109,7 @@
       if (k.status === 'obslugiwany') n.obs++; else if (k.status === 'wstrzymany') n.wstrz++; else n.zak++;
       if (k.status !== 'zakonczony') { if (ostrz(k)) n.ostrz++; if (k.audyt) { if (!k.audyt.ma.umowa) n.bezU++; if (!k.audyt.ma.powierzenie) n.bezP++; } }
     });
-    n.spr = umowy.filter(function (u) { return u.status !== 'przypisany'; }).length;
+    n.spr = umowy.filter(function (u) { return !gotowy(u); }).length;
     var na = function (st, um, rj) { return f.tab === 'klienci' && f.status === st && f.umowy === um && f.rejestr === rj; };
     var t = [
       ['obs', n.obs, 'Obsługiwani', 'green', na('obslugiwany', '', '')], ['wstrz', n.wstrz, 'Wstrzymani', 'amber', na('wstrzymany', '', '')], ['zak', n.zak, 'Obsługa zakończona', '', na('zakonczony', '', '')],
@@ -155,19 +158,19 @@
     return [u.data_zawarcia && 'z dnia ' + pl(u.data_zawarcia), u.bezterminowa ? 'na czas nieokreślony' : u.obowiazuje_do && 'do ' + pl(u.obowiazuje_do), ob.length && 'obejmuje: ' + ob.join(', '), u.stron && u.stron + ' str.'].filter(Boolean).join(' · ');
   }
   function docRow(u, zKlientem) {
-    var st = UST[u.status] || [u.status, 'p-grey'], k = u.klient ? klient(u.klient) : null;
+    var st = u.status === 'przypisany' && !u.sprawdzil ? ['odczyt automatyczny — niepotwierdzony', 'p-amber'] : UST[u.status] || [u.status, 'p-grey'], k = u.klient ? klient(u.klient) : null;
     var tytul = u.rodzaj ? (RODZAJ[u.rodzaj] || u.rodzaj) + (u.podtyp ? ' — ' + u.podtyp : '') : u.nazwa;
     return '<div class="doc" data-u="' + esc(u.id) + '"><div class="n"><b>' + esc(tytul) + '</b>' +
       (zKlientem ? '<small>' + esc(k ? k.nazwa : u.kontrahent ? 'według dokumentu: ' + u.kontrahent + (u.kontrahent_nip ? ' (NIP ' + u.kontrahent_nip + ')' : '') : 'klient nierozpoznany') + '</small>' : '') +
       '<small>' + esc([opisUmowy(u), 'plik: ' + u.nazwa, 'wgrano ' + pl(u.created_at)].filter(Boolean).join(' · ')) + '</small>' +
       (u.uwagi ? '<small class="warn">Uwaga: ' + esc(u.uwagi) + '</small>' : '') + '</div>' +
       '<div class="acts"><span class="pill ' + st[1] + '">' + st[0] + '</span><button type="button" class="mini" data-a="view">Zobacz</button>' +
-      '<button type="button" class="mini' + (u.status === 'do_sprawdzenia' || u.status === 'blad' ? ' ok' : '') + '" data-a="edit">' + (u.status === 'przypisany' ? 'Zmień' : 'Przypisz') + '</button>' +
-      (u.status === 'blad' || u.status === 'nowy' ? '<button type="button" class="mini" data-a="again">Odczytaj ponownie</button>' : '') +
+      '<button type="button" class="mini' + (gotowy(u) ? '' : ' ok') + '" data-a="edit">' + (gotowy(u) ? 'Zmień' : u.status === 'przypisany' ? 'Sprawdź i potwierdź' : 'Przypisz') + '</button>' +
+      (u.status !== 'analiza' ? '<button type="button" class="mini" data-a="again">Odczytaj ponownie</button>' : '') +
       '<button type="button" class="mini del" data-a="del">Usuń</button></div></div>';
   }
   function rysujUmowy() {
-    var spr = umowy.filter(function (u) { return u.status !== 'przypisany'; });
+    var spr = umowy.filter(function (u) { return !gotowy(u); });
     $('utabs').innerHTML = [['spr', 'Do sprawdzenia', spr.length], ['all', 'Wszystkie dokumenty', umowy.length]].map(function (t) {
       return '<button type="button" data-ut="' + t[0] + '" class="' + (f.utab === t[0] ? 'on' : '') + '">' + t[1] + '<b>' + t[2] + '</b></button>';
     }).join('');
@@ -364,14 +367,15 @@
       var safe = job.file.name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w.\-]+/g, '_').slice(-80) || 'skan';
       var path = id + '/' + safe;
       var mime = job.file.type || (/\.pdf$/i.test(job.file.name) ? 'application/pdf' : /\.png$/i.test(job.file.name) ? 'image/png' : 'image/jpeg');
-      var up = await window.sb.storage.from(BUCKET).upload(path, job.file, { contentType: mime, upsert: false });
-      if (up.error) throw new Error(up.error.message);
+      // the row first, then the file: a failed upload takes the row back, so no file is ever left without a row
       var ins = await window.sb.from(T).insert({ id: id, path: path, nazwa: job.file.name.slice(0, 200), rozmiar: job.file.size, mime: mime, klient: job.klient || null });
-      if (ins.error) { await window.sb.storage.from(BUCKET).remove([path]); throw new Error(ins.error.message); }
+      if (ins.error) throw new Error(ins.error.message);
+      var up = await window.sb.storage.from(BUCKET).upload(path, job.file, { contentType: mime, upsert: false });
+      if (up.error) { await api('usun_umowe', { id: id }); throw new Error(up.error.message); }
       set('odczytuję…', 'p-navy');
       var out = await api('rozpoznaj', { id: id });
-      if (out.error) set('błąd odczytu', 'p-red');
-      else set(out.status === 'przypisany' ? 'przypisany' : 'do sprawdzenia', out.status === 'przypisany' ? 'p-ok' : 'p-amber');
+      if (out.error) set(/limit/i.test(out.error) ? 'dzienny limit odczytów — przypisz ręcznie' : 'błąd odczytu', 'p-red');
+      else set(out.status === 'przypisany' ? 'przypisany — do potwierdzenia' : 'do sprawdzenia', 'p-amber');
     } catch (e) { set('błąd: ' + (e.message || e), 'p-red'); }
   }
   function addFiles(list) {
@@ -404,13 +408,16 @@
       window.open(s.data.signedUrl, '_blank', 'noopener');
     } else if (a === 'del') {
       if (!confirm('Usunąć dokument „' + u.nazwa + '” z bazy? Tej operacji nie można cofnąć.')) return;
-      var d = await window.sb.from(T).delete().eq('id', id);
-      if (d.error) return alert('Błąd: ' + d.error.message);
-      await window.sb.storage.from(BUCKET).remove([u.path]);
+      // through the function: it removes the file, then the row, and records who deleted what
+      var d = await api('usun_umowe', { id: id });
+      if (d.error) alert(d.error);
       await wczytaj();
     } else if (a === 'again') {
+      var force = u.status === 'przypisany' || !!u.sprawdzil;
+      if (force && !confirm(u.sprawdzil ? 'Ten dokument został już sprawdzony przez człowieka. Ponowny odczyt niczego w nim nie zmieni — nowy odczyt zostanie tylko zapisany obok, do porównania. Odczytać?'
+        : 'Dokument jest już przypisany. Ponowny odczyt zastąpi dane odczytane automatycznie. Odczytać?')) return;
       b.disabled = true; b.textContent = 'Odczytuję…';
-      var r = await api('rozpoznaj', { id: id });
+      var r = await api('rozpoznaj', { id: id, force: force });
       if (r.error) alert(r.error);
       await wczytaj();
     } else if (a === 'edit') otworzEdycje(u);
@@ -433,7 +440,7 @@
     var ai = u.ai || {};
     $('edFile').textContent = 'Plik: ' + u.nazwa;
     $('edAi').hidden = !ai.analiza;
-    $('edAi').textContent = ai.analiza ? 'Odczytano: ' + ai.analiza + (ai.pewnosc ? ' (pewność: ' + ai.pewnosc + ')' : '') : '';
+    $('edAi').textContent = ai.analiza ? 'Odczytano: ' + ai.analiza + (ai.pewnosc ? ' (pewność: ' + ai.pewnosc + ')' : '') + (u.sprawdzil ? ' — sprawdził(a): ' + u.sprawdzil : ' — sprawdź dane z dokumentem i zatwierdź.') : '';
     $('edQ').value = picked ? picked.nazwa : '';
     opcje($('edRodzaj'), Object.keys(RODZAJ).map(function (r) { return [r, RODZAJ[r]]; }), u.rodzaj || 'inne');
     opcje($('edPodpisy'), Object.keys(PODPISY).map(function (p) { return [p, PODPISY[p]]; }), u.podpisy || '');
@@ -495,20 +502,22 @@
     if (!confirm('Pobrać dane ' + p.firm + ' firm? Szacowany koszt rejestr.io: ok. ' + zl(p.koszt_zl) + '.')) return;
     rjTrwa = true; rjStop = false; this.disabled = true; $('rjDni').disabled = $('rjZak').disabled = true; $('rjCancel').textContent = 'Zatrzymaj';
     $('rjProg').hidden = false;
-    var razem = p.firm, zrobione = 0, bledy = [], zmiany = 0;
+    var razem = p.firm, zrobione = 0, bledy = [], zmiany = 0, przerwano = '';
     // the function reads a few firms per call; the number of calls is bounded by the plan
     for (var i = 0; i < Math.ceil(razem / (p.na_raz || 5)) + 2 && !rjStop; i++) {
       var r = await api('rejestr_wszystkie', Object.assign({ dry: false }, rjBody()));
       if (r.error) { $('rjMsg').textContent = r.error; break; }
-      (r.zrobione || []).forEach(function (x) { zrobione++; if (!x.ok) bledy.push(x.nazwa + ' — ' + (x.blad || 'błąd')); else if (x.zmiany) zmiany++; });
+      (r.zrobione || []).forEach(function (x) { if (x.ok) zrobione++; if (!x.ok) bledy.push(x.nazwa + ' — ' + (x.blad || 'błąd')); else if (x.zmiany) zmiany++; });
       $('rjBar').style.width = Math.min(100, Math.round(zrobione / razem * 100)) + '%';
       $('rjTxt').textContent = 'Pobrano ' + zrobione + ' z ' + razem + (bledy.length ? ' · błędy: ' + bledy.length : '');
+      // the provider refused (inactive key, limit, outage) or the daily cap was reached: asking on is pointless
+      if (r.przerwano) { przerwano = r.przerwano; break; }
       if (!(r.zrobione || []).length || !r.pozostalo) break;
     }
     rjTrwa = false; $('rjDni').disabled = $('rjZak').disabled = false; $('rjCancel').disabled = false; $('rjCancel').textContent = 'Zamknij';
-    $('rjTxt').textContent = (rjStop ? 'Zatrzymano. ' : 'Gotowe. ') + 'Pobrano ' + zrobione + ' z ' + razem + (zmiany ? ' · zmiany w rejestrze: ' + zmiany : '') + (bledy.length ? ' · błędy: ' + bledy.length : '');
+    $('rjTxt').textContent = (przerwano ? 'Przerwano — dostawca danych odmówił. ' : rjStop ? 'Zatrzymano. ' : 'Gotowe. ') + 'Pobrano ' + zrobione + ' z ' + razem + (zmiany ? ' · zmiany w rejestrze: ' + zmiany : '') + (bledy.length ? ' · błędy: ' + bledy.length : '');
     await wczytaj(); await rjPlan();
-    $('rjMsg').textContent = bledy.slice(0, 8).join('; ');
+    $('rjMsg').textContent = przerwano ? 'Pobieranie przerwane: ' + przerwano : bledy.slice(0, 8).join('; ');
   });
   $('rej').addEventListener('click', function (e) { if (e.target === $('rej') && !rjTrwa) $('rej').hidden = true; });
 

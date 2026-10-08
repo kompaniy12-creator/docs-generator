@@ -2,17 +2,24 @@
 // PORTAL ONLY (JWT with app_metadata.portal === true). Every action is a POST with { action, ... }.
 //
 //   lista                                  any portal user
-//     -> { ja, klienci: [{ ...klienci_baza, rej, rej_historia, ostrzezenia, odpis, kontakt?, audyt?, historia? }], umowy?, cena }
+//     -> { ja, klienci: [{ ...client, rej, rej_historia, ostrzezenia, odpis, kontakt?, audyt?, historia? }], umowy?, cena }
 //     Brings the list up to date with the clients sheet first (at most every 30 minutes; never deletes).
-//     Contact data only for users of the Kadry section (as in klienci-list); contracts, the audit and the
-//     status history only for administrators.
-//   sync                                   any portal user — the same update, at once
-//   rejestr            { id, fresh? }      administrator — reads the register for one client (paid)
+//     A user who is not an administrator gets a fixed set of columns (no "who changed", no upstream error
+//     texts); contact data and sole traders' addresses only for the Kadry section (as in klienci-list);
+//     contracts, the audit and the status history only for administrators.
+//   sync                                   administrator — the same update, at once
+//   rejestr            { id, fresh? }      administrator — reads the register for one client (paid);
+//                                          once a day per client, and within the daily cap of requests
 //   rejestr_wszystkie  { dry, dni?, z_zakonczonymi? }   administrator
 //     dry: true  -> the plan: how many firms, requests and the estimated cost; nothing is fetched
-//     dry: false -> reads at most MAX_NA_RAZ firms of the plan and says how many are left
+//     dry: false -> reads at most MAX_NA_RAZ firms of the plan and says how many are left; stops at once
+//                   when a provider refuses (inactive key, limit, outage) or the daily cap is reached
 //   status             { id, status, koniec_od?, obsluga_od?, powod? }   administrator
-//   rozpoznaj          { id }              administrator — reads a contract scan and proposes the client
+//   rozpoznaj          { id, force? }      administrator — reads a contract scan and proposes the client.
+//                                          A document already filed or confirmed by a person is read again only
+//                                          with force, and then a confirmed one keeps every field: the new
+//                                          reading goes to `ai` alone. Daily cap of readings per user.
+//   usun_umowe         { id }              administrator — removes the file, then the row, and records who did it
 //   braki_csv                              administrator -> { csv }
 //
 // Register data: KRS firms through _shared/firma.ts (rejestr.io, paid per request) plus rejestr.io's basic
@@ -21,7 +28,7 @@
 import { loadKlienciRows } from "../_shared/klienci.ts";
 import { firmaConfigured, getFirma } from "../_shared/firma.ts";
 import {
-  audytKlienta, CENA_REJESTR_IO, csvBraki, digits, dopasuj, formaTyp, isDate, klientId, nipOk, odcisk, ostrzezeniaRejestru,
+  audytKlienta, bezDanychOsobowych, CENA_REJESTR_IO, csvBraki, digits, dopasuj, formaTyp, isDate, klientId, nipOk, odcisk, ostrzezeniaRejestru,
   pewnyKlient, planOdswiezenia, roznice, type Wyciag, wyciagGus, wyciagKrs,
 } from "./logic.ts";
 
@@ -38,6 +45,15 @@ const MAX_BYTES = 24 * 1024 * 1024;
 const SYNC_MIN = 30;       // the list follows the clients sheet at most this often
 const MAX_NA_RAZ = 5;      // firms read from the register in one call of rejestr_wszystkie
 const DNI_DOMYSLNIE = 30;  // a snapshot younger than this is not read again
+const MAX_REJESTR_DZIEN = 300;  // paid register requests a day, everybody together (table klienci_limity)
+const MAX_ODCZYT_DZIEN = 150;   // contract readings a day per user
+
+// the provider itself refused (inactive key, limit, outage): asking about the next firm would fail the same way
+class Dostawca extends Error {}
+async function limit(klucz: string, max: number, ile = 1): Promise<boolean> {
+  const r = await db("rpc/klienci_limit", { method: "POST", body: JSON.stringify({ p_klucz: klucz, p_max: max, p_ile: ile }) });
+  return r.ok && (await r.json()) === true; // no counter, no paid call
+}
 
 // deno-lint-ignore no-explicit-any
 type Any = any;
@@ -75,6 +91,7 @@ async function portal(req: Request): Promise<Ja | null> {
   return { email: String(u.email), admin, kadry: admin || !Array.isArray(m.portal_sections) || m.portal_sections.includes("kadry") };
 }
 const enc = encodeURIComponent;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const okId = (v: unknown): v is string => typeof v === "string" && v.length <= 300 && (/^\d{10}$/.test(v) || /^nazwa:.+/.test(v));
 const REJ_KOL = "id,klient,nip,fetched_at,sprawdzono_at,zrodlo,znaleziono,krs,regon,nazwa,forma,data_rejestracji,kapital,adres,organ,reprezentacja,zarzad,wspolnicy,prokurenci,pkd,stan,zmiany,odcisk";
 
@@ -116,24 +133,28 @@ const wierszNaWyciag = (r: Any): Wyciag => ({
   adres: r.adres, organ: r.organ, reprezentacja: r.reprezentacja, zarzad: r.zarzad ?? [], wspolnicy: r.wspolnicy ?? [], prokurenci: r.prokurenci ?? [], pkd: r.pkd, stan: r.stan,
 });
 async function gus(nip: string): Promise<Any> {
-  if (!DATAPORT_KEY) throw new Error("brak konfiguracji GUS (DataPort)");
+  if (!DATAPORT_KEY) throw new Dostawca("GUS (DataPort): brak konfiguracji");
   const r = await fetch("https://dataport.pl/api/v1/company/" + nip, { headers: { "X-API-Key": DATAPORT_KEY, Accept: "application/json" } });
   const d = await r.json().catch(() => ({}));
-  if (r.status === 404 || d?.success === false) return { success: false };
-  if (!r.ok) throw new Error("GUS HTTP " + r.status);
+  const msg = String(d?.message ?? d?.error ?? "").slice(0, 120);
+  // "not found" only when the provider clearly says so; an inactive key, a limit or anything unknown is an error
+  if (r.status === 404 || (d?.success === false && /nie znaleziono|nie odnaleziono|nie istnieje|brak podmiotu|not found/i.test(msg))) return { success: false };
+  if (!r.ok || d?.success === false || !(d?.nazwa || d?.regon)) throw new Dostawca("GUS (DataPort): " + (msg || "HTTP " + r.status));
   return d;
 }
 // Reads the register for one client and stores the result: a new snapshot when something changed,
 // otherwise only the date of the check. `dni`: our own cache of rejestr.io younger than this is reused.
-async function odswiez(k: Any, fresh: boolean, dni: number): Promise<{ ok: boolean; zmiany: number; zrodlo?: string; blad?: string }> {
+async function odswiez(k: Any, fresh: boolean, dni: number): Promise<{ ok: boolean; zmiany: number; zrodlo?: string; blad?: string; dostawca?: boolean }> {
   const nip = digits(k.nip), now = new Date().toISOString();
   const koniec = async (blad: string | null) => { await db(`klienci_baza?id=eq.${enc(k.id)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ rejestr_at: now, rejestr_blad: blad }) }); };
   try {
     if (!nipOk(nip)) throw new Error("brak poprawnego NIP");
     let zrodlo: "krs" | "gus" = formaTyp(k.forma) === "krs" ? "krs" : "gus";
     let w: Wyciag, dane: Any, surowe: Any = null;
+    // counted before asking: up to 3 requests for a KRS firm, 1 for GUS
+    if (!(await limit("rejestr", MAX_REJESTR_DZIEN, zrodlo === "krs" ? 3 : 1))) return { ok: false, zmiany: 0, dostawca: true, blad: "Dzienny limit zapytań do rejestrów (" + MAX_REJESTR_DZIEN + ") jest wyczerpany — dokończ jutro." };
     if (zrodlo === "krs") {
-      if (!firmaConfigured()) throw new Error("brak konfiguracji rejestr.io");
+      if (!firmaConfigured()) throw new Dostawca("rejestr.io: brak konfiguracji");
       let f = await getFirma(nip, false);
       if (f.z_pamieci && (fresh || Date.now() - Date.parse(f.pobrano) > dni * 86400000)) f = await getFirma(nip, true);
       if (f.found === false) zrodlo = "gus"; // the sheet says "spółka", KRS does not know the NIP: look in REGON
@@ -148,7 +169,8 @@ async function odswiez(k: Any, fresh: boolean, dni: number): Promise<{ ok: boole
     const p = await db(`klienci_rejestr?klient=eq.${enc(k.id)}&select=${REJ_KOL}&order=fetched_at.desc&limit=1`);
     const prev = p.ok ? (await p.json())[0] : null;
     const zm = prev ? roznice(wierszNaWyciag(prev), w!) : [];
-    const kolumny = { ...w!, nip, zrodlo, odcisk: odcisk(w!), dane, surowe, sprawdzono_at: now };
+    // kept without birth dates / PESEL numbers
+    const kolumny = { ...w!, nip, zrodlo, odcisk: odcisk(w!), dane: bezDanychOsobowych(dane), surowe: bezDanychOsobowych(surowe), sprawdzono_at: now };
     // the same state as last time (or only fields we did not read before): confirm the existing snapshot
     const zapis = prev && !zm.length && prev.zrodlo === zrodlo
       ? await db(`klienci_rejestr?id=eq.${prev.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(kolumny) })
@@ -158,9 +180,11 @@ async function odswiez(k: Any, fresh: boolean, dni: number): Promise<{ ok: boole
     return { ok: true, zmiany: zm.length, zrodlo };
   } catch (e) {
     const blad = String((e as Error)?.message ?? e).slice(0, 200);
-    console.error("klienci-baza rejestr", blad);
+    // rejestr.io answering 4xx / 5xx (a missing firm is not an error there) is the provider failing too
+    const dostawca = e instanceof Dostawca || /rejestr\.io( odpis)? HTTP [45]\d\d/.test(blad);
+    console.error("klienci-baza rejestr", dostawca ? "dostawca" : "", blad);
     await koniec(blad);
-    return { ok: false, zmiany: 0, blad };
+    return { ok: false, zmiany: 0, blad, dostawca };
   }
 }
 
@@ -211,18 +235,29 @@ Ustal:
 Zasady: niczego nie zgaduj. Jeśli czegoś nie widać — zostaw puste. NIP przepisz tylko wtedy, gdy jest czytelny w całości (10 cyfr). Nie wpisuj NIP biura jako NIP klienta. Gdy plik zawiera kilka różnych dokumentów albo nie da się ustalić klienta, napisz to w „uwagi” i ustaw pewność „niska”.`;
 const TOO_BIG = "Plik jest za duży do automatycznego odczytu (ponad 24 MB) — zeskanuj w niższej rozdzielczości albo podziel na części.";
 
-async function rozpoznaj(id: string, origin: string | null): Promise<Response> {
-  const fail = async (msg: string) => { await db(`klienci_umowy?id=eq.${id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ status: "blad", uwagi: msg }) }); return json({ error: msg }, 200, origin); };
+async function rozpoznaj(id: string, ja: Ja, force: boolean, origin: string | null): Promise<Response> {
+  // a document a person has confirmed keeps its status and notes whatever happens to the new reading
+  let potwierdzony = false, poprzedni = "blad";
+  const fail = async (msg: string) => {
+    await db(`klienci_umowy?id=eq.${id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(potwierdzony ? { status: poprzedni } : { status: "blad", uwagi: msg }) });
+    return json({ error: msg }, 200, origin);
+  };
   try {
     const r = await db(`klienci_umowy?id=eq.${id}&select=*`);
     const row = r.ok ? (await r.json())[0] : null;
     if (!row) return json({ error: "Nie znaleziono dokumentu." }, 404, origin);
-    // the path comes from a row the browser inserted: accept only "<row id>/<plain file name>" inside our bucket
-    if (typeof row.path !== "string" || !/^[0-9a-f-]{36}\/[A-Za-z0-9_.\-]+$/i.test(row.path) || row.path.includes("..") || !row.path.startsWith(row.id + "/")) return await fail("Nieprawidłowa ścieżka pliku.");
-    if (Number(row.rozmiar) > MAX_BYTES) return await fail(TOO_BIG);
-    // one reading at a time per document (each one is a paid request)
+    if ((row.sprawdzil || row.status === "przypisany") && !force) return json({ error: "Ten dokument jest już przypisany. Ponowny odczyt trzeba wyraźnie potwierdzić." }, 409, origin);
     if (row.status === "analiza" && Date.now() - Date.parse(row.analiza_at ?? "") < 120000) return json({ error: "Ten dokument jest właśnie odczytywany." }, 200, origin);
-    await db(`klienci_umowy?id=eq.${id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ status: "analiza", analiza_at: new Date().toISOString() }) });
+    // the path comes from a row the browser inserted: accept only "<row id>/<plain file name>" inside our bucket
+    if (typeof row.path !== "string" || !/^[0-9a-f-]{36}\/[A-Za-z0-9_.\-]+$/i.test(row.path) || row.path.includes("..") || !row.path.startsWith(row.id + "/")) return row.sprawdzil ? json({ error: "Nieprawidłowa ścieżka pliku." }, 200, origin) : await fail("Nieprawidłowa ścieżka pliku.");
+    if (Number(row.rozmiar) > MAX_BYTES) return row.sprawdzil ? json({ error: TOO_BIG }, 200, origin) : await fail(TOO_BIG);
+    if (!(await limit("odczyt:" + ja.email.toLowerCase(), MAX_ODCZYT_DZIEN))) return json({ error: "Dzienny limit odczytów (" + MAX_ODCZYT_DZIEN + ") jest wyczerpany — pozostałe dokumenty przypisz ręcznie albo odczytaj jutro." }, 429, origin);
+    // one reading at a time per document (each one is a paid request): the lock is taken by a single
+    // conditional update, so two requests arriving together cannot both get it
+    const stara = new Date(Date.now() - 120000).toISOString();
+    const lock = await db(`klienci_umowy?id=eq.${id}&or=(status.neq.analiza,analiza_at.is.null,analiza_at.lt.${enc(stara)})`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ status: "analiza", analiza_at: new Date().toISOString() }) });
+    if (!lock.ok || !(await lock.json()).length) return json({ error: "Ten dokument jest właśnie odczytywany." }, 200, origin);
+    potwierdzony = !!row.sprawdzil; poprzedni = row.status;
 
     const f = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${row.path.split("/").map(enc).join("/")}`, { headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` } });
     if (!f.ok) return await fail("Nie udało się odczytać pliku z magazynu.");
@@ -257,13 +292,12 @@ async function rozpoznaj(id: string, origin: string | null): Promise<Response> {
     const ostatni = new Map<string, Any>();
     for (const x of rej) if (!ostatni.has(x.klient)) ostatni.set(x.klient, x);
     const kand = dopasuj(kl, klienci.map((k) => ({ ...k, krs: ostatni.get(k.id)?.krs, rej_nazwa: ostatni.get(k.id)?.nazwa }))).slice(0, 6);
-    // the uploader may have said whose contract this is; a valid NIP of somebody else in the document overrules it
-    const wskazany = okId(row.klient) && klienci.some((k) => k.id === row.klient) ? row.klient : null;
+    // the uploader may have said whose contract this is (a client set on a row the machine has never read)
+    const wskazany = !row.ai && okId(row.klient) && klienci.some((k) => k.id === row.klient) ? row.klient : null;
     const nipDok = digits(kl.nip);
-    let pewny: string | null = pewnyKlient(kand, a.pewnosc);
-    if (wskazany) pewny = nipOk(nipDok) && /^\d{10}$/.test(wskazany) && nipDok !== wskazany ? null : (a.pewnosc === "niska" ? null : wskazany);
+    const pewny = pewnyKlient(dopasuj(kl, klienci.map((k) => ({ ...k, krs: ostatni.get(k.id)?.krs, rej_nazwa: ostatni.get(k.id)?.nazwa }))), a.pewnosc, wskazany);
     const s = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n) || null;
-    const patch: Any = {
+    const odczyt: Any = {
       status: pewny ? "przypisany" : "do_sprawdzenia", klient: pewny ?? wskazany,
       rodzaj: RODZAJE.includes(a.rodzaj) ? a.rodzaj : "inne", podtyp: s(a.podtyp, 80),
       obejmuje: [...new Set((Array.isArray(a.obejmuje) ? a.obejmuje : []).filter((x: Any) => ["ksiegowosc", "kadry", "powierzenie"].includes(x)))],
@@ -273,11 +307,14 @@ async function rozpoznaj(id: string, origin: string | null): Promise<Response> {
       wypowiedzenie: s(a.okres_wypowiedzenia, 300), zakres: s(a.zakres, 1000), wynagrodzenie: s(a.wynagrodzenie, 300),
       podpisy: ["obie_strony", "tylko_klient", "tylko_biuro", "brak", "nieczytelne"].includes(a.podpisy) ? a.podpisy : null, stron: Number(a.stron) > 0 ? Math.min(Number(a.stron), 5000) : null,
       uwagi: s(a.uwagi, 600),
-      ai: { pewnosc: a.pewnosc, analiza: String(a.analiza ?? "").slice(0, 600), klient: { nazwa: s(kl.nazwa, 300), nip: nipDok || null, krs: digits(kl.krs) || null }, kandydaci: kand },
     };
+    const ai: Any = { pewnosc: a.pewnosc, analiza: String(a.analiza ?? "").slice(0, 600), klient: { nazwa: s(kl.nazwa, 300), nip: nipDok || null, krs: digits(kl.krs) || null }, kandydaci: kand, kiedy: new Date().toISOString(), kto: ja.email };
+    // confirmed by a person: nothing they set is touched — the new reading is kept beside it, in `ai`
+    const { status: _s, klient: _k, ...pola } = odczyt;
+    const patch: Any = potwierdzony ? { status: poprzedni, ai: { ...ai, odczyt: pola } } : { ...odczyt, ai, sprawdzil: null, sprawdzono_at: null };
     const up = await db(`klienci_umowy?id=eq.${id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(patch) });
     if (!up.ok) return await fail("Nie udało się zapisać odczytu (" + up.status + ").");
-    return json({ ok: true, status: patch.status }, 200, origin);
+    return json({ ok: true, status: patch.status, tylko_odczyt: potwierdzony || undefined }, 200, origin);
   } catch (e) {
     console.error("klienci-baza rozpoznaj", String((e as Error)?.message ?? e).slice(0, 200));
     return await fail("Błąd podczas odczytu — spróbuj ponownie.");
@@ -304,10 +341,16 @@ async function lista(ja: Ja) {
   const dzis = new Date().toISOString().slice(0, 10), teraz = Date.now();
   const out = klienci.map((k) => {
     const rs = rejBy.get(k.id) ?? [], r = rs[0] ?? null;
+    const jdg = formaTyp(k.forma) !== "krs";
+    // not an administrator: a fixed set of columns — no "who changed it", no upstream error texts
+    const baza: Any = ja.admin ? k : { id: k.id, nip: k.nip, nazwa: k.nazwa, forma: k.forma, opodatkowanie: k.opodatkowanie, adres: k.adres, miasto: k.miasto, opiekun: k.opiekun, kadrowy: k.kadrowy,
+      w_arkuszu: k.w_arkuszu, brak_od: k.brak_od, status: k.status, obsluga_od: k.obsluga_od, koniec_od: k.koniec_od };
+    // a sole trader's address is often a home address: Kadry and administrators only (as the contact data)
+    if (jdg && !ja.kadry) baza.adres = null;
     const o: Any = {
-      ...k, rej: r ? { ...r, odcisk: undefined } : null,
+      ...baza, rej: r ? { ...r, odcisk: undefined, adres: (r.zrodlo === "gus" || jdg) && !ja.kadry ? null : r.adres } : null,
       rej_historia: rs.slice(1, 12).map((x) => ({ fetched_at: x.fetched_at, sprawdzono_at: x.sprawdzono_at, zmiany: x.zmiany, nazwa: x.nazwa })),
-      ostrzezenia: ostrzezeniaRejestru(k, r, teraz),
+      ostrzezenia: ostrzezeniaRejestru(k, r, teraz, ja.admin),
       odpis: r?.krs && odpis.has(String(r.krs).padStart(10, "0")) ? odpis.get(String(r.krs).padStart(10, "0")) : null,
     };
     if (ja.kadry) o.kontakt = kontakty.get(k.id) ?? null;
@@ -333,15 +376,16 @@ Deno.serve(async (req) => {
 
   try {
     if (action === "lista") return json(await lista(ja), 200, origin);
-    if (action === "sync") return json(await sync(true), 200, origin);
+    if (action === "sync") { if (!ja.admin) return tylkoAdmin(); return json(await sync(true), 200, origin); }
 
     if (action === "rejestr") {
       if (!ja.admin) return tylkoAdmin();
       if (!okId(body.id)) return json({ error: "Nieprawidłowy identyfikator klienta." }, 400, origin);
       const k = (await all(`klienci_baza?id=eq.${enc(body.id)}&select=*`))[0];
       if (!k) return json({ error: "Nie ma takiego klienta." }, 404, origin);
-      // every reading is paid: not more often than once a minute per client
-      if (k.rejestr_at && Date.now() - Date.parse(k.rejestr_at) < 60000) return json({ error: "Dane tego klienta były pobierane przed chwilą — spróbuj za minutę." }, 429, origin);
+      // every reading is paid: once a day per client; after a failed attempt — again after 10 minutes
+      const wiek = k.rejestr_at ? Date.now() - Date.parse(k.rejestr_at) : Infinity;
+      if (wiek < (k.rejestr_blad ? 600000 : 86400000)) return json({ error: k.rejestr_blad ? "Poprzednia próba nie powiodła się przed chwilą — spróbuj za kilka minut." : "Dane tego klienta były już dziś pobierane z rejestru — ponowne pobranie będzie możliwe jutro." }, 429, origin);
       // fresh: false takes what our own base of firms already holds, whatever its age (no paid request for the KRS chapter)
       return json(await odswiez(k, body.fresh !== false, body.fresh === false ? 36500 : 0), 200, origin);
     }
@@ -357,11 +401,14 @@ Deno.serve(async (req) => {
       if (body.dry !== false) return json({ dry: true, ...podsumowanie }, 200, origin);
       const byId = new Map(klienci.map((k) => [k.id, k]));
       const zrobione: Any[] = [];
+      let przerwano = "";
       for (const p of plan.pozycje.slice(0, MAX_NA_RAZ)) {
         const w = await odswiez(byId.get(p.id), false, dni);
         zrobione.push({ id: p.id, nazwa: p.nazwa, ...w });
+        // the provider refused: the next firms would only repeat the error (and, with rejestr.io, the bill)
+        if (w.dostawca) { przerwano = w.blad ?? "błąd dostawcy danych"; break; }
       }
-      return json({ dry: false, zrobione, pozostalo: Math.max(0, plan.pozycje.length - zrobione.length), ...podsumowanie }, 200, origin);
+      return json({ dry: false, zrobione, przerwano: przerwano || undefined, pozostalo: Math.max(0, plan.pozycje.length - zrobione.filter((z) => z.ok).length), ...podsumowanie }, 200, origin);
     }
 
     if (action === "status") {
@@ -381,8 +428,34 @@ Deno.serve(async (req) => {
     if (action === "rozpoznaj") {
       if (!ja.admin) return tylkoAdmin();
       if (!ANTHROPIC_KEY) return json({ error: "Brak konfiguracji odczytu dokumentów." }, 500, origin);
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.id ?? "")) return json({ error: "Nieprawidłowy identyfikator dokumentu." }, 400, origin);
-      return await rozpoznaj(body.id, origin);
+      if (!UUID.test(body.id ?? "")) return json({ error: "Nieprawidłowy identyfikator dokumentu." }, 400, origin);
+      return await rozpoznaj(body.id, ja, body.force === true, origin);
+    }
+
+    if (action === "usun_umowe") {
+      if (!ja.admin) return tylkoAdmin();
+      if (!UUID.test(body.id ?? "")) return json({ error: "Nieprawidłowy identyfikator dokumentu." }, 400, origin);
+      const row = (await all(`klienci_umowy?id=eq.${body.id}&select=*`))[0];
+      if (!row) return json({ error: "Nie znaleziono dokumentu." }, 404, origin);
+      const okPath = typeof row.path === "string" && /^[0-9a-f-]{36}\/[A-Za-z0-9_.\-]+$/i.test(row.path) && !row.path.includes("..") && row.path.startsWith(row.id + "/");
+      let sha: string | null = null;
+      if (okPath) {
+        const url = `${SUPABASE_URL}/storage/v1/object/${BUCKET}/${row.path.split("/").map(enc).join("/")}`, auth = { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` };
+        const f = await fetch(url, { headers: auth });
+        if (f.ok) {
+          const h = new Uint8Array(await crypto.subtle.digest("SHA-256", await f.arrayBuffer()));
+          sha = [...h].map((b) => b.toString(16).padStart(2, "0")).join("");
+          // the file first: if it cannot be removed, nothing changes and the row still points at it
+          const d = await fetch(url, { method: "DELETE", headers: auth });
+          if (!d.ok && d.status !== 404) { await d.body?.cancel(); return json({ error: "Nie udało się usunąć pliku — dokument pozostał w bazie." }, 502, origin); }
+          await d.body?.cancel();
+        } else { await f.body?.cancel(); if (f.status !== 404 && f.status !== 400) return json({ error: "Nie udało się odczytać pliku — dokument pozostał w bazie." }, 502, origin); }
+      }
+      const log = await db("klienci_umowy_usuniete", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ usunal: ja.email, umowa_id: row.id, klient: row.klient, nazwa: row.nazwa, path: row.path, rozmiar: row.rozmiar, sha256: sha, rodzaj: row.rodzaj, data_zawarcia: row.data_zawarcia, uploaded_by: row.uploaded_by, wgrano_at: row.created_at }) });
+      const del = await db(`klienci_umowy?id=eq.${row.id}`, { method: "DELETE", headers: { Prefer: "return=minimal" } });
+      console.log("klienci-baza usun_umowe", row.id, "plik:", sha ? "usunięty" : "brak", "wpis:", log.ok, "wiersz:", del.ok);
+      if (!del.ok) return json({ error: "Plik usunięto, ale nie udało się usunąć wpisu — spróbuj ponownie." }, 500, origin);
+      return json({ ok: true, zapisano_w_rejestrze: log.ok }, 200, origin);
     }
 
     if (action === "braki_csv") {

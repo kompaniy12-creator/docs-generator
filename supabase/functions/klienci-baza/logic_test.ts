@@ -2,7 +2,7 @@
 // Fictional firms and people only.
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import {
-  audytKlienta, csvBraki, csvPole, dopasuj, formaTyp, klientId, nazwaKlucz, nipOk, odcisk, ostrzezeniaRejestru, pewnyKlient,
+  audytKlienta, bezDanychOsobowych, csvBraki, csvPole, dopasuj, formaTyp, klientId, nazwaKlucz, nipOk, odcisk, ostrzezeniaRejestru, pewnyKlient,
   planOdswiezenia, roznice, stanFirmy, wyciagGus, wyciagKrs,
 } from "./logic.ts";
 
@@ -33,35 +33,55 @@ Deno.test("nazwaKlucz: forma prawna i interpunkcja nie mają znaczenia", () => {
   assertEquals(nazwaKlucz("Przykładowa Alfa sp. z o.o. w likwidacji"), "przykladowa alfa");
 });
 
-Deno.test("dopasuj: NIP rozstrzyga, także wbrew nazwie", () => {
+Deno.test("dopasuj: NIP + nazwa -> pewny; sam NIP albo sama nazwa -> do sprawdzenia", () => {
+  const pelny = dopasuj({ nazwa: "Przykładowa Alfa sp. z o.o.", nip: N1 }, KL);
+  assertEquals([pelny[0].id, pelny[0].wynik, pelny[0].numer, pelny[0].nazwaOk, pelny[0].powod], [N1, 100, true, true, "NIP i nazwa"]);
+  assertEquals(pewnyKlient(pelny, "wysoka"), N1);
+  assertEquals(pewnyKlient(pelny, "niska"), null);
+  // the NIP is Alfa's, the name is Beta's: a misread digit or another party's number — a person decides
   const k = dopasuj({ nazwa: "Przykładowa Beta sp. z o.o.", nip: N1 }, KL);
-  assertEquals(k[0].id, N1); assertEquals(k[0].wynik, 100);
-  // the name fits Beta, but the document's NIP is Alfa's: Beta is only a weak candidate
+  assertEquals([k[0].id, k[0].numer, k[0].nazwaOk], [N1, true, false]);
   assertEquals(k.find((x) => x.id === N2)?.wynik, 40);
-  assertEquals(pewnyKlient(k, "wysoka"), N1);
-  assertEquals(pewnyKlient(k, "niska"), null);
+  assertEquals(pewnyKlient(k, "wysoka"), null);
+  // the NIP alone, nothing else read
+  assertEquals(pewnyKlient(dopasuj({ nazwa: "", nip: N1 }, KL), "wysoka"), null);
+  // the register name counts as the name too
+  assertEquals(pewnyKlient(dopasuj({ nazwa: "PRZYKŁADOWA ALFA SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ", nip: N1 }, KL), "srednia"), N1);
+  // a sole trader: the NIP and the owner's name inside the firm's name
+  assertEquals(pewnyKlient(dopasuj({ nazwa: "Jan Wzorcowy", nip: N3 }, KL), "wysoka"), N3);
 });
-Deno.test("dopasuj: numer KRS, z zerami i bez", () => {
-  const k = dopasuj({ nazwa: "", nip: "", krs: "999002" }, KL);
-  assertEquals(k[0].id, N2); assertEquals(k[0].powod, "KRS"); assertEquals(pewnyKlient(k, "srednia"), N2);
+Deno.test("dopasuj: numer KRS, z zerami i bez — też wymaga nazwy", () => {
+  const sam = dopasuj({ nazwa: "", nip: "", krs: "999002" }, KL);
+  assertEquals([sam[0].id, sam[0].numer, sam[0].nazwaOk], [N2, true, false]); assertEquals(pewnyKlient(sam, "srednia"), null);
+  assertEquals(pewnyKlient(dopasuj({ nazwa: "Przykładowa Beta", nip: "", krs: "0000999002" }, KL), "srednia"), N2);
 });
-Deno.test("dopasuj: sama nazwa — tylko gdy jednoznaczna", () => {
+Deno.test("dopasuj: sama nazwa nigdy nie przypisuje, nawet jednoznaczna", () => {
   const k = dopasuj({ nazwa: "PRZYKŁADOWA ALFA SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ", nip: "" }, KL);
   assertEquals(k.map((x) => [x.id, x.wynik]), [[N1, 70]]);
-  assertEquals(pewnyKlient(k, "wysoka"), N1);
-  // two clients with the same name: nobody is chosen
-  const dwa = dopasuj({ nazwa: "Przykładowa Alfa" }, [ALFA, { ...BETA, nazwa: "Przykładowa Alfa", rej_nazwa: null }]);
-  assertEquals(dwa.length, 2); assertEquals(pewnyKlient(dwa, "wysoka"), null);
-  // a partial match never files by itself
+  assertEquals(pewnyKlient(k, "wysoka"), null);
   const cz = dopasuj({ nazwa: "Jan Wzorcowy" }, KL);
-  assertEquals(cz[0].id, N3); assertEquals(cz[0].wynik, 50); assertEquals(pewnyKlient(cz, "wysoka"), null);
+  assertEquals([cz[0].id, cz[0].wynik], [N3, 50]); assertEquals(pewnyKlient(cz, "wysoka"), null);
 });
 Deno.test("dopasuj: nieprawidłowy NIP z odczytu nie jest używany; nikt nie pasuje -> pusto", () => {
   assertEquals(dopasuj({ nazwa: "Zupełnie Inna Firma", nip: "1234567890" }, KL), []);
   assertEquals(pewnyKlient([], "wysoka"), null);
-  // a valid NIP that is nobody's blocks the name match from being sure
   const obcy = dopasuj({ nazwa: "Przykładowa Alfa sp. z o.o.", nip: nip("999000024") }, KL);
   assertEquals(obcy[0].wynik, 40); assertEquals(pewnyKlient(obcy, "wysoka"), null);
+});
+Deno.test("pewnyKlient: klient wskazany przez wgrywającego", () => {
+  // one agreeing thing is enough, and only for the client pointed at
+  assertEquals(pewnyKlient(dopasuj({ nazwa: "Przykładowa Beta sp. z o.o." }, KL), "wysoka", N2), N2);
+  assertEquals(pewnyKlient(dopasuj({ nazwa: "", nip: N2 }, KL), "srednia", N2), N2);
+  assertEquals(pewnyKlient(dopasuj({ nazwa: "Przykładowa Beta sp. z o.o." }, KL), "niska", N2), null);
+  // the document carries another client's number, or fits nobody
+  assertEquals(pewnyKlient(dopasuj({ nazwa: "Przykładowa Alfa sp. z o.o.", nip: N1 }, KL), "wysoka", N2), null);
+  assertEquals(pewnyKlient(dopasuj({ nazwa: "Przykładowa Beta sp. z o.o.", nip: N1 }, KL), "wysoka", N2), null);
+  assertEquals(pewnyKlient(dopasuj({ nazwa: "Zupełnie Inna" }, KL), "wysoka", N2), null);
+  assertEquals(pewnyKlient([], "wysoka", N2), null);
+});
+Deno.test("bezDanychOsobowych: daty urodzenia i PESEL znikają na każdym poziomie", () => {
+  const o = bezDanychOsobowych({ nazwa: "X", zarzad: [{ imie: "ANNA", dataUr: "1980-01-01", pesel: "80010112345" }], a: { b: [{ data_urodzenia: "1980-01-01", PESEL: "1", ok: 1 }] }, n: null });
+  assertEquals(o, { nazwa: "X", zarzad: [{ imie: "ANNA" }], a: { b: [{ ok: 1 }] }, n: null } as unknown as typeof o);
 });
 
 const FIRMA = {
@@ -80,6 +100,7 @@ Deno.test("wyciagKrs: kolumny z odpowiedzi getFirma i rekordu podstawowego", () 
   assertEquals(stanFirmy("PRZYKŁADOWA ALFA SP. Z O.O. W LIKWIDACJI", null), "w likwidacji");
   assertEquals(stanFirmy("X", { stan: { czy_wykreslona: true } }), "wykreślona");
   assertEquals(stanFirmy("PRZYKŁADOWA SP. Z O.O. W UPADŁOŚCI", null), "w upadłości");
+  assertEquals(stanFirmy("X", { stan: { w_zawieszeniu: true, w_likwidacji: false, w_upadlosci: false, czy_wykreslona: false } }), "zawieszona");
 });
 Deno.test("wyciagGus", () => {
   const w = wyciagGus({ success: true, nazwa: "USŁUGI TESTOWE JAN WZORCOWY", regon: "999000013", adres: "ul. Przykładowa 1 /2 00-000 Warszawa" });
@@ -121,7 +142,7 @@ Deno.test("planOdswiezenia: liczba zapytań i koszt", () => {
 // ---------------------------------------------------------------- audit
 const K = { id: N1, nip: N1, nazwa: "Przykładowa Alfa sp. z o.o.", forma: "spółka z o.o.", opiekun: "Księgowa Testowa", kadrowy: "", status: "obslugiwany", w_arkuszu: true };
 const REJ = { ...wyciagKrs(FIRMA), zrodlo: "krs", fetched_at: "2026-10-01T08:00:00Z", sprawdzono_at: "2026-10-08T08:00:00Z", zmiany: [] };
-const UM = (x: Record<string, unknown>) => ({ status: "przypisany", klient: N1, rodzaj: "ksiegowosc", obejmuje: ["ksiegowosc"], data_zawarcia: "2024-01-15", bezterminowa: true, obowiazuje_do: null, podpisy: "obie_strony",
+const UM = (x: Record<string, unknown>) => ({ status: "przypisany", sprawdzil: "admin@example.test", klient: N1, rodzaj: "ksiegowosc", obejmuje: ["ksiegowosc"], data_zawarcia: "2024-01-15", bezterminowa: true, obowiazuje_do: null, podpisy: "obie_strony",
   kontrahent: "Przykładowa Alfa Sp. z o.o.", kontrahent_nip: N1, kontrahent_krs: "0000999001", reprezentanci: [{ imie_nazwisko: "Anna Wzorcowa", funkcja: "prezes zarządu" }], ...x });
 const stan = (a: ReturnType<typeof audytKlienta>, kod: string) => a.pozycje.find((p) => p.kod === kod)?.stan;
 const DZIS = "2026-10-09";
@@ -156,6 +177,21 @@ Deno.test("audyt: umowa wygasła albo wypowiedziana -> brak obowiązującej", ()
   assertEquals(stan(audytKlienta(K, [REJ], [UM({ bezterminowa: false, obowiazuje_do: "2026-11-30" })], DZIS), "waznosc"), "uwaga");
   // an annex alone is not a contract
   assertEquals(stan(audytKlienta(K, [REJ], [UM({ rodzaj: "aneks" })], DZIS), "umowa"), "brak");
+});
+Deno.test("audyt: dokument z odczytu automatycznego, niepotwierdzony przez człowieka, niczego nie zalicza ani nie unieważnia", () => {
+  const AUTO = { sprawdzil: null };
+  const a = audytKlienta(K, [REJ], [UM({ ...AUTO, obejmuje: ["ksiegowosc", "powierzenie"] }), UM({ ...AUTO, rodzaj: "pelnomocnictwo", obejmuje: [], podtyp: "UPL-1" })], DZIS);
+  assertEquals(a.ma, { umowa: false, ksiegowosc: false, kadry: false, powierzenie: false, pelnomocnictwo: false });
+  assertEquals([stan(a, "umowa"), stan(a, "powierzenie"), stan(a, "pelnomocnictwo"), a.wynik], ["uwaga", "uwaga", "uwaga", "uwagi"]);
+  for (const kod of ["umowa", "powierzenie", "pelnomocnictwo"]) assert(a.pozycje.find((p) => p.kod === kod)!.tekst.includes("odczyt automatyczny — niepotwierdzony"), kod);
+  assertEquals(stan(a, "strony"), undefined); // nothing confirmed to compare with the register
+  // an unconfirmed notice of termination does not cancel a confirmed contract — it is only pointed out
+  const b = audytKlienta(K, [REJ], [UM({ obejmuje: ["ksiegowosc", "powierzenie"] }), UM({ ...AUTO, rodzaj: "wypowiedzenie", obejmuje: [], data_zawarcia: "2026-08-01" })], DZIS);
+  assertEquals([stan(b, "umowa"), b.ma.umowa, stan(b, "wypowiedzenie")], ["ok", true, "uwaga"]);
+  // once a person confirms the notice, it counts
+  assertEquals(stan(audytKlienta(K, [REJ], [UM({}), UM({ rodzaj: "wypowiedzenie", obejmuje: [], data_zawarcia: "2026-08-01" })], DZIS), "umowa"), "brak");
+  // a confirmed contract is not shadowed by an unconfirmed duplicate
+  assertEquals(stan(audytKlienta(K, [REJ], [UM({}), UM({ ...AUTO })], DZIS), "umowa"), "ok");
 });
 Deno.test("audyt: strony i reprezentacja wobec rejestru", () => {
   assertEquals(stan(audytKlienta(K, [REJ], [UM({ kontrahent_nip: N2 })], DZIS), "strony"), "brak");
@@ -196,6 +232,7 @@ Deno.test("ostrzezeniaRejestru", () => {
   assert(ostrzezeniaRejestru({ ...K, nazwa: "Zupełnie Inna" }, REJ, t)[0].includes("różni się"));
   assert(ostrzezeniaRejestru({ ...K, nip: "" }, REJ, t)[0].includes("NIP"));
   assert(ostrzezeniaRejestru({ ...K, rejestr_blad: "rejestr.io HTTP 500" }, REJ, t)[0].includes("HTTP 500"));
+  assertEquals(ostrzezeniaRejestru({ ...K, rejestr_blad: "rejestr.io HTTP 500" }, REJ, t, false), ["Ostatnie pobranie z rejestru nie powiodło się."]);
 });
 
 Deno.test("csvPole: cudzysłowy, średniki, nowe linie, formuły", () => {
