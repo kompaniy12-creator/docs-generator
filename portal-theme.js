@@ -87,6 +87,9 @@
     'html.pt-dark body.ps .filters label,html.pt-dark body.ps .fcount,html.pt-dark body.ps main>.empty,html.pt-dark body.ps #empty,html.pt-dark body.ps #loading,html.pt-dark body.ps #rules>h2,html.pt-dark body.ps .nav-label{color:rgba(255,255,255,.88)}',
     'html.pt-dark body.ps .filters select,html.pt-dark body.ps .search,html.pt-dark body.ps .toolbar input{background:rgba(255,255,255,.95)}',
     'html.pt-dark #onbBar{background:rgba(255,255,255,.92)}',
+    // small texts that stand directly on the background: empty states, footers, stamps, links in the lead
+    'html.pt-dark body.ps main .empty,html.pt-dark body.ps main .loading,html.pt-dark body.ps main>.stamp,html.pt-dark body.ps footer,html.pt-dark body.ps footer a,html.pt-dark body.ps main>.lead a,html.pt-dark body.ps .content-head .lead a{color:rgba(255,255,255,.88);text-shadow:0 1px 8px rgba(0,0,0,.35)}',
+    'html.pt-dark body.ps main .box .empty,html.pt-dark body.ps main .card .empty,html.pt-dark body.ps main table .empty,html.pt-dark body.ps main fieldset .empty,html.pt-dark body.ps main .firm .empty,html.pt-dark body.ps main .task .empty,html.pt-dark body.ps main .box .loading{color:#7a8699;text-shadow:none}',
     // pages without the portal shell (sign-in, client profile) carry body.pt-page
     'html.pt{--navy:var(--pt-accent);--navy-d:var(--pt-accent-d);--tint:var(--pt-tint)}',
     'html.pt body.pt-page{background:var(--pt-bg);background-attachment:fixed;background-size:cover;background-position:center;min-height:100vh}',
