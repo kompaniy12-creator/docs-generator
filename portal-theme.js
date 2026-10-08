@@ -39,9 +39,9 @@
     var t = THEMES.filter(function (x) { return x.id === s.theme; })[0] || THEMES[0];
     var own = s.theme === 'wlasne' && img();
     var dark = own ? s.ownDark !== false : t.dark;
-    var pct = function (v, def) { v = Number(v); return v >= 30 && v <= 100 ? v : def; };
+    var pct = function (v, def) { return v === undefined || v === null || isNaN(Number(v)) ? def : Math.max(0, Math.min(100, Number(v))); };
     return { id: own ? 'wlasne' : t.id, dark: dark, accent: s.accent || t.accent, bg: own ? null : t.bg, own: own,
-      card: pct(s.card, dark ? 80 : 72), menu: pct(s.menu, dark ? 58 : 80) };
+      card: pct(s.card, dark ? 80 : 72), menu: pct(s.menu, dark ? 16 : 45) }; // menus: almost clear, the background shows through
   }
 
   var css = document.createElement('style');
@@ -52,8 +52,8 @@
     // accent everywhere: the shell and the pages share these variables
     'html.pt{--ps-navy:var(--pt-accent);--brand-navy:var(--pt-accent);--brand-navy-dark:var(--pt-accent-d);--ps-tint:var(--pt-tint);--brand-tint:var(--pt-tint)}',
     // glass navigation
-    'html.pt #psSide{background:var(--pt-glass);backdrop-filter:blur(30px) saturate(1.05);-webkit-backdrop-filter:blur(30px) saturate(1.05);border-right:1px solid var(--pt-line)}',
-    'html.pt #psBar,html.pt #psTop,html.pt #psTabs{background:var(--pt-glass);backdrop-filter:blur(30px) saturate(1.05);-webkit-backdrop-filter:blur(30px) saturate(1.05);border-color:var(--pt-line)}',
+    'html.pt #psSide{background:var(--pt-glass);backdrop-filter:blur(var(--pt-blur)) saturate(1.05);-webkit-backdrop-filter:blur(var(--pt-blur)) saturate(1.05);border-right:1px solid var(--pt-line)}',
+    'html.pt #psBar,html.pt #psTop,html.pt #psTabs{background:var(--pt-glass);backdrop-filter:blur(var(--pt-blur)) saturate(1.05);-webkit-backdrop-filter:blur(var(--pt-blur)) saturate(1.05);border-color:var(--pt-line)}',
     // on dark menus the navy parts of the logo need a little light to stay readable
     'html.pt-dark .ps-logo{filter:brightness(1.35) drop-shadow(0 0 10px rgba(255,255,255,.28))}',
     'html.pt .ps-item{border-radius:12px;transition:background .15s,transform .15s}',
@@ -77,6 +77,8 @@
     'html.pt-dark #psSide,html.pt-dark #psBar,html.pt-dark #psTop,html.pt-dark #psTabs{color:#fff}',
     'html.pt-dark .ps-item,html.pt-dark .ps-top,html.pt-dark #psTabs a,html.pt-dark #psTabs button{color:rgba(255,255,255,.88)}',
     'html.pt-dark .ps-label{color:rgba(255,255,255,.9)}',
+    'html.pt-dark #psSide,html.pt-dark #psBar{text-shadow:0 1px 6px rgba(0,0,0,.45)}',
+    'html.pt-dark #psSide .ps-badge,html.pt-dark #psBar .ps-badge,html.pt-dark .ps-out{text-shadow:none}',
     'html.pt-dark .ps-group.open{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14)}',
     'html.pt-dark .ps-group.open>.ps-label{color:rgba(255,255,255,.58)}',
     'html.pt-dark .ps-group.has-on:not(.open){background:rgba(255,255,255,.14)}',
@@ -142,12 +144,14 @@
     var themed = c.id !== 'klasyczny' || c.accent.toLowerCase() !== '#1b3f7f';
     root.classList.toggle('pt', themed);
     root.classList.toggle('pt-dark', themed && c.dark);
-    if (!themed) { ['--pt-bg', '--pt-accent', '--pt-accent-d', '--pt-tint', '--pt-glass', '--pt-line', '--pt-card'].forEach(function (v) { st.removeProperty(v); }); return; }
+    if (!themed) { ['--pt-bg', '--pt-accent', '--pt-accent-d', '--pt-tint', '--pt-glass', '--pt-line', '--pt-card', '--pt-blur'].forEach(function (v) { st.removeProperty(v); }); return; }
     st.setProperty('--pt-bg', c.own ? 'url("' + c.own + '")' : c.bg);
     st.setProperty('--pt-accent', c.accent);
     st.setProperty('--pt-accent-d', shade(c.accent, -0.22));
     st.setProperty('--pt-tint', shade(c.accent, 0.9));
     st.setProperty('--pt-glass', (c.dark ? 'rgba(17,22,38,' : 'rgba(255,255,255,') + (c.menu / 100) + ')'); // matte; how solid is the user's choice
+    // the clearer the menu, the less it blurs what is behind it
+    st.setProperty('--pt-blur', Math.round(4 + c.menu * 0.26) + 'px');
     st.setProperty('--pt-card', 'rgba(255,255,255,' + (c.card / 100) + ')');
     st.setProperty('--pt-line', c.dark ? 'rgba(255,255,255,.16)' : 'rgba(15,23,42,.08)');
   }
@@ -191,7 +195,7 @@
       (c.id !== 'klasyczny' || c.accent.toLowerCase() !== '#1b3f7f'
         ? '<h4>Przezroczystość</h4>' +
           '<label class="pt-range"><span>Bloki z treścią</span><input type="range" min="30" max="100" step="2" id="ptCard" value="' + c.card + '" /><b id="ptCardV">' + (100 - c.card) + '%</b></label>' +
-          '<label class="pt-range"><span>Menu boczne i górne</span><input type="range" min="30" max="100" step="2" id="ptMenu" value="' + c.menu + '" /><b id="ptMenuV">' + (100 - c.menu) + '%</b></label>'
+          '<label class="pt-range"><span>Menu boczne i górne</span><input type="range" min="0" max="100" step="2" id="ptMenu" value="' + c.menu + '" /><b id="ptMenuV">' + (100 - c.menu) + '%</b></label>'
         : '') +
       '<div class="pt-row" style="margin-top:16px"><button type="button" class="pt-btn" data-pt="reset">Przywróć klasyczny wygląd</button></div>';
   }
