@@ -61,7 +61,7 @@
   <a href="index.html" class="back">← Powrót do portalu</a>
   <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
   <h1>Narzędzia księgowe</h1>
-  <p class="lead">Podręczne kalkulatory: mikrorachunek podatkowy, sprawdzenie numeru rachunku, odsetki podatkowe i ustawowe, VAT — liczą się w przeglądarce i wpisanych do nich danych nigdzie nie wysyłają. Wyjątek: „Biała lista VAT” i „VAT UE (VIES)” wysyłają zapytanie przez portal do Ministerstwa Finansów albo Komisji Europejskiej; portal odnotowuje, kto i co sprawdzał (numer rachunku — tylko 4 ostatnie cyfry).</p>
+  <p class="lead">Podręczne kalkulatory: mikrorachunek podatkowy, sprawdzenie numeru rachunku, odsetki podatkowe i ustawowe, VAT — liczą się w przeglądarce i wpisanych do nich danych nigdzie nie wysyłają. Wyjątek: „Biała lista VAT” i „VAT UE (VIES)” wysyłają zapytanie przez portal do Ministerstwa Finansów albo Komisji Europejskiej; każde takie sprawdzenie zapisuje się w „Rejestrze sprawdzeń VAT” (kto, co, wynik i identyfikator nadany przez rejestr).</p>
 
   <div class="tabs" id="tabs" role="tablist">
     <button type="button" class="on" data-tab="mikro" role="tab" aria-selected="true">Mikrorachunek</button>
@@ -71,6 +71,7 @@
     <button type="button" data-tab="vat" role="tab" aria-selected="false">Brutto ↔ netto</button>
     <button type="button" data-tab="biala" role="tab" aria-selected="false">Biała lista VAT</button>
     <button type="button" data-tab="vies" role="tab" aria-selected="false">VAT UE (VIES)</button>
+    <button type="button" data-tab="rejestr" role="tab" aria-selected="false">Rejestr sprawdzeń VAT</button>
   </div>
 
   <!-- 1 -->
@@ -195,7 +196,31 @@
     <div id="vsOut" aria-live="polite"></div>
     <p class="law">Podstawa: art. 42 ust. 1 pkt 1 i 3 ustawy o podatku od towarów i usług (t.j. Dz.U. 2026 poz. 1263) — wewnątrzwspólnotowa dostawa towarów jest opodatkowana stawką 0%, gdy nabywca posiada właściwy i ważny numer identyfikacyjny dla transakcji wewnątrzwspólnotowych, nadany przez państwo członkowskie właściwe dla nabywcy, zawierający dwuliterowy kod kraju, i podał go dostawcy, a dostawca, składając deklarację, jest zarejestrowany jako podatnik VAT UE; do tego dowody wywozu towaru (ust. 1 pkt 2). Stawki 0% nie stosuje się, gdy dostawca nie złożył informacji podsumowującej albo podał w niej nieprawidłowe dane, chyba że należycie wyjaśnił to na piśmie naczelnikowi urzędu skarbowego (ust. 1a). Usługa: VIES, Komisja Europejska (ec.europa.eu/taxation_customs/vies). Stan na <span data-wer></span>.</p>
   </section>
+
+  <!-- 8 -->
+  <section class="box panel" id="p-rejestr" hidden>
+    <h2>Rejestr sprawdzeń VAT</h2>
+    <p class="hint">Każde sprawdzenie z zakładek „Biała lista VAT” i „VAT UE (VIES)” — także z wynikiem NIE, „brak w wykazie” albo z błędem po stronie rejestru — zapisuje się tu samo, razem z identyfikatorem nadanym przez rejestr. Wpisów nie da się w portalu zmienić ani usunąć. Potwierdzenie przechowuj co najmniej do przedawnienia zobowiązania podatkowego, którego dotyczy transakcja: <b>5 lat od końca roku kalendarzowego, w którym upłynął termin płatności podatku</b>. Portal nie usuwa wpisów automatycznie.</p>
+    <div class="three">
+      <div><label for="rjQ">Szukaj (NIP, nazwa, identyfikator)</label><input type="search" id="rjQ" autocomplete="off" maxlength="60" placeholder="wpisz i poczekaj chwilę" /></div>
+      <div><label for="rjRodzaj">Rodzaj</label><select id="rjRodzaj"><option value="">wszystkie</option><option value="wl_search">Biała lista — podmiot</option><option value="wl_check">Biała lista — rachunek</option><option value="vies">VIES</option></select></div>
+      <div><label for="rjKto">Kto sprawdzał</label><select id="rjKto"><option value="">wszyscy</option><option value="moje">tylko moje</option></select></div>
+    </div>
+    <div class="two">
+      <div><label for="rjOd">Sprawdzono od dnia</label><input type="date" id="rjOd" /></div>
+      <div><label for="rjDo">Sprawdzono do dnia</label><input type="date" id="rjDo" /></div>
+    </div>
+    <div class="acts">
+      <button type="button" class="mini" id="rjOdswiez">Odśwież</button>
+      <button type="button" class="mini" id="rjCzysc">Wyczyść filtry</button>
+      <button type="button" class="mini" id="rjCsv">Eksport do CSV</button>
+    </div>
+    <div id="rjInfo" aria-live="polite"></div>
+    <div id="rjOut"></div>
+    <div class="acts" style="margin-top:10px"><button type="button" class="mini" id="rjWiecej" hidden>Pokaż więcej</button></div>
+    <p class="law">Podstawa: art. 70 § 1 Ordynacji podatkowej (t.j. Dz.U. 2026 poz. 622) — zobowiązanie podatkowe przedawnia się z upływem 5 lat, licząc od końca roku kalendarzowego, w którym upłynął termin płatności podatku; art. 86 § 1 — podatnicy obowiązani do prowadzenia ksiąg podatkowych przechowują księgi i związane z ich prowadzeniem dokumenty do czasu upływu okresu przedawnienia zobowiązania podatkowego, chyba że ustawy podatkowe stanowią inaczej. Przykład: gdy termin płatności podatku za 2026 r. upływa w 2027 r., przedawnienie następuje z końcem 2032 r. Bieg przedawnienia może zostać zawieszony albo przerwany (art. 70 § 2–4 i 6), więc okres bywa dłuższy. Eksport CSV: kodowanie UTF-8, separator średnik. Stan na 09.10.2026.</p>
+  </section>
 </main>
-<script src="narzedzia-ksiegowe.js?v=2"></script>
+<script src="narzedzia-ksiegowe.js?v=3"></script>
 </body>
 </html>

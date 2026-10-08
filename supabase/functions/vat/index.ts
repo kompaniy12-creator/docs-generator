@@ -14,15 +14,21 @@
 //     -> { wazny, kraj, numer, nazwa, adres, dataZapytania, identyfikator, zWlasnym }
 //   errors -> { error (Polish, for the user), kod? (upstream code) } with 400 (input) / 502 (upstream)
 //
+// Every question that reached a register — answered or failed — is entered in public.vat_sprawdzenia (service
+// role; staff can only read it). The answer then carries { zapisano: true, wpis: <row id> }; when the entry
+// could not be written the check still succeeds, with zapisano: false. Our own input rejections are not entered.
+//
 // Upstream: https://wl-api.mf.gov.pl (API Rejestr WL 1.6.0; daily limits: 100 "search" and 5000 "check"
 // requests, after which MF may block access until 0:00) and
 // https://ec.europa.eu/taxation_customs/vies/rest-api/check-vat-number.
-// Account numbers are never written to the log in full.
+// Account numbers are never written to the console log in full (the register keeps them: they are the evidence).
 
+import { type Rodzaj, wierszRejestru, type Wpis } from "./rejestr.ts";
 import { czytajDate, czytajKonto, czytajKraj, czytajNip, czytajNumerVat, czytajRegon, czytajWlasny, maska } from "./walidacja.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const WL = "https://wl-api.mf.gov.pl/api";
 const VIES = "https://ec.europa.eu/taxation_customs/vies/rest-api/check-vat-number";
 const TIMEOUT_MS = 12000;
@@ -45,8 +51,10 @@ async function portalKsiegowosc(req: Request): Promise<string | null> {
 }
 
 class Blad extends Error {
+  zap?: Record<string, unknown>; // the validated question — set once a register was actually asked
   constructor(message: string, public status = 502, public kod = "") { super(message); }
 }
+const zPytaniem = (e: unknown, zap: Record<string, unknown>) => { if (e instanceof Blad) e.zap = zap; return e; };
 function log(o: Record<string, unknown>) { console.log(JSON.stringify({ fn: "vat", ...o })); }
 const tekst = (v: unknown, max = 300) => typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
 
@@ -109,14 +117,15 @@ async function wlSearch(b: any, kto: string) {
   if (d.blad !== undefined) throw new Blad(d.blad, 400);
   const seg = by === "konto" ? "bank-account" : by; // fixed path segment, never taken from the request
   const co = by === "konto" ? maska(v.ok) : v.ok;
+  const zap = { by, value: v.ok, date: d.ok };
   try {
     const r = await wl(`search/${seg}/${v.ok}`, d.ok);
     const lista = Array.isArray(r.subjects) ? r.subjects : r.subject ? [r.subject] : [];
     log({ action: "wl_search", kto, by, co, date: d.ok, znaleziono: lista.length, requestId: r.requestId ?? null });
-    return { podmioty: lista.slice(0, 30).map(podmiot), requestId: tekst(r.requestId, 60), requestDateTime: tekst(r.requestDateTime, 30), date: d.ok };
+    return { zap, out: { podmioty: lista.slice(0, 30).map(podmiot), requestId: tekst(r.requestId, 60), requestDateTime: tekst(r.requestDateTime, 30), date: d.ok } };
   } catch (e) {
     log({ action: "wl_search", kto, by, co, date: d.ok, blad: (e as Blad).kod || String((e as Error).message).slice(0, 80) });
-    throw e;
+    throw zPytaniem(e, zap);
   }
 }
 async function wlCheck(b: any, kto: string) {
@@ -126,15 +135,16 @@ async function wlCheck(b: any, kto: string) {
   if (konto.blad !== undefined) throw new Blad(konto.blad, 400);
   const d = czytajDate(b.date);
   if (d.blad !== undefined) throw new Blad(d.blad, 400);
+  const zap = { nip: nip.ok, konto: konto.ok, date: d.ok };
   try {
     const r = await wl(`check/nip/${nip.ok}/bank-account/${konto.ok}`, d.ok);
     const odp = r.accountAssigned === "TAK" ? "TAK" : r.accountAssigned === "NIE" ? "NIE" : null;
     if (!odp) throw new Blad("Wykaz zwrócił odpowiedź w nieznanym formacie.", 502, "FORMAT");
     log({ action: "wl_check", kto, nip: nip.ok, konto: maska(konto.ok), date: d.ok, wynik: odp, requestId: r.requestId ?? null });
-    return { przypisany: odp, nip: nip.ok, konto: konto.ok, date: d.ok, requestId: tekst(r.requestId, 60), requestDateTime: tekst(r.requestDateTime, 30) };
+    return { zap, out: { przypisany: odp, nip: nip.ok, konto: konto.ok, date: d.ok, requestId: tekst(r.requestId, 60), requestDateTime: tekst(r.requestDateTime, 30) } };
   } catch (e) {
     log({ action: "wl_check", kto, nip: nip.ok, konto: maska(konto.ok), date: d.ok, blad: (e as Blad).kod || String((e as Error).message).slice(0, 80) });
-    throw e;
+    throw zPytaniem(e, zap);
   }
 }
 
@@ -167,6 +177,7 @@ async function vies(b: any, kto: string) {
     if (w.blad !== undefined) throw new Blad(w.blad, 400);
     req.requesterMemberStateCode = w.ok.kraj; req.requesterNumber = w.ok.numer;
   }
+  const zap = { kraj: kraj.ok, numer: numer.ok, wlasny: maWlasny ? req.requesterMemberStateCode + req.requesterNumber : null };
   const pytaj = () => wywolaj(VIES, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(req) }, KE);
   const kodBledu = (x: any) => x?.actionSucceed === false ? (tekst(x?.errorWrappers?.[0]?.error, 40) ?? "UNKNOWN") : "";
   try {
@@ -179,12 +190,35 @@ async function vies(b: any, kto: string) {
     const id = tekst(body.requestIdentifier, 60);
     log({ action: "vies", kto, kraj: kraj.ok, numer: numer.ok, wlasny: maWlasny, wazny: body.valid, identyfikator: id });
     return {
-      wazny: body.valid, kraj: kraj.ok, numer: numer.ok, nazwa: kreski(body.name), adres: kreski(body.address),
-      dataZapytania: tekst(body.requestDate, 40), identyfikator: id, zWlasnym: maWlasny ? req.requesterMemberStateCode + req.requesterNumber : null,
+      zap,
+      out: {
+        wazny: body.valid, kraj: kraj.ok, numer: numer.ok, nazwa: kreski(body.name), adres: kreski(body.address),
+        dataZapytania: tekst(body.requestDate, 40), identyfikator: id, zWlasnym: zap.wlasny,
+      },
     };
   } catch (e) {
     log({ action: "vies", kto, kraj: kraj.ok, numer: numer.ok, wlasny: maWlasny, blad: (e as Blad).kod || String((e as Error).message).slice(0, 80) });
-    throw e;
+    throw zPytaniem(e, zap);
+  }
+}
+
+// ───────────────────────── register of checks (public.vat_sprawdzenia) ─────────────────────────
+// Returns the new row's id, or null when it could not be written — a check never fails because of the register.
+async function zapisz(w: Wpis): Promise<string | null> {
+  try {
+    if (!SERVICE) throw new Error("brak SUPABASE_SERVICE_ROLE_KEY");
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/vat_sprawdzenia?select=id`, {
+      method: "POST", signal: AbortSignal.timeout(6000),
+      headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify(w),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status} ${(await r.text()).slice(0, 200)}`);
+    const id = (await r.json())?.[0]?.id;
+    if (typeof id !== "string") throw new Error("brak id w odpowiedzi");
+    return id;
+  } catch (e) {
+    console.error("vat: wpis do rejestru nieudany:", w.rodzaj, w.request_id ?? "-", String((e as Error)?.message ?? e).slice(0, 240));
+    return null;
   }
 }
 
@@ -198,13 +232,18 @@ Deno.serve(async (req) => {
   let b: any = null;
   try { const t = await req.text(); if (t.length <= 2000) b = JSON.parse(t); } catch { /* handled below */ }
   if (!b || typeof b !== "object" || Array.isArray(b)) return json({ error: "Nieprawidłowe zapytanie." }, 400, origin);
+  const rodzaj: Rodzaj | null = b.action === "wl_search" || b.action === "wl_check" || b.action === "vies" ? b.action : null;
+  if (!rodzaj) return json({ error: "Nieznana akcja." }, 400, origin);
   try {
-    if (b.action === "wl_search") return json(await wlSearch(b, kto), 200, origin);
-    if (b.action === "wl_check") return json(await wlCheck(b, kto), 200, origin);
-    if (b.action === "vies") return json(await vies(b, kto), 200, origin);
-    return json({ error: "Nieznana akcja." }, 400, origin);
+    const { zap, out } = await (rodzaj === "wl_search" ? wlSearch(b, kto) : rodzaj === "wl_check" ? wlCheck(b, kto) : vies(b, kto));
+    const wpis = await zapisz(wierszRejestru(rodzaj, kto, zap, out, null));
+    return json({ ...out, zapisano: wpis !== null, wpis }, 200, origin);
   } catch (e) {
-    if (e instanceof Blad) return json({ error: e.message, kod: e.kod || undefined }, e.status, origin);
+    if (e instanceof Blad) {
+      if (!e.zap) return json({ error: e.message, kod: e.kod || undefined }, e.status, origin); // rejected before asking anyone
+      const wpis = await zapisz(wierszRejestru(rodzaj, kto, e.zap, null, { message: e.message, kod: e.kod }));
+      return json({ error: e.message, kod: e.kod || undefined, zapisano: wpis !== null, wpis }, e.status, origin);
+    }
     console.error("vat:", String((e as Error)?.message ?? e).slice(0, 200));
     return json({ error: "Błąd wewnętrzny — sprawdzenie nie zostało wykonane." }, 500, origin);
   }

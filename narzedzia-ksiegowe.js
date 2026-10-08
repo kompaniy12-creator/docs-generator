@@ -2,7 +2,7 @@
    Pure calculation functions first (also loadable in node: `require('./narzedzia-ksiegowe.js')`),
    DOM code at the bottom, guarded. The calculators send nothing anywhere. The two register checks — biała lista VAT
    and VIES — are the exception: they call the `vat` edge function, which asks the Ministry of Finance / the
-   European Commission and logs the check. */
+   European Commission and enters the check in the register (table vat_sprawdzenia), which the last tab lists. */
 (function (root) {
   'use strict';
 
@@ -413,7 +413,56 @@
     return z;
   }
 
+  // ───────────────────────── register of checks (rows of public.vat_sprawdzenia) ─────────────────────────
+  var RODZAJE = { wl_search: 'Biała lista — podmiot', wl_check: 'Biała lista — rachunek', vies: 'VIES' };
+  function wynikPill(w) {
+    var t = String(w || '');
+    if (/^błąd/.test(t)) return [t, 'p-grey'];
+    if (t === 'TAK' || t === 'ważny' || t === 'Czynny') return [t === 'Czynny' ? 'VAT czynny' : t, 'p-ok'];
+    if (t === 'Zwolniony') return ['VAT zwolniony', 'p-amber'];
+    if (t === 'NIE' || t === 'nieważny' || t === 'Niezarejestrowany' || t === 'brak w wykazie') return [t, 'p-red'];
+    return [t || '—', 'p-navy'];
+  }
+  // what was asked, in words
+  function opisZapytania(r) {
+    var z = r.zapytanie || {};
+    if (r.rodzaj === 'wl_search') return (SZUKANE[z.by] || '') + ' ' + (z.by === 'konto' ? grupujKonto(z.value) : (z.value || ''));
+    if (r.rodzaj === 'wl_check') return 'NIP ' + (z.nip || '') + ' + rachunek ' + grupujKonto(z.konto);
+    return (z.kraj || '') + (z.numer || '') + (z.wlasny ? ' (pytający ' + z.wlasny + ')' : '');
+  }
+  // the same paragraph the check tabs copy, rebuilt from the stored row
+  function potwierdzenieWpisu(r) {
+    var d = r.szczegoly || {};
+    if (/^błąd/.test(String(r.wynik || ''))) {
+      return 'Próba sprawdzenia (' + (RODZAJE[r.rodzaj] || r.rodzaj) + ') z dnia ' + czasVies(r.created_at) + ': ' + opisZapytania(r)
+        + '. Rejestr nie udzielił odpowiedzi: ' + (d.error || r.wynik) + (r.id ? ' Wpis w rejestrze sprawdzeń portalu: ' + r.id + '.' : '');
+    }
+    return r.rodzaj === 'wl_search' ? potwierdzenieWl(d, r.zapytanie || {}) : r.rodzaj === 'wl_check' ? potwierdzeniePary(d) : potwierdzenieVies(d);
+  }
+  // text search: only letters, digits, space, dot and hyphen survive — the value goes into a PostgREST filter
+  function filtrTekst(q) { return String(q == null ? '' : q).replace(/[^0-9A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż .\-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60); }
+  function filtrOr(q) {
+    var t = filtrTekst(q); if (!t) return '';
+    var zwarty = t.replace(/[ .\-]/g, ''), cz = ['nazwa.ilike."%' + t + '%"', 'request_id.ilike."%' + t + '%"'];
+    if (zwarty) cz.push('nip.ilike."%' + zwarty + '%"'); // NIP typed with dashes or spaces still matches
+    return cz.join(',');
+  }
+  // CSV for Excel: every value quoted, quotes doubled; a value starting with = + - @ (or tab / CR) gets an
+  // apostrophe in front, so a spreadsheet shows it as text instead of running it as a formula
+  function csvPole(v) {
+    var t = v == null ? '' : String(v);
+    if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;
+    return '"' + t.replace(/"/g, '""') + '"';
+  }
+  var CSV_KOLUMNY = ['Data i godzina', 'Kto', 'Rodzaj', 'NIP / numer VAT', 'Nazwa', 'Zapytanie', 'Wynik', 'Na dzień', 'Identyfikator', 'Czas według rejestru', 'Potwierdzenie', 'Nr wpisu'];
+  function csvRejestr(rows) {
+    return '\uFEFF' + [CSV_KOLUMNY].concat((rows || []).map(function (r) {
+      return [czasVies(r.created_at), r.kto, RODZAJE[r.rodzaj] || r.rodzaj, r.nip, r.nazwa, opisZapytania(r), r.wynik, r.na_dzien ? dataIso(r.na_dzien) : '', r.request_id, r.request_time, potwierdzenieWpisu(r), r.id];
+    })).map(function (w) { return w.map(csvPole).join(';'); }).join('\r\n') + '\r\n';
+  }
+
   var API = {
+    RODZAJE: RODZAJE, wynikPill: wynikPill, opisZapytania: opisZapytania, potwierdzenieWpisu: potwierdzenieWpisu, filtrTekst: filtrTekst, filtrOr: filtrOr, csvPole: csvPole, csvRejestr: csvRejestr,
     KRAJE_VIES: KRAJE_VIES, regonOk: regonOk, grupujKonto: grupujKonto, czasWl: czasWl, czasVies: czasVies, statusVat: statusVat,
     potwierdzenieWl: potwierdzenieWl, potwierdzeniePary: potwierdzeniePary, potwierdzenieVies: potwierdzenieVies, zapytanieWl: zapytanieWl, zapytanieVies: zapytanieVies,
     ZWERYFIKOWANO: ZWERYFIKOWANO, ODSETKI_PODATKOWE: ODSETKI_PODATKOWE, ODSETKI_USTAWOWE: ODSETKI_USTAWOWE, ODSETKI_HANDLOWE: ODSETKI_HANDLOWE,
@@ -573,7 +622,14 @@
     btn.disabled = true; html(outId, '<p class="hint" style="margin:12px 0 0">' + esc(czekaj) + '</p>');
     var d = await zapytaj(zap);
     btn.disabled = false;
-    html(outId, d.error ? blad(d.error) : rys(d, zap));
+    html(outId, (d.error ? blad(d.error) : rys(d, zap)) + notaRejestru(d));
+  }
+  // every question that reached a register is entered in the register of checks by the function
+  function notaRejestru(d) {
+    if (d.zapisano === true && d.wpis) return '<p class="hint" style="margin:10px 0 0">' + (d.error ? 'Nieudaną próbę zapisano w rejestrze sprawdzeń. ' : 'Zapisano w rejestrze sprawdzeń. ')
+      + '<a class="mini" href="#rejestr" data-wpis="' + esc(d.wpis) + '">Pokaż wpis</a></p>';
+    if (d.zapisano === false) return '<p class="warn">Uwaga: tego sprawdzenia nie udało się zapisać w rejestrze sprawdzeń. Skopiuj potwierdzenie i zachowaj je samodzielnie.</p>';
+    return '';
   }
   function dowod(etykieta, id, kiedy, potw) {
     return '<div class="lab" style="margin-top:10px">' + esc(etykieta) + '</div><div class="big mono">' + esc(id) + '</div>'
@@ -647,6 +703,122 @@
     sprawdz($('vsGo'), 'vsOut', zap, 'Pytam system VIES — odpowiedź państwa członkowskiego może potrwać kilkanaście sekund…', rysVies);
   }
 
+  // 8. register of checks — read straight from the table (RLS: Księgowość section, read only)
+  var RJ = { rows: [], otwarte: {}, wiecej: false, razem: null, blad: '', nr: 0, ja: null }, RJ_STRONA = 50, RJ_CSV_MAX = 20000;
+  function rjFiltry() { return { q: $('rjQ').value, rodzaj: $('rjRodzaj').value, od: $('rjOd').value, do: $('rjDo').value, moje: $('rjKto').value === 'moje' }; }
+  function rjZapytanie(f, opcje) {
+    var q = root.sb.from('vat_sprawdzenia').select('*', opcje).order('created_at', { ascending: false }).order('id');
+    var lub = filtrOr(f.q);
+    if (lub) q = q.or(lub);
+    if (RODZAJE[f.rodzaj]) q = q.eq('rodzaj', f.rodzaj);
+    if (dzien(f.od) !== null) q = q.gte('created_at', new Date(f.od + 'T00:00:00').toISOString());
+    if (dzien(f.do) !== null) { var k = new Date(f.do + 'T00:00:00'); k.setDate(k.getDate() + 1); q = q.lt('created_at', k.toISOString()); }
+    if (f.moje) q = q.eq('kto', RJ.ja || '-');
+    return q;
+  }
+  async function rjLaduj(dalej, pokaz) {
+    var nr = ++RJ.nr;
+    if (!dalej) { RJ.rows = []; RJ.otwarte = {}; RJ.razem = null; }
+    RJ.blad = ''; $('rjWiecej').hidden = true;
+    html('rjInfo', '<p class="hint" style="margin:10px 0 0">Wczytuję rejestr…</p>');
+    try {
+      if (RJ.ja === null) { var s = await root.sb.auth.getSession(); RJ.ja = s && s.data && s.data.session && s.data.session.user ? String(s.data.session.user.email || '') : ''; }
+      var od = RJ.rows.length;
+      var r = await rjZapytanie(rjFiltry(), dalej ? undefined : { count: 'exact' }).range(od, od + RJ_STRONA); // one row more than a page: is there a next one?
+      if (nr !== RJ.nr) return; // a newer question is already on its way
+      if (r.error) throw new Error(r.error.message || 'błąd');
+      var nowe = r.data || [];
+      RJ.wiecej = nowe.length > RJ_STRONA;
+      RJ.rows = RJ.rows.concat(nowe.slice(0, RJ_STRONA));
+      if (!dalej && typeof r.count === 'number') RJ.razem = r.count;
+      if (pokaz) {
+        if (!RJ.rows.some(function (x) { return x.id === pokaz; })) {
+          var j = await root.sb.from('vat_sprawdzenia').select('*').eq('id', pokaz).limit(1);
+          if (j.data && j.data[0]) RJ.rows.unshift(j.data[0]);
+        }
+        RJ.otwarte[pokaz] = true;
+      }
+    } catch (e) {
+      if (nr !== RJ.nr) return;
+      RJ.blad = 'Nie udało się wczytać rejestru sprawdzeń (' + String(e && e.message || e).slice(0, 140) + '). Jeżeli rejestr został dopiero dodany — spróbuj później.';
+    }
+    rjRysuj();
+    if (pokaz) { var w = document.querySelector('#rjOut tr[data-id="' + pokaz.replace(/[^0-9a-f-]/gi, '') + '"]'); if (w) w.scrollIntoView({ block: 'center' }); }
+  }
+  function rjSzczegoly(r) {
+    var d = r.szczegoly || {}, h;
+    if (/^błąd/.test(String(r.wynik || ''))) h = blad(d.error || r.wynik);
+    else h = r.rodzaj === 'wl_search' ? rysWl(d, r.zapytanie || {}) : r.rodzaj === 'wl_check' ? rysPara(d) : rysVies(d);
+    return '<p style="margin:0">Zapytanie: <b>' + esc(opisZapytania(r)) + '</b> · sprawdził(a): ' + esc(r.kto) + ' · zapisano: ' + esc(czasVies(r.created_at)) + '</p>' + h;
+  }
+  // the details stay as wide as the visible part of the table, also when the table itself scrolls sideways
+  function rjSzer() { var s = document.querySelector('#rjOut .scroll'); return s ? Math.max(240, s.clientWidth - 18) : 600; }
+  function rjRysuj() {
+    $('rjWiecej').hidden = !RJ.wiecej || !!RJ.blad;
+    if (RJ.blad) { html('rjInfo', ''); html('rjOut', blad(RJ.blad)); return; }
+    html('rjInfo', '<p class="hint" style="margin:10px 0 0">' + (RJ.razem === null ? '' : 'Wpisów spełniających filtry: <b>' + esc(RJ.razem) + '</b> · ') + 'pokazano ' + esc(RJ.rows.length) + ' · najnowsze na górze</p>');
+    if (!RJ.rows.length) { html('rjOut', '<div class="res">Brak wpisów. Sprawdzenia z zakładek „Biała lista VAT” i „VAT UE (VIES)” pojawią się tu same; jeżeli używasz filtrów — poluzuj je.</div>'); return; }
+    html('rjOut', '<div class="scroll"><table class="tbl"><thead><tr><th>Data</th><th>Kto</th><th>Rodzaj</th><th>Podmiot</th><th>Wynik</th><th>Na dzień</th><th>Identyfikator</th><th></th></tr></thead><tbody>'
+      + RJ.rows.map(function (r) {
+        var pill = wynikPill(r.wynik), otw = !!RJ.otwarte[r.id];
+        return '<tr data-id="' + esc(r.id) + '"><td>' + esc(czasVies(r.created_at).replace(' r., godz.', '').slice(0, 16)) + '</td><td>' + esc(String(r.kto || '').split('@')[0]) + '</td><td style="white-space:normal;min-width:96px">' + esc(RODZAJE[r.rodzaj] || r.rodzaj) + '</td>'
+          + '<td style="white-space:normal;min-width:160px">' + (r.nazwa ? '<b>' + esc(r.nazwa) + '</b><br>' : '') + '<span class="mono">' + esc(r.nip || opisZapytania(r)) + '</span></td>'
+          + '<td><span class="pill ' + pill[1] + '">' + esc(pill[0]) + '</span></td><td>' + esc(r.na_dzien ? dataIso(r.na_dzien) : '—') + '</td>'
+          + '<td>' + (r.request_id ? '<span class="mono">' + esc(r.request_id) + '</span><div class="acts" style="margin-top:4px"><button type="button" class="mini" data-copy="' + esc(r.request_id) + '">Kopiuj</button></div>' : '—') + '</td>'
+          + '<td><div class="acts"><button type="button" class="mini" data-rj="' + esc(r.id) + '" aria-expanded="' + otw + '">' + (otw ? 'Zwiń' : 'Szczegóły') + '</button>'
+          + '<button type="button" class="mini" data-copy="' + esc(potwierdzenieWpisu(r)) + '">Kopiuj potwierdzenie</button></div></td></tr>'
+          + (otw ? '<tr><td colspan="8" style="white-space:normal"><div data-rjs style="position:sticky;left:8px;box-sizing:border-box">' + rjSzczegoly(r) + '</div></td></tr>' : '');
+      }).join('') + '</tbody></table></div>');
+    rjDopasuj();
+  }
+  function rjDopasuj() { var w = rjSzer(); Array.prototype.forEach.call(document.querySelectorAll('#rjOut [data-rjs]'), function (el) { el.style.width = w + 'px'; }); }
+  async function rjEksport() {
+    var b = $('rjCsv'); if (b.disabled) return;
+    b.disabled = true; var napis = b.textContent; b.textContent = 'Przygotowuję…';
+    try {
+      var f = rjFiltry(), wszystkie = [];
+      for (var od = 0; od < RJ_CSV_MAX; od += 1000) {
+        var r = await rjZapytanie(f).range(od, od + 999);
+        if (r.error) throw new Error(r.error.message || 'błąd');
+        wszystkie = wszystkie.concat(r.data || []);
+        if ((r.data || []).length < 1000) break;
+      }
+      var a = document.createElement('a'), url = URL.createObjectURL(new Blob([csvRejestr(wszystkie)], { type: 'text/csv;charset=utf-8' }));
+      a.href = url; a.download = 'rejestr-sprawdzen-vat-' + dzisiaj() + '.csv';
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+      b.textContent = 'Pobrano (' + wszystkie.length + ')';
+    } catch (e) { b.textContent = 'Eksport nieudany'; }
+    setTimeout(function () { b.textContent = napis; b.disabled = false; }, 1600);
+  }
+  function rjStart(tabs) {
+    var czekaj = null;
+    $('rjQ').addEventListener('input', function () { clearTimeout(czekaj); czekaj = setTimeout(function () { rjLaduj(false); }, 400); });
+    ['rjRodzaj', 'rjKto', 'rjOd', 'rjDo'].forEach(function (id) { $(id).addEventListener('change', function () { rjLaduj(false); }); });
+    $('rjOdswiez').addEventListener('click', function () { rjLaduj(false); });
+    $('rjCzysc').addEventListener('click', function () { ['rjQ', 'rjRodzaj', 'rjKto', 'rjOd', 'rjDo'].forEach(function (id) { $(id).value = ''; }); rjLaduj(false); });
+    $('rjWiecej').addEventListener('click', function () { rjLaduj(true); });
+    $('rjCsv').addEventListener('click', rjEksport);
+    $('rjOut').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-rj]'); if (!b) return;
+      var id = b.getAttribute('data-rj'); RJ.otwarte[id] = !RJ.otwarte[id]; rjRysuj();
+    });
+    root.addEventListener('resize', rjDopasuj);
+    // opening the tab (re)loads the list; "Pokaż wpis" under a fresh check opens it on that entry
+    var pokaz = null;
+    tabs.addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-tab="rejestr"]'); if (!b) return;
+      var id = pokaz; pokaz = null; rjLaduj(false, id);
+    });
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest ? e.target.closest('[data-wpis]') : null; if (!a) return;
+      e.preventDefault();
+      ['rjQ', 'rjRodzaj', 'rjKto', 'rjOd', 'rjDo'].forEach(function (id) { $(id).value = ''; });
+      pokaz = a.getAttribute('data-wpis');
+      tabs.querySelector('button[data-tab="rejestr"]').click();
+      $('p-rejestr').scrollIntoView({ block: 'start' });
+    });
+  }
+
   function start() {
     // tabs
     var tabs = $('tabs');
@@ -656,6 +828,7 @@
       Array.prototype.forEach.call(document.querySelectorAll('.panel'), function (p) { p.hidden = p.id !== 'p-' + b.getAttribute('data-tab'); });
       try { history.replaceState(null, '', '#' + b.getAttribute('data-tab')); } catch (err) { /* file:// */ }
     });
+    rjStart(tabs);
     var h = location.hash.slice(1), pocz = h && tabs.querySelector('button[data-tab="' + h.replace(/[^a-z]/g, '') + '"]');
     if (pocz) pocz.click();
 
