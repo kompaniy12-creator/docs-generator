@@ -82,7 +82,9 @@
     'body.ps{padding-left:var(--ps-w);background:#f6f8fb}',
     '#psSide{position:fixed;left:0;top:0;bottom:0;width:var(--ps-w);z-index:900;background:var(--ps-tint);border-right:1px solid #e1e7f0;display:flex;flex-direction:column;padding:18px 14px;overflow-y:auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}',
     '#psSide .ps-brand{display:block;text-align:center;padding:4px 8px 14px}',
-    '#psSide .ps-brand img{height:56px;width:auto}',
+    // one-colour logo: the shape of logo-mono.png filled with the colour of the menu text
+    '.ps-logo{display:inline-block;width:92px;height:64px;background:var(--ps-navy);-webkit-mask:url(logo-mono.png) center/contain no-repeat;mask:url(logo-mono.png) center/contain no-repeat}',
+    '#psTop .ps-logo{width:50px;height:34px;flex:0 0 auto}',
     '.ps-label{display:flex;align-items:center;justify-content:space-between;width:100%;border:none;background:none;font-family:inherit;cursor:pointer;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#6b7a90;margin:6px 0 2px;padding:9px 10px;border-radius:8px;text-align:left}',
     '.ps-label:hover{background:rgba(27,63,127,.07);color:var(--ps-navy)}',
     '.ps-chev{font-size:15px;line-height:1;transition:transform .15s;letter-spacing:0}',
@@ -146,7 +148,6 @@
     ' #psTop{display:flex;position:fixed;left:0;right:0;top:0;height:54px;z-index:910;align-items:center;gap:10px;padding:0 12px;background:#fff;border-bottom:1px solid #e1e7f0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}',
     ' #psTop button{width:42px;height:42px;border:none;background:var(--ps-tint);border-radius:10px;font-size:20px;color:var(--ps-navy);cursor:pointer}',
     ' #psTop strong{flex:1;font-size:15.5px;color:var(--ps-navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-    ' #psTop img{height:34px}',
     ' #psSide{transform:translateX(-102%);transition:transform .22s ease;width:min(86vw,300px);z-index:930;box-shadow:0 0 40px rgba(0,0,0,.25)}',
     ' body.ps-open #psSide{transform:none}',
     ' body.ps-open #psDim{display:block;position:fixed;inset:0;z-index:920;background:rgba(15,23,42,.45)}',
@@ -198,7 +199,7 @@
   }
   var side = document.createElement('nav');
   side.id = 'psSide';
-  side.innerHTML = '<a class="ps-brand" href="index.html"><img src="logo.png" alt="TD Consulting Group" /></a>' +
+  side.innerHTML = '<a class="ps-brand" href="index.html" title="TD Consulting Group"><span class="ps-logo" role="img" aria-label="TD Consulting Group"></span></a>' +
     NAV.filter(function (g) { return g.items.length; }).map(function (g) {
       // every module folds; the one with the current page is open, the rest as the user left them
       return '<div class="ps-group' + (g.mobile ? ' ps-m' : '') + '" data-group="' + esc(g.label) + '">' +
@@ -215,7 +216,7 @@
 
   var top = document.createElement('div');
   top.id = 'psTop';
-  top.innerHTML = '<button type="button" id="psMenu" aria-label="Menu">☰</button><strong id="psTitle"></strong><img src="logo.png" alt="" />';
+  top.innerHTML = '<button type="button" id="psMenu" aria-label="Menu">☰</button><strong id="psTitle"></strong><span class="ps-logo" aria-hidden="true"></span>';
 
   // desktop top bar: things used from every module
   var CRM_URL = 'https://kompaniy12-creator.github.io/td-crm/';
