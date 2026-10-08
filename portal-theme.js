@@ -11,6 +11,9 @@
     { id: 'klasyczny', sw: '#f6f8fb', name: 'Klasyczny', dark: false, accent: '#1B3F7F', bg: '#f6f8fb' },
     { id: 'aurora', sw: 'linear-gradient(135deg,#7c3aed,#2563eb 55%,#06b6d4)', name: 'Aurora', dark: true, accent: '#5b5bf0',
       bg: 'radial-gradient(1100px 700px at 12% 8%,#7c3aed 0%,transparent 60%),radial-gradient(900px 700px at 88% 18%,#2563eb 0%,transparent 62%),radial-gradient(1000px 800px at 70% 96%,#06b6d4 0%,transparent 58%),radial-gradient(900px 700px at 8% 92%,#4f46e5 0%,transparent 60%),#1e1b4b' },
+    // made by the office's owner: night sky over water, clear blocks and menus
+    { id: 'kosmos', sw: 'url(/motywy/kosmos.jpg) center/cover', name: 'Kosmos', dark: true, accent: '#2563eb', card: 30, menu: 0,
+      bg: 'url("/motywy/kosmos.jpg")' },
     { id: 'ocean', sw: 'linear-gradient(135deg,#0369a1,#22d3ee 60%,#0f766e)', name: 'Ocean', dark: true, accent: '#0e7490',
       bg: 'radial-gradient(1000px 700px at 85% 5%,#22d3ee 0%,transparent 58%),radial-gradient(1100px 800px at 10% 30%,#0369a1 0%,transparent 62%),radial-gradient(1000px 700px at 60% 100%,#0f766e 0%,transparent 60%),#082f49' },
     { id: 'zachod', sw: 'linear-gradient(135deg,#e11d48,#f59e0b 55%,#7c3aed)', name: 'Zachód słońca', dark: true, accent: '#c2410c',
@@ -41,7 +44,7 @@
     var dark = own ? s.ownDark !== false : t.dark;
     var pct = function (v, def) { return v === undefined || v === null || isNaN(Number(v)) ? def : Math.max(0, Math.min(100, Number(v))); };
     return { id: own ? 'wlasne' : t.id, dark: dark, accent: s.accent || t.accent, bg: own ? null : t.bg, own: own,
-      card: pct(s.card, dark ? 80 : 72), menu: pct(s.menu, dark ? 16 : 45) }; // menus: almost clear, the background shows through
+      card: pct(s.card, !own && t.card !== undefined ? t.card : dark ? 80 : 72), menu: pct(s.menu, !own && t.menu !== undefined ? t.menu : dark ? 16 : 45) }; // menus: almost clear, the background shows through
   }
 
   var css = document.createElement('style');
@@ -54,8 +57,8 @@
     // glass navigation
     'html.pt #psSide{background:var(--pt-glass);backdrop-filter:blur(var(--pt-blur)) saturate(1.05);-webkit-backdrop-filter:blur(var(--pt-blur)) saturate(1.05);border-right:1px solid var(--pt-line)}',
     'html.pt #psBar,html.pt #psTop,html.pt #psTabs{background:var(--pt-glass);backdrop-filter:blur(var(--pt-blur)) saturate(1.05);-webkit-backdrop-filter:blur(var(--pt-blur)) saturate(1.05);border-color:var(--pt-line)}',
-    // on dark menus the navy parts of the logo need a little light to stay readable
-    'html.pt-dark .ps-logo{filter:brightness(1.35) drop-shadow(0 0 10px rgba(255,255,255,.28))}',
+    // on dark menus: the sign in colour, the lettering in white
+    'html.pt-dark .ps-logo{background-image:url(/logo-kolor-jasny.png)}',
     'html.pt .ps-item{border-radius:12px;transition:background .15s,transform .15s}',
     'html.pt .ps-item:hover{transform:translateX(2px)}',
     'html.pt .ps-item.on{box-shadow:0 6px 18px rgba(0,0,0,.18)}',
