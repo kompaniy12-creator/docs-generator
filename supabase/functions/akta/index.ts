@@ -91,10 +91,15 @@ async function workers(): Promise<Any[]> {
   }
   return out;
 }
+const TOO_BIG = "Plik jest za duży do automatycznego odczytu (ponad 24 MB) — zeskanuj w niższej rozdzielczości albo podziel na części.";
 // how well a worker fits what was read: PESEL decides, otherwise the name plus the employer or the birth date
 function score(w: Any, a: Any): number {
   const pesel = digits(a.pracownik.pesel);
-  if (pesel.length === 11 && digits(w.p_pesel) === pesel) return 100;
+  if (pesel.length === 11 && digits(w.p_pesel) === pesel) {
+    // a PESEL alone is not enough to file without a person: the surname read from the scan must agree too
+    const sur = norm(a.pracownik.nazwisko ?? "");
+    return sur && norm(w.worker_name || `${w.p_imiona} ${w.p_nazwisko}`).split(" ").includes(sur) ? 100 : 70;
+  }
   const want = norm(`${a.pracownik.imie} ${a.pracownik.nazwisko}`).split(" ").filter(Boolean).sort().join(" ");
   const have = norm(w.worker_name || `${w.p_imiona} ${w.p_nazwisko}`).split(" ").filter(Boolean).sort().join(" ");
   if (!want || !have) return 0;
@@ -131,12 +136,18 @@ Deno.serve(async (req) => {
     const r = await db(`akta_dokumenty?id=eq.${id}&select=*`);
     const row = r.ok ? (await r.json())[0] : null;
     if (!row) return json({ error: "Nie znaleziono dokumentu." }, 404, origin);
-    await db(`akta_dokumenty?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ status: "analiza" }) });
+    // the path comes from a row the browser inserted: accept only "<row id>/<plain file name>" inside our bucket
+    if (typeof row.path !== "string" || !/^[0-9a-f-]{36}\/[A-Za-z0-9_.\-]+$/i.test(row.path) || row.path.includes("..") || !row.path.startsWith(row.id + "/")) return await fail("Nieprawidłowa ścieżka pliku.");
+    if (Number(row.rozmiar) > MAX_BYTES) return await fail(TOO_BIG);
+    // one reading at a time per document (each one is a paid request)
+    if (row.status === "analiza" && Date.now() - Date.parse(row.analiza_at ?? "") < 120000) return json({ error: "Ten dokument jest właśnie odczytywany." }, 200, origin);
+    await db(`akta_dokumenty?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ status: "analiza", analiza_at: new Date().toISOString() }) });
 
     const f = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${row.path.split("/").map(encodeURIComponent).join("/")}`, { headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` } });
     if (!f.ok) return await fail("Nie udało się odczytać pliku z magazynu.");
+    if (Number(f.headers.get("content-length") ?? 0) > MAX_BYTES) return await fail(TOO_BIG);
     const bytes = new Uint8Array(await f.arrayBuffer());
-    if (bytes.length > MAX_BYTES) return await fail("Plik jest za duży do automatycznego odczytu (ponad 24 MB) — zeskanuj w niższej rozdzielczości albo podziel na części.");
+    if (bytes.length > MAX_BYTES) return await fail(TOO_BIG);
     let bin = "";
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
     const mime = row.mime || (row.nazwa.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
