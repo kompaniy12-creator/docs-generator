@@ -21,6 +21,12 @@
   #onbBar a{margin-left:auto;color:var(--brand-navy);text-decoration:none;font-weight:600;white-space:nowrap}
   #onbFrame{flex:1;width:100%;border:0;background:#fff}
   #onbMsg{padding:40px 20px;text-align:center;color:#666}
+  /* themed portal: the strip is glass like the menus; the frame is clear, so the theme background shows
+     through the app, which takes its colours from the portal theme (onboarding.js sends them) */
+  html.pt #onb #onbBar{background:var(--pt-glass);backdrop-filter:blur(var(--pt-blur)) saturate(1.05);-webkit-backdrop-filter:blur(var(--pt-blur)) saturate(1.05);border-bottom-color:var(--pt-line)}
+  html.pt #onb #onbFrame{background:transparent}
+  html.pt-dark #onb #onbBar{color:rgba(255,255,255,.88);text-shadow:0 1px 6px rgba(0,0,0,.45)}
+  html.pt-dark #onb #onbBar b,html.pt-dark #onb #onbBar a{color:#fff}
 </style>
 </head>
 <body>
