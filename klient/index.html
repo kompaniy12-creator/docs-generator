@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<meta name="referrer" content="no-referrer" />
+<title>Profil klienta — TD Consulting Group</title>
+<style>
+  :root{--navy:#1B3F7F;--navy-d:#15315F;--green:#1FA84B;--tint:#EEF3F9;--line:#e1e7f0}
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f6f8fb;color:#111;line-height:1.5}
+  header{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+  .bar{max-width:1100px;margin:0 auto;padding:10px 18px;display:flex;align-items:center;gap:14px}
+  .bar img{height:40px}
+  .bar strong{color:var(--navy);font-size:15px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar select{padding:8px 10px;border:1px solid #d4dbe6;border-radius:9px;font:inherit;font-size:14px;max-width:46vw}
+  .bar button{border:none;background:var(--tint);color:var(--navy);border-radius:9px;padding:8px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+  main{max-width:1100px;margin:0 auto;padding:22px 18px 80px}
+  h1{font-size:22px;color:var(--navy);margin:0 0 4px}
+  .lead{color:#5a6577;font-size:14px;margin:0 0 18px}
+  .login{max-width:420px;margin:9vh auto 0;background:#fff;border:1px solid var(--line);border-radius:14px;padding:26px}
+  .login img{height:64px;display:block;margin:0 auto 12px}
+  .login h1{text-align:center}
+  .login p{color:#5a6577;font-size:14px;text-align:center;margin:0 0 16px}
+  label{display:block;font-size:12.5px;font-weight:600;color:#5a6577;margin:0 0 5px}
+  input[type=email]{width:100%;padding:12px;border:1px solid #d4dbe6;border-radius:10px;font:inherit;font-size:16px}
+  .btn{display:inline-block;border:none;border-radius:10px;background:var(--navy);color:#fff;font:inherit;font-size:15px;font-weight:600;padding:12px 18px;cursor:pointer;text-decoration:none}
+  .btn:hover{background:var(--navy-d)}.btn:disabled{opacity:.6;cursor:wait}
+  .btn.green{background:var(--green)}.btn.wide{width:100%;margin-top:12px}
+  .msg{margin-top:12px;font-size:14px;border-radius:10px;padding:10px 12px}
+  .msg.ok{background:#f0fdf4;color:#166534}.msg.err{background:#fef2f2;color:#991b1b}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:0 0 18px}
+  .tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px}
+  .tile b{display:block;font-size:28px;line-height:1.1;color:var(--navy)}
+  .tile span{font-size:13px;color:#5a6577}
+  .tile.red b{color:#b91c1c}.tile.amber b{color:#b45309}
+  .box{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;margin:0 0 16px}
+  .box h2{font-size:16px;color:var(--navy);margin:0 0 4px}
+  .box .hint{color:#7a8699;font-size:13px;margin:0 0 12px}
+  .row{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:11px 0;border-top:1px solid #eef1f6;flex-wrap:wrap}
+  .row:first-of-type{border-top:none}
+  .row .who{flex:1;min-width:200px}.row .who strong{display:block;font-size:14.5px}.row .who small{color:#7a8699;font-size:12.5px}
+  .pills{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .pill{display:inline-block;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .p-red{background:#fee2e2;color:#991b1b}.p-amber{background:#fef3c7;color:#92400e}.p-ok{background:#dcfce7;color:#166534}.p-grey{background:#eef1f6;color:#5a6577}
+  .mini{border:1px solid #d4dbe6;background:#fff;color:var(--navy);border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .mini:hover{border-color:var(--navy)}
+  .progress{height:8px;border-radius:99px;background:#e8edf5;overflow:hidden;margin:6px 0 12px}
+  .progress i{display:block;height:100%;background:var(--green)}
+  .empty{color:#8a97ab;font-size:14px;padding:6px 0}
+  .search{width:100%;max-width:320px;padding:9px 12px;border:1px solid #d4dbe6;border-radius:9px;font:inherit;font-size:14px;margin:0 0 6px}
+  footer{max-width:1100px;margin:0 auto;padding:0 18px 30px;color:#8a97ab;font-size:12px}
+  footer a{color:#8a97ab}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="login" class="login" hidden>
+  <img src="../logo.png" alt="TD Consulting Group" />
+  <h1>Profil klienta</h1>
+  <p>Wpisz adres e-mail podany w biurze — wyślemy jednorazowy link do logowania. Hasło nie jest potrzebne.</p>
+  <form id="loginForm">
+    <label for="email">Adres e-mail</label>
+    <input type="email" id="email" required autocomplete="email" placeholder="biuro@firma.pl" />
+    <button class="btn wide" id="loginGo">Wyślij link do logowania</button>
+  </form>
+  <div id="loginMsg"></div>
+</div>
+
+<div id="app" hidden>
+  <header><div class="bar">
+    <img src="../logo.png" alt="" />
+    <strong id="firmName"></strong>
+    <select id="firmSel" hidden></select>
+    <button type="button" id="out">Wyloguj</button>
+  </div></header>
+  <main>
+    <h1>Dzień dobry</h1>
+    <p class="lead">Tu widzą Państwo wszystko, co biuro prowadzi dla firmy: pracowników, terminy dokumentów i sprawy w toku.</p>
+    <div class="tiles" id="tiles"></div>
+
+    <div class="box">
+      <h2>Zatrudnij nowego pracownika</h2>
+      <p class="hint">Formularz z danymi firmy już wypełnionymi — wystarczy dodać zdjęcia dokumentów pracownika i warunki umowy.</p>
+      <a class="btn green" id="newWorker" target="_blank" rel="noopener">+ Zgłoś pracownika do zatrudnienia</a>
+    </div>
+
+    <div class="box" id="boxSign" hidden>
+      <h2>Dokumenty do podpisu</h2>
+      <p class="hint">Prosimy wydrukować, podpisać (pracownik i osoba reprezentująca firmę) i odesłać skan do biura.</p>
+      <div id="sign"></div>
+    </div>
+
+    <div class="box" id="boxSub" hidden>
+      <h2>Zgłoszenia w toku</h2>
+      <p class="hint">Osoby zgłoszone do zatrudnienia, których dokumenty są jeszcze przygotowywane.</p>
+      <div id="subs"></div>
+    </div>
+
+    <div class="box" id="boxOnb" hidden>
+      <h2>Obsługa księgowa — uruchomienie</h2>
+      <div id="onb"></div>
+    </div>
+
+    <div class="box">
+      <h2>Pracownicy</h2>
+      <p class="hint">Terminy ważności dokumentów i umów. Kolor czerwony — termin minął albo mija w ciągu 30 dni.</p>
+      <input type="search" class="search" id="q" placeholder="Szukaj pracownika…" />
+      <div id="workers"><div class="empty">Ładowanie…</div></div>
+    </div>
+  </main>
+  <footer>TD Consulting Group · <a href="../rodo.html" target="_blank" rel="noopener">Informacja o przetwarzaniu danych (RODO)</a> · kontakt: <a href="mailto:kadry@td-group.pl">kadry@td-group.pl</a></footer>
+</div>
+<script src="klient.js?v=1"></script>
+</body>
+</html>

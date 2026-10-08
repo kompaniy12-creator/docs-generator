@@ -644,6 +644,8 @@
     try {
       if (!window.sb) throw new Error('Brak połączenia z serwerem.');
       var data = collect();
+      // the employer's NIP is the key the client profile and the registry group by — digits only
+      if (data.z_nip) data.z_nip = String(data.z_nip).replace(/[^0-9]/g, '');
 
       // 1) upload documents to a per-submission folder, grouped by category
       var folder = (crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
