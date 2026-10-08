@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>Pulpit — TD Consulting Group</title>
+<style>
+  :root{--brand-navy:#1B3F7F;--brand-navy-dark:#15315F;--brand-green:#1FA84B;--brand-tint:#EEF3F9;}
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f6f8fb;color:#111;line-height:1.5}
+  main{max-width:1400px;margin:0 auto;padding:36px 20px 96px}
+  .back{display:inline-block;margin-bottom:14px;font-size:14px;color:#666;text-decoration:none}
+  .brand{text-align:center;margin:0 0 14px}.brand img{height:60px}
+  h1{font-size:23px;font-weight:700;margin:0 0 4px;color:var(--brand-navy);text-align:center}
+  .lead{color:#666;margin:0 auto 18px;font-size:14px;text-align:center}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin:0 0 16px}
+  .tile{display:block;background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:14px 16px;text-decoration:none;color:inherit}
+  a.tile:hover{border-color:var(--brand-navy)}
+  .tile b{display:block;font-size:30px;line-height:1.1;color:var(--brand-navy)}
+  .tile span{display:block;font-size:13px;color:#5a6577;margin-top:3px}
+  .tile.red b{color:#b91c1c}.tile.amber b{color:#b45309}.tile.green b{color:#166534}.tile.zero b{color:#9aa6b8}
+  .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
+  .box{background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:16px}
+  .box h2{font-size:15px;margin:0 0 2px;color:var(--brand-navy);display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+  .box h2 a{font-size:12.5px;font-weight:600;color:var(--brand-navy);text-decoration:none}
+  .hint{color:#7a8699;font-size:12.5px;margin:0 0 12px}
+  .line{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:8px 0;border-top:1px solid #eef1f6;font-size:13.5px}
+  .line:first-of-type{border-top:none}
+  .line .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .line small{color:#7a8699}
+  .pill{display:inline-block;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .p-red{background:#fee2e2;color:#991b1b}.p-amber{background:#fef3c7;color:#92400e}.p-ok{background:#dcfce7;color:#166534}.p-grey{background:#eef1f6;color:#5a6577}
+  .bar{flex:0 0 110px;height:8px;border-radius:99px;background:#e8edf5;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--brand-navy);border-radius:99px}
+  .bar.g i{background:var(--brand-green)}
+  .spark{display:flex;align-items:flex-end;gap:3px;height:64px;margin:6px 0 4px}
+  .spark i{flex:1;background:var(--brand-navy);border-radius:3px 3px 0 0;min-height:2px;opacity:.85}
+  .spark i.z{background:#dfe5ee}
+  .empty{color:#8a97ab;font-size:13.5px;padding:8px 0}
+  .stamp{color:#8a97ab;font-size:12px;text-align:right;margin:14px 0 0}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Pulpit</h1>
+  <p class="lead">Stan całego biura na jednym ekranie: co wymaga decyzji, jak pracuje zespół i czy automaty działają.</p>
+  <div class="tiles" id="tiles"><div class="empty">Ładowanie…</div></div>
+  <div class="cols" id="cols"></div>
+  <div class="stamp" id="stamp"></div>
+</main>
+<script src="pulpit.js?v=1"></script>
+</body>
+</html>

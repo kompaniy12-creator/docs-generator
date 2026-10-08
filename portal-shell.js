@@ -40,6 +40,7 @@
       { href: 'onboarding.html?p=/deadlines', ico: '⏰', text: 'Terminy klientów', short: 'Terminy', wide: true },
     ] },
     { label: 'Ogólne', mobile: true, items: [
+      { href: 'pulpit.html', ico: '📊', text: 'Pulpit', short: 'Pulpit', admin: true, wide: true },
       { href: 'zadania.html', ico: '✅', text: 'Zadania', short: 'Zadania', wide: true, tasks: true },
       { href: 'dostep.html', ico: '🔑', text: 'Dostęp do portalu', short: 'Dostęp', admin: true, wide: true },
     ] },
@@ -180,6 +181,7 @@
     '⏰': '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
     '✅': '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/>',
     '🔑': '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9"/><path d="m16 7 3 3"/>',
+    '📊': '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
     '📇': '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5a3 3 0 0 1 0 6M21 20a6 6 0 0 0-4-5.6"/>',
     '⚙️': '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
     '🎨': '<path d="M12 3a9 9 0 0 0 0 18c1.5 0 2-1 2-2 0-1.5 1-2 2-2h2a3 3 0 0 0 3-3c0-6-4-11-9-11z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/>',
@@ -222,6 +224,7 @@
   bar.innerHTML =
     '<strong id="psBarTitle"></strong>' +
     '<nav>' +
+      (user.admin ? '<a class="ps-top" href="pulpit.html" data-top="pulpit.html">' + ico('📊') + ' Pulpit</a>' : '') +
       '<a class="ps-top" href="' + CRM_URL + '" target="_blank" rel="noopener" title="CRM — leady, sprawy, klienci (otwiera się w nowej karcie)">' + ico('📇') + ' CRM ↗</a>' +
       '<a class="ps-top" href="zadania.html" data-top="zadania.html">' + ico('✅') + ' Zadania<span class="ps-badge" data-tbadge hidden></span></a>' +
       (acc.has('kadry') ? '<a class="ps-top" href="zatrudnienie.html" data-top="zatrudnienie.html" title="Nowe zgłoszenia pracowników">' + ico('📥') + '<span class="ps-badge" data-badge hidden></span></a>' : '') +
