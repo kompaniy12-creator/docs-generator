@@ -37,7 +37,7 @@
       { href: 'onboarding.html', ico: '🚀', text: 'Onboarding klientów', short: 'Onboarding', wide: true },
       { href: 'onboarding.html?p=/deadlines', ico: '⏰', text: 'Terminy klientów', short: 'Terminy', wide: true },
     ] },
-    { label: 'Ogólne', items: [
+    { label: 'Ogólne', mobile: true, items: [
       { href: 'zadania.html', ico: '✅', text: 'Zadania', short: 'Zadania', wide: true, tasks: true },
       { href: 'dostep.html', ico: '🔑', text: 'Dostęp do portalu', short: 'Dostęp', admin: true, wide: true },
     ] },
@@ -114,8 +114,28 @@
     'body.ps .add-btn:hover{background:var(--ps-tint)}',
     '#authBar{display:none!important}',
     '#psTop,#psTabs,#psDim{display:none}',
+    'body.ps{padding-top:56px}',
+    '#psBar{position:fixed;left:var(--ps-w);right:0;top:0;height:56px;z-index:890;display:flex;align-items:center;gap:16px;padding:0 28px 0 36px;background:#fff;border-bottom:1px solid #e1e7f0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}',
+    '#psBar strong{font-size:15px;color:var(--ps-navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}',
+    '#psBar nav{display:flex;align-items:center;gap:6px;flex:0 0 auto}',
+    '.ps-top{position:relative;display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:9px;border:none;background:none;font:inherit;font-size:13.5px;font-weight:600;color:#3a4759;text-decoration:none;cursor:pointer;white-space:nowrap}',
+    '.ps-top:hover{background:var(--ps-tint);color:var(--ps-navy)}',
+    '.ps-top.on{background:var(--ps-navy);color:#fff}',
+    '.ps-top .ps-badge{margin-left:2px}',
+    '.ps-menu{position:relative}',
+    '.ps-drop{position:absolute;right:0;top:calc(100% + 6px);min-width:290px;background:#fff;border:1px solid #e1e7f0;border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.14);padding:6px;z-index:5}',
+    '.ps-drop[hidden]{display:none}',
+    '.ps-drop a{display:block;padding:10px 12px;border-radius:8px;font-size:13.5px;font-weight:500;color:#3a4759;text-decoration:none}',
+    '.ps-drop a:hover{background:var(--ps-tint);color:var(--ps-navy)}',
+    '.ps-who{font-size:12.5px;color:#7a8699;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:8px}',
+    '.ps-m{display:none}',
+    '.ps-user.ps-m{display:none}',
+    '@media (max-width:1180px){.ps-who{display:none}}',
     '@media (max-width:900px){',
     ' body.ps{padding-left:0;padding-top:54px;padding-bottom:64px}',
+    ' #psBar{display:none}',
+    ' .ps-group.ps-m{display:block}',
+    ' .ps-user.ps-m{display:flex}',
     ' #psTop{display:flex;position:fixed;left:0;right:0;top:0;height:54px;z-index:910;align-items:center;gap:10px;padding:0 12px;background:#fff;border-bottom:1px solid #e1e7f0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}',
     ' #psTop button{width:42px;height:42px;border:none;background:var(--ps-tint);border-radius:10px;font-size:20px;color:var(--ps-navy);cursor:pointer}',
     ' #psTop strong{flex:1;font-size:15.5px;color:var(--ps-navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
@@ -147,20 +167,41 @@
   side.innerHTML = '<a class="ps-brand" href="index.html"><img src="logo.png" alt="TD Consulting Group" /></a>' +
     NAV.filter(function (g) { return g.items.length; }).map(function (g) {
       // every module folds; the one with the current page is open, the rest as the user left them
-      return '<div class="ps-group" data-group="' + esc(g.label) + '">' +
+      return '<div class="ps-group' + (g.mobile ? ' ps-m' : '') + '" data-group="' + esc(g.label) + '">' +
         '<button type="button" class="ps-label" data-fold aria-expanded="false"><span>' + esc(g.label) + '</span><span class="ps-chev">›</span></button>' +
         '<div class="ps-items">' + g.items.map(function (it) { return link(it, 'ps-item'); }).join('') +
         (g.sec === 'kadry' ? '<button type="button" class="ps-item ps-copy" id="psCopy"><span class="ps-ico">🔗</span><span data-copy-text>Kopiuj link do formularza dla klienta</span></button>' : '') +
         '</div></div>';
     }).join('') +
     '<div class="ps-foot">' +
-      '<div class="ps-user"><span title="' + esc(user.email) + '">' + esc(user.email || 'zalogowano') + '</span><button type="button" class="ps-out" id="psOut">Wyloguj</button></div>' +
+      '<div class="ps-user ps-m"><span title="' + esc(user.email) + '">' + esc(user.email || 'zalogowano') + '</span><button type="button" class="ps-out" id="psOut">Wyloguj</button></div>' +
       '<a class="ps-rodo" href="rodo.html" target="_blank" rel="noopener">Informacja RODO</a>' +
     '</div>';
 
   var top = document.createElement('div');
   top.id = 'psTop';
   top.innerHTML = '<button type="button" id="psMenu" aria-label="Menu">☰</button><strong id="psTitle"></strong><img src="logo.png" alt="" />';
+
+  // desktop top bar: things used from every module
+  var CRM_URL = 'https://kompaniy12-creator.github.io/td-crm/';
+  var bar = document.createElement('div');
+  bar.id = 'psBar';
+  bar.innerHTML =
+    '<strong id="psBarTitle"></strong>' +
+    '<nav>' +
+      '<a class="ps-top" href="' + CRM_URL + '" target="_blank" rel="noopener" title="CRM — leady, sprawy, klienci (otwiera się w nowej karcie)">📇 CRM ↗</a>' +
+      '<a class="ps-top" href="zadania.html" data-top="zadania.html">✅ Zadania<span class="ps-badge" data-tbadge hidden></span></a>' +
+      (acc.has('kadry') ? '<a class="ps-top" href="zatrudnienie.html" data-top="zatrudnienie.html" title="Nowe zgłoszenia pracowników">📥<span class="ps-badge" data-badge hidden></span></a>' : '') +
+      (user.admin ? '<a class="ps-top" href="dostep.html" data-top="dostep.html">🔑 Dostęp do portalu</a>' : '') +
+      '<div class="ps-menu"><button type="button" class="ps-top" id="psGear" aria-haspopup="true" aria-expanded="false" title="Ustawienia">⚙️ Ustawienia</button>' +
+        '<div class="ps-drop" id="psDrop" hidden>' +
+          (user.admin ? '<a href="dostep.html">👥 Użytkownicy i dostęp do modułów</a><a href="zadania.html#settings">🔔 Powiadomienia Telegram i eskalacje</a>' : '') +
+          (acc.has('kadry') ? '<a href="kontrola.html#rem">✉️ Przypomnienia dla klientów</a><a href="wiedza.html">⚖️ Baza wiedzy — przepisy</a>' : '') +
+          '<a href="rodo.html" target="_blank" rel="noopener">🛡️ Informacja RODO</a>' +
+        '</div></div>' +
+      '<span class="ps-who" title="' + esc(user.email) + '">' + esc(user.email || '') + '</span>' +
+      '<button type="button" class="ps-out" id="psOut2">Wyloguj</button>' +
+    '</nav>';
 
   var dim = document.createElement('div');
   dim.id = 'psDim';
@@ -174,6 +215,7 @@
     document.body.classList.add('ps');
     document.body.appendChild(side);
     document.body.appendChild(top);
+    document.body.appendChild(bar);
     document.body.appendChild(dim);
     document.body.appendChild(tabs);
     refresh();
@@ -204,6 +246,8 @@
     });
     document.body.classList.toggle('ps-wide', !!(current && current.wide));
     document.getElementById('psTitle').textContent = current ? current.text : 'Portal dokumentów';
+    document.getElementById('psBarTitle').textContent = current ? current.text : 'Portal dokumentów';
+    document.querySelectorAll('#psBar [data-top]').forEach(function (l) { l.classList.toggle('on', l.getAttribute('data-top') === page); });
     document.body.classList.remove('ps-open');
     applyFold();
   }
@@ -221,8 +265,15 @@
       return applyFold();
     }
     if (t.closest('#psDim') || t.closest('#psSide a')) return document.body.classList.remove('ps-open');
-    if (t.closest('#psOut')) {
-      t.closest('#psOut').disabled = true;
+    var drop = document.getElementById('psDrop');
+    if (t.closest('#psGear')) {
+      drop.hidden = !drop.hidden;
+      document.getElementById('psGear').setAttribute('aria-expanded', drop.hidden ? 'false' : 'true');
+      return;
+    }
+    if (drop && !drop.hidden && !t.closest('#psDrop')) drop.hidden = true;
+    if (t.closest('#psOut') || t.closest('#psOut2')) {
+      (t.closest('#psOut') || t.closest('#psOut2')).disabled = true;
       return window.sb.auth.signOut().then(function () { location.replace('login.html'); });
     }
     var copy = t.closest('#psCopy');

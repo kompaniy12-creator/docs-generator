@@ -170,6 +170,7 @@
       $('nWho').innerHTML = team.map(function (u) { return '<option value="' + esc(u.email) + '"' + (u.email === me ? ' selected' : '') + '>' + esc(who(u.email)) + (u.email === me ? ' (ja)' : '') + '</option>'; }).join('');
       warn();
       if (admin && t.settings) renderSettings(t.settings);
+      if (location.hash === '#settings' && !$('settings').hidden) setTimeout(function () { $('settings').scrollIntoView({ behavior: 'smooth' }); }, 300);
     } catch (e) { $('list').innerHTML = '<div class="empty">Błąd: ' + esc(e.message) + '</div>'; return; }
     var r = await window.sb.from(T).select('*').order('created_at', { ascending: false }).limit(1000);
     if (r.error) { $('list').innerHTML = '<div class="empty">Błąd: ' + esc(r.error.message) + '</div>'; return; }
