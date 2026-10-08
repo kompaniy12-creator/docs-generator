@@ -14,6 +14,8 @@
     // made by the office's owner: night sky over water, clear blocks and menus
     { id: 'kosmos', sw: 'url(/motywy/kosmos.jpg) center/cover', name: 'Kosmos', dark: true, accent: '#2563eb', card: 30, menu: 0,
       bg: 'url("/motywy/kosmos.jpg")' },
+    { id: 'noworoczny', sw: 'url(/motywy/swieta.jpg) center/cover', name: 'Noworoczny', dark: true, accent: '#1B3F7F', card: 30, menu: 0,
+      bg: 'url("/motywy/swieta.jpg")' },
     { id: 'ocean', sw: 'linear-gradient(135deg,#0369a1,#22d3ee 60%,#0f766e)', name: 'Ocean', dark: true, accent: '#0e7490',
       bg: 'radial-gradient(1000px 700px at 85% 5%,#22d3ee 0%,transparent 58%),radial-gradient(1100px 800px at 10% 30%,#0369a1 0%,transparent 62%),radial-gradient(1000px 700px at 60% 100%,#0f766e 0%,transparent 60%),#082f49' },
     { id: 'zachod', sw: 'linear-gradient(135deg,#e11d48,#f59e0b 55%,#7c3aed)', name: 'Zachód słońca', dark: true, accent: '#c2410c',
