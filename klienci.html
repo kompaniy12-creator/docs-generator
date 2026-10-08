@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>Baza klientów — TD Consulting Group</title>
+<style>
+  :root{--brand-navy:#1B3F7F;--brand-navy-dark:#15315F;--brand-green:#1FA84B;--brand-tint:#EEF3F9;}
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f6f8fb;color:#111;line-height:1.5}
+  main{max-width:1400px;margin:0 auto;padding:36px 20px 96px}
+  .back{display:inline-block;margin-bottom:14px;font-size:14px;color:#666;text-decoration:none}
+  .brand{text-align:center;margin:0 0 14px}.brand img{height:60px}
+  h1{font-size:23px;font-weight:700;margin:0 0 4px;color:var(--brand-navy);text-align:center}
+  .lead{color:#666;margin:0 auto 18px;font-size:14px;text-align:center;max-width:860px}
+  .box{background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:14px 16px;margin:0 0 16px}
+  .box h2{font-size:15px;margin:0 0 4px;color:var(--brand-navy)}
+  .hint{color:#7a8699;font-size:12.5px;margin:0 0 10px}
+  .sub{color:#7a8699;font-size:12.5px}
+  .warn{color:#92400e}
+  .law{border-top:1px solid #eef1f6;margin:12px 0 0;padding-top:10px;color:#5a6577;font-size:12.5px}
+  label{display:block;font-size:12px;font-weight:600;color:#5a6577;margin-bottom:4px}
+  select,input[type=text],input[type=search],input[type=date],input[type=number],textarea{width:100%;padding:9px 11px;border:1px solid #d4dbe6;border-radius:9px;font:inherit;font-size:14px;background:#fff;color:#111;min-height:40px}
+  textarea{min-height:70px;resize:vertical}
+  .mini{font:inherit;font-size:12.5px;font-weight:600;padding:5px 10px;border-radius:8px;border:1px solid #d4dbe6;background:#fff;color:var(--brand-navy);cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block}
+  .mini:hover{border-color:var(--brand-navy)}.mini.ok{background:var(--brand-green);border-color:var(--brand-green);color:#fff}.mini.del{color:#b91c1c;border-color:#e5c2c2}.mini:disabled{opacity:.5;cursor:default}
+  .pill{display:inline-block;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .p-red{background:#fee2e2;color:#991b1b}.p-amber{background:#fef3c7;color:#92400e}.p-ok{background:#dcfce7;color:#166534}.p-grey{background:#eef1f6;color:#5a6577}.p-navy{background:var(--brand-tint);color:var(--brand-navy)}
+  .empty{text-align:center;color:#888;padding:26px}
+  .acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin:0 0 16px}
+  .tile{background:#fff;border:1.5px solid #e5e9ef;border-radius:12px;padding:14px 16px;cursor:pointer;text-align:left;font:inherit;color:inherit}
+  .tile:hover{border-color:var(--brand-navy)}
+  .tile.on{border-color:var(--brand-navy);box-shadow:0 0 0 3px rgba(27,63,127,.12)}
+  .tile b{display:block;font-size:28px;line-height:1.1;color:var(--brand-navy)}
+  .tile span{display:block;font-size:13px;color:#5a6577;margin-top:4px}
+  .tile.red b{color:#b91c1c}.tile.amber b{color:#b45309}.tile.green b{color:#166534}.tile.zero b{color:#9aa6b8}
+
+  .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+  .tabs button{font:inherit;font-size:13.5px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid #d4dbe6;background:#fff;color:#3a4759;cursor:pointer}
+  .tabs button.on{background:var(--brand-navy);border-color:var(--brand-navy);color:#fff}
+  .tabs b{margin-left:5px;opacity:.85}
+  section[hidden]{display:none}
+
+  .filters{display:grid;grid-template-columns:minmax(200px,2fr) repeat(5,minmax(130px,1fr));gap:10px;align-items:end}
+  @media(max-width:1100px){.filters{grid-template-columns:1fr 1fr}.filters .wide{grid-column:1/-1}}
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;margin-top:10px}
+
+  .tablewrap{overflow:auto}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th,td{padding:8px 8px;border-bottom:1px solid #eef1f6;text-align:left;vertical-align:top}
+  th{color:#5a6577;font-weight:600;font-size:12px;white-space:nowrap}
+  th[data-sort]{cursor:pointer;user-select:none}
+  td.kn{min-width:210px}
+  td small{display:block;color:#7a8699;font-size:12px}
+  tr.kl{cursor:pointer}
+  tr.kl:hover{background:#f6f8fb}
+  td .pill{margin:0 4px 3px 0}
+  #tbl{min-width:860px}#atbl{min-width:1040px}#ztbl{min-width:620px}
+  #atbl td:last-child{min-width:300px}
+  @media(max-width:760px){.c-forma,.c-opiekun{display:none}#tbl{min-width:640px}main{padding:24px 14px 96px}}
+
+  .drop{border:2px dashed #b8c4d8;border-radius:12px;padding:24px;text-align:center;color:#5a6577;font-size:14px;cursor:pointer;transition:border-color .15s,background .15s}
+  .drop.over{border-color:var(--brand-navy);background:var(--brand-tint)}
+  .drop b{display:block;font-size:16px;color:var(--brand-navy);margin-bottom:4px}
+  .uprow{display:grid;grid-template-columns:minmax(0,420px) 1fr;gap:10px;align-items:end;margin-top:12px}
+  @media(max-width:700px){.uprow{grid-template-columns:1fr}}
+  .queue{margin-top:12px;font-size:13.5px}
+  .q{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid #eef1f6}
+  .q span:first-child{min-width:0;overflow-wrap:anywhere}
+  .doc{display:flex;gap:10px;justify-content:space-between;align-items:flex-start;padding:9px 0;border-top:1px dashed #e5e9ef;font-size:13.5px;flex-wrap:wrap}
+  .doc:first-child{border-top:none}
+  .doc .n{flex:1;min-width:220px;overflow-wrap:anywhere}.doc .n small{display:block;color:#7a8699;font-size:12.5px}
+  .bar{display:flex;height:8px;border-radius:999px;overflow:hidden;background:rgba(127,140,160,.28);margin:10px 0 6px}
+  .bar i{display:block;height:100%;background:var(--brand-green)}
+
+  /* windows: the client's card and the forms */
+  .modal{position:fixed;inset:0;background:rgba(15,25,45,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:950}
+  .modal[hidden]{display:none}
+  .sheet{background:#fff;color:#111;border-radius:14px;padding:20px;width:100%;max-width:560px;max-height:92vh;overflow:auto}
+  .sheet.big{max-width:940px}
+  .sheet h3{margin:0 0 4px;font-size:17px;color:var(--brand-navy);overflow-wrap:anywhere}
+  .sheet h4{margin:18px 0 6px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#7a8699;border-top:1px solid #eef1f6;padding-top:12px}
+  .sheet label{margin-top:12px}
+  .sheet .head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+  .sheet .x{border:none;background:none;font-size:24px;line-height:1;color:#8a97ab;cursor:pointer;padding:0 4px}
+  .sheet .row{display:flex;gap:10px;margin-top:16px}
+  .sheet .row button{flex:1;padding:11px;border-radius:9px;font:inherit;font-weight:600;cursor:pointer;border:1px solid #d4dbe6;background:#fff;color:#111}
+  .sheet .row .go{background:var(--brand-navy);border-color:var(--brand-navy);color:#fff}
+  .sheet .row .go.red{background:#b91c1c;border-color:#b91c1c}
+  .sheet .row button:disabled{opacity:.5;cursor:default}
+  .sheet .err{color:#b91c1c;font-size:13px;margin-top:8px;min-height:1em}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  @media(max-width:640px){.two,.three{grid-template-columns:1fr}.sheet{padding:16px}}
+  .kv{display:grid;grid-template-columns:190px 1fr;gap:4px 12px;font-size:13.5px;margin:0}
+  .kv dt{color:#7a8699}.kv dd{margin:0;overflow-wrap:anywhere}
+  @media(max-width:640px){.kv{grid-template-columns:1fr}.kv dt{margin-top:6px}}
+  .sheet table{font-size:13px;margin-top:4px}
+  .sheet th,.sheet td{padding:5px 8px}
+  .chk{list-style:none;margin:0;padding:0;font-size:13.5px}
+  .chk li{display:flex;gap:8px;padding:4px 0}
+  .chk i{flex:0 0 20px;height:20px;border-radius:50%;font-style:normal;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px}
+  .chk .s-ok i{background:#dcfce7;color:#166534}.chk .s-uwaga i{background:#fef3c7;color:#92400e}.chk .s-brak i{background:#fee2e2;color:#991b1b}.chk .s-info i{background:#eef1f6;color:#5a6577}
+  .cands{max-height:200px;overflow:auto;border:1px solid #e5e9ef;border-radius:9px;margin-top:6px}
+  .cand{display:block;width:100%;text-align:left;border:none;border-top:1px solid #eef1f6;background:#fff;color:#111;padding:8px 10px;font:inherit;font-size:13.5px;cursor:pointer}
+  .cand:first-child{border-top:none}.cand:hover,.cand.on{background:var(--brand-tint)}.cand small{color:#7a8699}
+  .checks{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:6px}
+  .checks label{display:flex;align-items:center;gap:6px;margin:0;font-size:13.5px;font-weight:500;color:#111}
+  .checks input{width:auto;min-height:0}
+  .note{background:var(--brand-tint);border:1px solid #d6e0ee;border-radius:10px;padding:10px 12px;font-size:13px;margin-top:10px}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Baza klientów</h1>
+  <p class="lead">Wszyscy klienci biura w jednym miejscu: dane z rejestrów (KRS, REGON), status obsługi — także po odejściu klienta — oraz umowy i pełnomocnictwa z audytem braków.</p>
+
+  <div class="tiles" id="tiles"></div>
+  <div class="tabs" id="tabs"></div>
+
+  <section id="t-klienci">
+    <div class="box">
+      <div class="filters">
+        <div class="wide"><label for="fQ">Szukaj</label><input type="search" id="fQ" placeholder="Nazwa, NIP, KRS, miasto, osoba z zarządu…" /></div>
+        <div><label for="fStatus">Status obsługi</label><select id="fStatus"></select></div>
+        <div><label for="fOpiekun">Opiekun</label><select id="fOpiekun"></select></div>
+        <div><label for="fForma">Forma prawna</label><select id="fForma"></select></div>
+        <div id="fUmowyBox"><label for="fUmowy">Umowy — audyt</label><select id="fUmowy"></select></div>
+        <div><label for="fRejestr">Rejestr</label><select id="fRejestr"></select></div>
+      </div>
+      <div class="toolbar"><span class="sub" id="count"></span><span class="acts" id="tools"></span></div>
+    </div>
+    <div class="box"><div class="tablewrap"><table id="tbl"><thead></thead><tbody><tr><td class="empty">Ładowanie…</td></tr></tbody></table></div></div>
+  </section>
+
+  <section id="t-umowy" hidden>
+    <div class="box">
+      <h2>Wgraj umowy i pełnomocnictwa</h2>
+      <p class="hint">PDF, JPEG albo PNG, do 24 MB na plik; jeden plik = jeden dokument. Portal odczyta strony, rodzaj i daty i przypisze dokument do klienta, gdy zgadza się NIP albo nazwa jest jednoznaczna — reszta trafia do sprawdzenia.</p>
+      <div class="drop" id="drop"><b>Przeciągnij pliki tutaj</b>albo kliknij, aby wybrać z dysku<input type="file" id="file" accept="application/pdf,image/jpeg,image/png" multiple hidden /></div>
+      <p class="hint warn" style="margin:10px 0 0">Uwaga (RODO): treść skanu jest wysyłana do odczytu do zewnętrznego dostawcy AI (Anthropic). Umowy zawierają dane osobowe — imiona i nazwiska osób podpisujących, a u przedsiębiorców jednoosobowych także adres, PESEL lub numer dowodu. Wgrywaj tylko dokumenty klientów biura.</p>
+      <div class="uprow">
+        <div><label for="hintKl">Klient, którego dotyczą pliki (opcjonalnie)</label><select id="hintKl"><option value="">— rozpoznaj automatycznie —</option></select></div>
+        <span class="hint" id="upMsg" style="margin:0"></span>
+      </div>
+      <div class="queue" id="queue"></div>
+    </div>
+    <div class="tabs" id="utabs"></div>
+    <div class="box" id="ulist"><div class="empty">Ładowanie…</div></div>
+  </section>
+
+  <section id="t-audyt" hidden>
+    <div class="box">
+      <h2>Braki w dokumentach klientów</h2>
+      <p class="hint">Klienci obsługiwani i wstrzymani, u których czegoś brakuje albo coś wymaga sprawdzenia. Audyt opiera się na dokumentach wgranych i przypisanych w zakładce „Umowy” oraz na danych z rejestru.</p>
+      <div class="toolbar" style="margin:0 0 8px"><span class="sub" id="acount"></span><span class="acts"><button type="button" class="mini" id="csvBtn">Pobierz CSV</button></span></div>
+      <div class="tablewrap"><table id="atbl"><tbody><tr><td class="empty">Ładowanie…</td></tr></tbody></table></div>
+      <p class="law">Powierzenie przetwarzania danych: art. 28 ust. 3 i 9 RODO (rozporządzenie (UE) 2016/679) — przetwarzanie przez podmiot przetwarzający odbywa się na podstawie umowy lub innego instrumentu prawnego, w formie pisemnej, w tym elektronicznej. Biuro prowadzące księgi i kadry klienta przetwarza dane jego pracowników i kontrahentów w imieniu klienta. Reprezentacja spółki jest porównywana z rejestrem w stanie znanym portalowi; stan na dzień podpisania potwierdza odpis pełny KRS.</p>
+      <p class="law">AML: biuro rachunkowe jest instytucją obowiązaną (art. 2 ust. 1 pkt 17 ustawy z 1.03.2018 r. o przeciwdziałaniu praniu pieniędzy oraz finansowaniu terroryzmu, t.j. Dz.U. 2025 poz. 644) i przy nawiązywaniu stosunków gospodarczych stosuje środki bezpieczeństwa finansowego, m.in. identyfikację klienta i beneficjenta rzeczywistego (art. 34 ust. 1, art. 35 ust. 1 pkt 1). Tych czynności ten audyt nie obejmuje — prowadzi się je w module <a href="onboarding.html">Onboarding klientów</a>.</p>
+    </div>
+    <div class="box">
+      <h2>Klienci, których obsługa została zakończona</h2>
+      <p class="hint">Ich dane i umowy pozostają w bazie.</p>
+      <div class="tablewrap"><table id="ztbl"><tbody></tbody></table></div>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="karta" hidden><div class="sheet big" id="kartaBody"></div></div>
+
+<div class="modal" id="stat" hidden>
+  <div class="sheet">
+    <h3 id="stTitle"></h3>
+    <div class="hint" id="stWho"></div>
+    <div id="stDateBox"><label for="stDate" id="stDateLab"></label><input type="date" id="stDate" /></div>
+    <label for="stPowod">Powód / uwagi</label><textarea id="stPowod" maxlength="1000" placeholder="np. wypowiedzenie umowy przez klienta"></textarea>
+    <div class="err" id="stMsg"></div>
+    <div class="row"><button type="button" id="stCancel">Anuluj</button><button type="button" class="go" id="stSave">Zapisz</button></div>
+  </div>
+</div>
+
+<div class="modal" id="edit" hidden>
+  <div class="sheet">
+    <h3>Dokument klienta</h3>
+    <div class="hint" id="edFile"></div>
+    <div class="note" id="edAi" hidden></div>
+    <label for="edQ">Klient</label>
+    <input type="search" id="edQ" placeholder="Wpisz nazwę albo NIP…" />
+    <div class="cands" id="edCands"></div>
+    <div class="two">
+      <div><label for="edRodzaj">Rodzaj dokumentu</label><select id="edRodzaj"></select></div>
+      <div><label for="edPodtyp">Typ pełnomocnictwa (np. UPL-1, ZUS PEL)</label><input type="text" id="edPodtyp" maxlength="80" /></div>
+    </div>
+    <label>Dokument obejmuje</label>
+    <div class="checks"><label><input type="checkbox" id="edObKs" /> usługi księgowe</label><label><input type="checkbox" id="edObKd" /> kadry i płace</label><label><input type="checkbox" id="edObPw" /> powierzenie danych (art. 28 RODO)</label></div>
+    <div class="three">
+      <div><label for="edData">Data zawarcia</label><input type="date" id="edData" /></div>
+      <div><label for="edOd">Obowiązuje od</label><input type="date" id="edOd" /></div>
+      <div><label for="edDo">Obowiązuje do</label><input type="date" id="edDo" /></div>
+    </div>
+    <div class="checks" style="margin-top:10px"><label><input type="checkbox" id="edBezt" /> na czas nieokreślony</label></div>
+    <div class="two">
+      <div><label for="edWyp">Okres wypowiedzenia</label><input type="text" id="edWyp" maxlength="300" /></div>
+      <div><label for="edPodpisy">Podpisy</label><select id="edPodpisy"></select></div>
+    </div>
+    <div class="two">
+      <div><label for="edKontr">Klient według dokumentu</label><input type="text" id="edKontr" maxlength="300" /></div>
+      <div><label for="edKNip">NIP według dokumentu</label><input type="text" id="edKNip" maxlength="13" inputmode="numeric" /></div>
+    </div>
+    <label for="edRepr">Podpisali za klienta (imię i nazwisko, po przecinku)</label><input type="text" id="edRepr" maxlength="400" />
+    <label for="edZakres">Zakres</label><textarea id="edZakres" maxlength="1000"></textarea>
+    <label for="edWyn">Wynagrodzenie (jak w dokumencie)</label><input type="text" id="edWyn" maxlength="300" />
+    <label for="edUwagi">Uwagi</label><input type="text" id="edUwagi" maxlength="600" />
+    <div class="err" id="edMsg"></div>
+    <div class="row"><button type="button" id="edCancel">Anuluj</button><button type="button" class="go" id="edSave">Zapisz i zatwierdź</button></div>
+  </div>
+</div>
+
+<div class="modal" id="rej" hidden>
+  <div class="sheet">
+    <h3>Pobranie danych z rejestrów</h3>
+    <p class="hint">Spółki — z KRS przez rejestr.io (płatne za każde zapytanie). Działalności jednoosobowe — z rejestru REGON (GUS). Firmy sprawdzone niedawno są pomijane.</p>
+    <div class="two">
+      <div><label for="rjDni">Pomiń sprawdzone w ostatnich (dni)</label><input type="number" id="rjDni" min="1" max="365" value="30" /></div>
+      <div class="checks" style="align-self:end;padding-bottom:10px"><label><input type="checkbox" id="rjZak" /> także zakończeni klienci</label></div>
+    </div>
+    <div class="note" id="rjPlan">Liczę…</div>
+    <div id="rjProg" hidden><div class="bar"><i id="rjBar" style="width:0"></i></div><div class="sub" id="rjTxt"></div></div>
+    <div class="err" id="rjMsg"></div>
+    <div class="row"><button type="button" id="rjCancel">Zamknij</button><button type="button" class="go" id="rjGo" disabled>Pobierz</button></div>
+  </div>
+</div>
+<script src="klienci.js?v=1"></script>
+</body>
+</html>

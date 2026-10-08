@@ -1,0 +1,325 @@
+// Baza klientów — the rules, free of any I/O so they can be tested (logic_test.ts):
+// matching a contract to a client, the register extract and its differences, the contracts audit,
+// the plan (and cost) of a register refresh, CSV.
+
+// deno-lint-ignore no-explicit-any
+type Any = any;
+
+export const digits = (s: unknown) => String(s ?? "").replace(/\D/g, "");
+export const isDate = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(Date.parse(v));
+export const norm = (s: unknown) =>
+  String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ł/gi, "l").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+
+export function nipOk(nip: string): boolean {
+  if (!/^\d{10}$/.test(nip)) return false;
+  const w = [6, 5, 7, 2, 3, 4, 5, 6, 7];
+  const s = w.reduce((a, x, i) => a + x * Number(nip[i]), 0) % 11;
+  return s !== 10 && s === Number(nip[9]);
+}
+
+// the key of a client: the same as portal_klienci.id
+export function klientId(k: { nip?: string; nazwa?: string }): string {
+  const nip = digits(k.nip);
+  return nip.length === 10 ? nip : "nazwa:" + String(k.nazwa ?? "").toLowerCase();
+}
+
+// which register holds the firm, judged by the legal form written in the clients sheet
+export function formaTyp(forma: unknown): "krs" | "jdg" | "inne" {
+  const f = norm(forma);
+  if (!f) return "inne";
+  if (/\b(jdg|jednoosobowa|dzialalnosc|osoba fizyczna|ceidg)\b/.test(f)) return "jdg";
+  if (/\bspolka cywilna\b|\bs c\b/.test(f)) return "inne"; // a civil partnership is in neither KRS nor (as such) CEIDG
+  if (/\b(spolka|sp|z o o|s a|akcyjna|komandytowa|jawna|partnerska|fundacja|stowarzyszenie|spoldzielnia|psa)\b/.test(f)) return "krs";
+  return "inne";
+}
+
+// a firm's name without its legal form and punctuation, for comparing
+const FORMY = /\b(spolka z ograniczona odpowiedzialnoscia|spolka komandytowo akcyjna|spolka komandytowa|spolka jawna|spolka akcyjna|spolka partnerska|prosta spolka akcyjna|spolka cywilna|sp z o o|sp zoo|sp k|sp j|s a|s c|p s a|w likwidacji|w upadlosci|w restrukturyzacji|w organizacji)\b/g;
+export function nazwaKlucz(s: unknown): string {
+  return norm(s).replace(FORMY, " ").replace(/\b(sp|spolka|z|o)\b/g, " ").replace(/\s+/g, " ").trim();
+}
+const tokens = (s: string) => s.split(" ").filter((t) => t.length > 1);
+// every word of the shorter name appears in the longer one (at least two words)
+export function nazwaZawiera(a: string, b: string): boolean {
+  const A = tokens(a), B = tokens(b);
+  const [kr, dl] = A.length <= B.length ? [A, B] : [B, A];
+  return kr.length >= 2 && kr.every((t) => dl.includes(t));
+}
+
+// ---------------------------------------------------------------- contract -> client
+export type KlientM = { id: string; nip?: string | null; nazwa: string; krs?: string | null; rej_nazwa?: string | null };
+export type Kandydat = { id: string; nazwa: string; nip: string; wynik: number; powod: string };
+
+// How well each client fits the counterparty read from a contract. NIP decides, then the KRS number,
+// then the name; a NIP that was read and belongs to nobody (or to somebody else) blocks a name match.
+export function dopasuj(odczyt: { nazwa?: string; nip?: string; krs?: string }, klienci: KlientM[]): Kandydat[] {
+  const nip = digits(odczyt.nip), krs = digits(odczyt.krs).replace(/^0+/, ""), nazwa = nazwaKlucz(odczyt.nazwa);
+  const nipWazny = nipOk(nip);
+  const out: Kandydat[] = [];
+  for (const k of klienci) {
+    const kn = digits(k.nip);
+    let wynik = 0, powod = "";
+    if (nipWazny && kn === nip) { wynik = 100; powod = "NIP"; }
+    else if (krs.length >= 4 && digits(k.krs).replace(/^0+/, "") === krs) { wynik = 90; powod = "KRS"; }
+    else if (nazwa) {
+      const a = nazwaKlucz(k.nazwa), b = nazwaKlucz(k.rej_nazwa);
+      if ((a && a === nazwa) || (b && b === nazwa)) { wynik = 70; powod = "nazwa"; }
+      else if ((a && nazwaZawiera(a, nazwa)) || (b && nazwaZawiera(b, nazwa))) { wynik = 50; powod = "nazwa (częściowo)"; }
+      // the document carries a valid NIP and this client has a different one: the same name is not enough
+      if (wynik && nipWazny && kn.length === 10 && kn !== nip) { wynik = 40; powod += ", inny NIP"; }
+    }
+    if (wynik) out.push({ id: k.id, nazwa: k.nazwa, nip: kn, wynik, powod });
+  }
+  return out.sort((x, y) => y.wynik - x.wynik || x.nazwa.localeCompare(y.nazwa, "pl"));
+}
+
+// Filed automatically only when the NIP or KRS number agrees, or exactly one client carries that name
+// and nobody else comes close — and never when the reading itself was unsure.
+export function pewnyKlient(kand: Kandydat[], pewnosc: string): string | null {
+  if (pewnosc === "niska" || !kand.length) return null;
+  const [a, b] = kand;
+  if (a.wynik >= 90) return b && b.wynik >= 90 ? null : a.id;
+  if (a.wynik === 70 && (!b || b.wynik < 50)) return a.id;
+  return null;
+}
+
+// ---------------------------------------------------------------- register extract
+export type Wyciag = {
+  znaleziono: boolean; krs: string | null; regon: string | null; nazwa: string | null; forma: string | null;
+  data_rejestracji: string | null; kapital: number | null; adres: string | null; organ: string | null; reprezentacja: string | null;
+  zarzad: Any[]; wspolnicy: Any[]; prokurenci: Any[]; pkd: string | null; stan: string | null;
+};
+const txt = (v: unknown, n = 400) => { const s = String(v ?? "").trim(); return s ? s.slice(0, n) : null; };
+function kwota(v: unknown): number | null {
+  if (v == null || v === "") return null;
+  const n = typeof v === "number" ? v : Number(String(v).replace(/\s/g, "").replace(",", "."));
+  return isFinite(n) ? n : null;
+}
+// "w likwidacji" and the like are part of the entered name; the basic record may say more
+export function stanFirmy(nazwa: unknown, org: Any): string {
+  const n = norm(nazwa), s = org?.stan ?? {};
+  if (s.czy_wykreslona === true) return "wykreślona";
+  if (/\bw upadlosci\b/.test(n) || s.w_upadlosci === true || s.czy_w_upadlosci === true) return "w upadłości";
+  if (/\bw likwidacji\b/.test(n) || s.w_likwidacji === true || s.czy_w_likwidacji === true) return "w likwidacji";
+  if (/\bw restrukturyzacji\b/.test(n)) return "w restrukturyzacji";
+  return "aktywna";
+}
+// from the answer of getFirma (shape v2) and, when we have it, rejestr.io's basic record of the organisation
+export function wyciagKrs(f: Any, org: Any = null): Wyciag {
+  if (!f || f.found === false) return { znaleziono: false, krs: null, regon: null, nazwa: null, forma: null, data_rejestracji: null, kapital: null, adres: null, organ: null, reprezentacja: null, zarzad: [], wspolnicy: [], prokurenci: [], pkd: null, stan: null };
+  const a = f.adres ?? {};
+  const ulica = [a.ulica, [a.nrDomu, a.nrLokalu].filter(Boolean).join("/")].filter(Boolean).join(" ") || f.ulica || "";
+  const adres = [ulica, [a.kodPocztowy || f.kod, a.miejscowosc || f.miasto].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+  const dat = org?.krs_wpisy?.pierwszy_data ?? org?.krs_wpisy?.pierwszy?.data ?? org?.stan?.data_rejestracji ?? org?.data_rejestracji ?? null;
+  const pkd = org?.stan?.pkd_przewazajace_dzial ?? org?.pkd_przewazajace ?? org?.stan?.pkd ?? null;
+  return {
+    znaleziono: true, krs: txt(f.krs, 10), regon: txt(f.regon, 14), nazwa: txt(f.nazwa), forma: txt(f.forma, 120),
+    data_rejestracji: isDate(String(dat ?? "").slice(0, 10)) ? String(dat).slice(0, 10) : null,
+    kapital: kwota(f.kapital), adres: txt(adres), organ: txt(f.reprezentacja?.organ, 200), reprezentacja: txt(f.reprezentacja?.sposob, 1500),
+    zarzad: (Array.isArray(f.zarzad) ? f.zarzad : []).slice(0, 40).map((p: Any) => ({ imie: String(p.imie ?? ""), nazwisko: String(p.nazwisko ?? ""), funkcja: String(p.funkcja ?? "") })),
+    wspolnicy: (Array.isArray(f.wspolnicy) ? f.wspolnicy : []).slice(0, 60).map((p: Any) => ({ imie: String(p.imie ?? ""), nazwisko: String(p.nazwisko ?? ""), udzialy: p.udzialy ?? null, opis: String(p.udzialyOpis ?? "") })),
+    prokurenci: (Array.isArray(f.prokurenci) ? f.prokurenci : []).slice(0, 20).map((p: Any) => ({ imie_nazwisko: String(p.imie_nazwisko ?? ""), rodzaj: String(p.rodzaj ?? "") })),
+    pkd: txt(typeof pkd === "object" && pkd ? [pkd.kod ?? pkd.symbol, pkd.nazwa ?? pkd.opis].filter(Boolean).join(" ") : pkd, 300),
+    stan: stanFirmy(f.nazwa, org),
+  };
+}
+// from GUS (REGON register, through DataPort): what it gives for a sole trader
+export function wyciagGus(d: Any): Wyciag {
+  const pusty = wyciagKrs(null);
+  if (!d || d.success === false || !(d.nazwa || d.regon)) return pusty;
+  const pkd = d.pkd_glowne ?? d.pkd ?? d.pkdGlowne ?? null;
+  const dat = String(d.data_rozpoczecia ?? d.dataRozpoczeciaDzialalnosci ?? d.data_powstania ?? "").slice(0, 10);
+  const koniec = d.data_zakonczenia ?? d.dataZakonczeniaDzialalnosci ?? null, zaw = d.data_zawieszenia ?? d.dataZawieszeniaDzialalnosci ?? null, wzn = d.data_wznowienia ?? d.dataWznowieniaDzialalnosci ?? null;
+  return {
+    ...pusty, znaleziono: true, regon: txt(d.regon, 14), nazwa: txt(d.nazwa), forma: txt(d.forma_prawna ?? d.formaPrawna ?? d.typ, 120),
+    data_rejestracji: isDate(dat) ? dat : null, adres: txt(String(d.adres ?? "").replace(/\s*\/\s*/g, "/").replace(/\s{2,}/g, " ")),
+    pkd: txt(typeof pkd === "object" && pkd ? [pkd.kod, pkd.nazwa].filter(Boolean).join(" ") : pkd, 300),
+    stan: koniec ? "wykreślona" : zaw && !(wzn && String(wzn) > String(zaw)) ? "zawieszona" : "aktywna",
+  };
+}
+
+const osoba = (p: Any) => [p.imie, p.nazwisko].filter(Boolean).join(" ").toUpperCase().trim() || String(p.imie_nazwisko ?? "").toUpperCase().trim();
+const POLA: Array<[keyof Wyciag, string]> = [
+  ["nazwa", "nazwa"], ["forma", "forma prawna"], ["krs", "numer KRS"], ["regon", "REGON"], ["adres", "adres siedziby"], ["kapital", "kapitał zakładowy"],
+  ["organ", "organ reprezentacji"], ["reprezentacja", "sposób reprezentacji"], ["stan", "stan firmy"], ["pkd", "przeważająca działalność (PKD)"],
+];
+const LISTY: Array<[keyof Wyciag, string, (p: Any) => string]> = [
+  ["zarzad", "skład organu reprezentacji", (p) => osoba(p) + (p.funkcja ? " — " + String(p.funkcja).toLowerCase() : "")],
+  ["wspolnicy", "wspólnicy", (p) => osoba(p) + (p.udzialy != null ? " — " + p.udzialy + " udz." : "")],
+  ["prokurenci", "prokurenci", (p) => osoba(p) + (p.rodzaj ? " — " + String(p.rodzaj).toLowerCase() : "")],
+];
+// what is compared between two snapshots (dates of reading and raw answers are not)
+export function odcisk(w: Wyciag): string {
+  const o: Any = { z: w.znaleziono };
+  for (const [k] of POLA) o[k] = w[k] ?? null;
+  for (const [k, , f] of LISTY) o[k] = (w[k] as Any[]).map(f).sort();
+  return JSON.stringify(o);
+}
+export type Zmiana = { pole: string; bylo: string; jest: string };
+export function roznice(prev: Wyciag | null, next: Wyciag): Zmiana[] {
+  if (!prev) return [];
+  const out: Zmiana[] = [];
+  if (prev.znaleziono !== next.znaleziono) return [{ pole: "obecność w rejestrze", bylo: prev.znaleziono ? "jest" : "brak", jest: next.znaleziono ? "jest" : "brak" }];
+  for (const [k, et] of POLA) {
+    const a = prev[k] == null ? "" : String(prev[k]), b = next[k] == null ? "" : String(next[k]);
+    // a field the register did not return this time is not a change
+    if (a !== b && b !== "" && (a !== "" || k === "stan")) out.push({ pole: et, bylo: a || "—", jest: b });
+  }
+  for (const [k, et, f] of LISTY) {
+    const a = ((prev[k] ?? []) as Any[]).map(f), b = ((next[k] ?? []) as Any[]).map(f);
+    const ubylo = a.filter((x) => !b.includes(x)), przybylo = b.filter((x) => !a.includes(x));
+    if (ubylo.length || przybylo.length) out.push({ pole: et, bylo: ubylo.join("; ") || "—", jest: przybylo.join("; ") || "—" });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- register refresh: plan and cost
+// rejestr.io is paid per request (about 0.05 zł each, per the office's price list — confirm in the account).
+export const CENA_REJESTR_IO = 0.05;
+export type PlanPoz = { id: string; nazwa: string; zrodlo: "krs" | "gus"; zapytan: number };
+export type Plan = { pozycje: PlanPoz[]; pominiete: { swieze: number; bez_nip: number; zakonczone: number; po_bledzie: number }; krs_firm: number; gus_firm: number; zapytan_rejestr_io: number; zapytan_gus: number; koszt_zl: number };
+// klienci: rows of klienci_baza with `rej_at` (last confirmed snapshot); cache: NIP -> when portal_firmy_cache got it
+export function planOdswiezenia(klienci: Any[], cache: Record<string, string>, dni: number, teraz: number, zZakonczonymi = false): Plan {
+  const stare = (iso: string | null | undefined) => !iso || teraz - Date.parse(iso) > dni * 86400000;
+  const p: Plan = { pozycje: [], pominiete: { swieze: 0, bez_nip: 0, zakonczone: 0, po_bledzie: 0 }, krs_firm: 0, gus_firm: 0, zapytan_rejestr_io: 0, zapytan_gus: 0, koszt_zl: 0 };
+  for (const k of klienci) {
+    if (k.status === "zakonczony" && !zZakonczonymi) { p.pominiete.zakonczone++; continue; }
+    if (!nipOk(digits(k.nip))) { p.pominiete.bez_nip++; continue; }
+    if (!stare(k.rej_at)) { p.pominiete.swieze++; continue; }
+    // a firm whose reading has just failed is not asked again within the hour (no paid loop on a broken record)
+    if (k.rejestr_blad && k.rejestr_at && teraz - Date.parse(k.rejestr_at) < 3600000) { p.pominiete.po_bledzie++; continue; }
+    if (formaTyp(k.forma) === "krs") {
+      // getFirma: 2 requests (basic record + KRS chapter), none when our cache is recent; + 1 for the basic record kept in full
+      const z = (stare(cache[digits(k.nip)]) ? 2 : 0) + 1;
+      p.pozycje.push({ id: k.id, nazwa: k.nazwa, zrodlo: "krs", zapytan: z }); p.krs_firm++; p.zapytan_rejestr_io += z;
+    } else { p.pozycje.push({ id: k.id, nazwa: k.nazwa, zrodlo: "gus", zapytan: 1 }); p.gus_firm++; p.zapytan_gus++; }
+  }
+  p.koszt_zl = Math.round(p.zapytan_rejestr_io * CENA_REJESTR_IO * 100) / 100;
+  return p;
+}
+
+// ---------------------------------------------------------------- warnings from the register (every portal user sees them)
+export function ostrzezeniaRejestru(k: Any, rej: Any | null, teraz: number): string[] {
+  const o: string[] = [];
+  if (!k.w_arkuszu && k.status !== "zakonczony") o.push("Klienta nie ma już w arkuszu klientów, a obsługa nie jest oznaczona jako zakończona.");
+  if (!nipOk(digits(k.nip))) { if (k.status !== "zakonczony") o.push("Brak poprawnego NIP w arkuszu klientów — nie można sprawdzić rejestru."); return o; }
+  if (k.rejestr_blad) o.push("Ostatnie pobranie z rejestru nie powiodło się: " + k.rejestr_blad);
+  if (!rej) { if (!k.rejestr_blad) o.push("Dane z rejestru nie zostały jeszcze pobrane."); return o; }
+  if (!rej.znaleziono) { o.push(rej.zrodlo === "krs" ? "Nie znaleziono firmy w KRS pod tym NIP." : "Nie znaleziono firmy w rejestrze REGON pod tym NIP."); return o; }
+  if (rej.stan && rej.stan !== "aktywna") o.push("Stan firmy według rejestru: " + rej.stan + ".");
+  const a = nazwaKlucz(k.nazwa), b = nazwaKlucz(rej.nazwa);
+  if (a && b && a !== b && !nazwaZawiera(a, b)) o.push("Nazwa w arkuszu różni się od nazwy w rejestrze („" + rej.nazwa + "”).");
+  if (rej.zrodlo === "krs" && formaTyp(k.forma) === "krs" && !(rej.zarzad ?? []).length) o.push("W rejestrze nie ma nikogo w organie reprezentacji.");
+  const zm = Array.isArray(rej.zmiany) ? rej.zmiany : [];
+  // a change found by the last reading stays on the list for 60 days
+  if (zm.length && teraz - Date.parse(rej.fetched_at) < 60 * 86400000) o.push("Zmiana w rejestrze od poprzedniego pobrania: " + zm.map((z: Any) => z.pole).join(", ") + ".");
+  return o;
+}
+
+// ---------------------------------------------------------------- contracts audit
+export type Poz = { kod: string; stan: "ok" | "uwaga" | "brak" | "info"; tekst: string };
+export type Audyt = { wynik: "ok" | "uwagi" | "braki"; ma: { umowa: boolean; ksiegowosc: boolean; kadry: boolean; powierzenie: boolean; pelnomocnictwo: boolean }; pozycje: Poz[] };
+const pl = (iso: unknown) => { const p = String(iso ?? "").slice(0, 10).split("-"); return p.length === 3 ? `${p[2]}.${p[1]}.${p[0]}` : ""; };
+const obejmuje = (u: Any, co: string) => u.rodzaj === co || (Array.isArray(u.obejmuje) && u.obejmuje.includes(co));
+const wygasla = (u: Any, dzis: string) => u.bezterminowa !== true && isDate(u.obowiazuje_do) && u.obowiazuje_do < dzis;
+const osobaKlucz = (s: unknown) => norm(s).split(" ").filter(Boolean).sort().join(" ");
+const taSamaOsoba = (a: string, b: string) => { const A = osobaKlucz(a), B = osobaKlucz(b); return !!A && !!B && (A === B || nazwaZawiera(A, B)); };
+
+// umowy: the client's documents with status 'przypisany'; rejestry: its snapshots, newest first; dzis: YYYY-MM-DD
+export function audytKlienta(k: Any, rejestry: Any[], umowy: Any[], dzis: string): Audyt {
+  const poz: Poz[] = [];
+  const rej = rejestry[0] ?? null;
+  const uslugowe = umowy.filter((u) => u.rodzaj !== "wypowiedzenie" && u.rodzaj !== "aneks" && (obejmuje(u, "ksiegowosc") || obejmuje(u, "kadry")));
+  const wypow = umowy.filter((u) => u.rodzaj === "wypowiedzenie");
+  // a notice of termination filed later than the contract (or undated) puts the contract in doubt
+  const wypowiedziana = (u: Any) => wypow.find((w) => !isDate(w.data_zawarcia) || !isDate(u.data_zawarcia) || w.data_zawarcia >= u.data_zawarcia);
+  const czynne = uslugowe.filter((u) => !wygasla(u, dzis) && !wypowiedziana(u));
+  const opis = (u: Any) => (isDate(u.data_zawarcia) ? "z dnia " + pl(u.data_zawarcia) : "bez odczytanej daty");
+
+  // 1. a service contract at all
+  if (!uslugowe.length) poz.push({ kod: "umowa", stan: "brak", tekst: "Brak umowy o świadczenie usług (księgowych lub kadrowo-płacowych) w bazie." });
+  else if (!czynne.length) {
+    const u = uslugowe[0], w = wypowiedziana(u);
+    poz.push({ kod: "umowa", stan: "brak", tekst: wygasla(u, dzis) ? "Umowa " + opis(u) + " wygasła " + pl(u.obowiazuje_do) + " — brak obowiązującej umowy." : "Do umowy " + opis(u) + " jest wypowiedzenie" + (w && isDate(w.data_zawarcia) ? " z dnia " + pl(w.data_zawarcia) : "") + " — brak obowiązującej umowy." });
+  } else {
+    poz.push({ kod: "umowa", stan: "ok", tekst: "Umowa o świadczenie usług: " + czynne.map(opis).join("; ") + (czynne.every((u) => u.bezterminowa === true) ? " (na czas nieokreślony)" : "") + "." });
+    for (const u of uslugowe.filter((x) => !czynne.includes(x))) poz.push({ kod: "waznosc", stan: "info", tekst: "W bazie jest też umowa " + opis(u) + (wygasla(u, dzis) ? ", która wygasła " + pl(u.obowiazuje_do) : ", do której jest wypowiedzenie") + "." });
+    for (const u of czynne) if (u.bezterminowa !== true && isDate(u.obowiazuje_do) && Date.parse(u.obowiazuje_do) - Date.parse(dzis) <= 60 * 86400000) poz.push({ kod: "waznosc", stan: "uwaga", tekst: "Umowa " + opis(u) + " obowiązuje tylko do " + pl(u.obowiazuje_do) + "." });
+  }
+  const maKs = czynne.some((u) => obejmuje(u, "ksiegowosc")), maKd = czynne.some((u) => obejmuje(u, "kadry"));
+  if (czynne.length) {
+    if (!maKs && String(k.opiekun ?? "").trim()) poz.push({ kod: "ksiegowosc", stan: "uwaga", tekst: "Klient ma opiekuna księgowego, a żadna obowiązująca umowa nie obejmuje usług księgowych." });
+    if (!maKd && String(k.kadrowy ?? "").trim()) poz.push({ kod: "kadry", stan: "uwaga", tekst: "Klient ma przypisanego kadrowego, a żadna obowiązująca umowa nie obejmuje obsługi kadrowo-płacowej." });
+  }
+
+  // 2. entrusting personal data (art. 28 ust. 3 RODO): a separate contract or a clause in the service contract
+  const pow = umowy.filter((u) => u.rodzaj !== "wypowiedzenie" && obejmuje(u, "powierzenie") && !wygasla(u, dzis));
+  poz.push(pow.length
+    ? { kod: "powierzenie", stan: "ok", tekst: "Powierzenie przetwarzania danych osobowych: " + pow.map((u) => (u.rodzaj === "powierzenie" ? "umowa " : "postanowienia w umowie ") + opis(u)).join("; ") + "." }
+    : { kod: "powierzenie", stan: "brak", tekst: "Brak umowy powierzenia przetwarzania danych osobowych (art. 28 ust. 3 RODO)." });
+
+  // 3. powers of attorney and authorisations
+  const peln = umowy.filter((u) => u.rodzaj === "pelnomocnictwo" || u.rodzaj === "upowaznienie");
+  poz.push(peln.length
+    ? { kod: "pelnomocnictwo", stan: "ok", tekst: "Pełnomocnictwa / upoważnienia w bazie: " + peln.map((u) => (u.podtyp || (u.rodzaj === "upowaznienie" ? "upoważnienie" : "pełnomocnictwo")) + (isDate(u.data_zawarcia) ? " (" + pl(u.data_zawarcia) + ")" : "")).join(", ") + "." }
+    : { kod: "pelnomocnictwo", stan: "uwaga", tekst: "Brak pełnomocnictw i upoważnień w bazie (UPL-1, ZUS PEL, e-Urząd / KSeF)." });
+
+  // 4.–6. the newest contract in force against the register
+  const u = [...czynne].sort((a, b) => String(b.data_zawarcia ?? "").localeCompare(String(a.data_zawarcia ?? "")))[0];
+  if (u) {
+    if (u.podpisy && u.podpisy !== "obie_strony") poz.push({ kod: "podpisy", stan: "uwaga", tekst: "Umowa " + opis(u) + ": według odczytu " + ({ tylko_klient: "podpisał tylko klient", tylko_biuro: "podpisało tylko biuro", brak: "brak podpisów", nieczytelne: "podpisów nie da się ocenić" } as Any)[u.podpisy] + "." });
+    const nipU = digits(u.kontrahent_nip), nipK = digits(k.nip);
+    if (nipOk(nipU) && nipK.length === 10 && nipU !== nipK) poz.push({ kod: "strony", stan: "brak", tekst: "Umowa " + opis(u) + " jest zawarta z podmiotem o innym NIP (" + nipU + ") niż klient." });
+    else if (!rej || !rej.znaleziono) poz.push({ kod: "strony", stan: "info", tekst: "Stron umowy nie porównano z rejestrem — brak danych z rejestru." });
+    else {
+      const a = nazwaKlucz(u.kontrahent), b = nazwaKlucz(rej.nazwa), c = nazwaKlucz(k.nazwa);
+      const krsU = digits(u.kontrahent_krs).replace(/^0+/, ""), krsR = digits(rej.krs).replace(/^0+/, "");
+      if (krsU && krsR && krsU !== krsR) poz.push({ kod: "strony", stan: "uwaga", tekst: "Numer KRS w umowie (" + u.kontrahent_krs + ") różni się od numeru w rejestrze (" + rej.krs + ")." });
+      else if (!a) poz.push({ kod: "strony", stan: "uwaga", tekst: "Nie odczytano nazwy klienta z umowy " + opis(u) + " — do sprawdzenia." });
+      else if (a === b || nazwaZawiera(a, b) || (rej.zrodlo === "gus" && (a === c || nazwaZawiera(a, c)))) poz.push({ kod: "strony", stan: "ok", tekst: "Strona umowy zgodna z rejestrem (" + rej.nazwa + ")." });
+      else poz.push({ kod: "strony", stan: "uwaga", tekst: "Nazwa klienta w umowie („" + u.kontrahent + "”) różni się od aktualnej nazwy w rejestrze („" + rej.nazwa + "”) — do sprawdzenia (zmiana firmy, przekształcenie?)." });
+
+      // who signed: the register as it stood on the day of signing, when one of our snapshots covers that day
+      const podp: string[] = (Array.isArray(u.reprezentanci) ? u.reprezentanci : []).map((r: Any) => String(r.imie_nazwisko ?? "")).filter(Boolean);
+      if (!podp.length) poz.push({ kod: "reprezentacja", stan: "uwaga", tekst: "Nie odczytano, kto podpisał umowę za klienta — do sprawdzenia." });
+      else if (rej.zrodlo === "gus") {
+        const wl = podp.some((p) => nazwaZawiera(osobaKlucz(p), norm(rej.nazwa)) || nazwaZawiera(osobaKlucz(p), norm(k.nazwa)));
+        poz.push(wl ? { kod: "reprezentacja", stan: "ok", tekst: "Umowę podpisał przedsiębiorca (" + podp.join(", ") + ")." }
+          : { kod: "reprezentacja", stan: "uwaga", tekst: "Umowę podpisał(a) " + podp.join(", ") + " — nazwisko nie występuje w nazwie firmy; sprawdź pełnomocnictwo." });
+      } else {
+        const zDnia = isDate(u.data_zawarcia) ? rejestry.find((r) => r.znaleziono && String(r.fetched_at).slice(0, 10) <= u.data_zawarcia && String(r.sprawdzono_at).slice(0, 10) >= u.data_zawarcia) : null;
+        const r = zDnia ?? rej;
+        const uprawnieni: string[] = [...(r.zarzad ?? []).map(osoba), ...(r.prokurenci ?? []).map(osoba)];
+        const obcy = podp.filter((p) => !uprawnieni.some((x) => taSamaOsoba(p, x)));
+        const lacznie = /łączn|lacznie|dwóch|dwoch|dwaj|dwoje|wspólnie|wspolnie/i.test(String(r.reprezentacja ?? "")) && (r.zarzad ?? []).length > 1;
+        const kiedy = zDnia ? "według stanu rejestru na dzień podpisania" : "według aktualnego stanu rejestru (z " + pl(r.sprawdzono_at ?? r.fetched_at) + ")";
+        if (obcy.length) poz.push({ kod: "reprezentacja", stan: "uwaga", tekst: "Podpisujący (" + obcy.join(", ") + ") nie figuruje w organie reprezentacji ani wśród prokurentów " + kiedy + " — do sprawdzenia (odpis na dzień podpisania, pełnomocnictwo)." });
+        else if (lacznie && podp.length < 2) poz.push({ kod: "reprezentacja", stan: "uwaga", tekst: "Umowę podpisała jedna osoba (" + podp.join(", ") + "), a sposób reprezentacji wskazuje na działanie łączne — do sprawdzenia." });
+        else if (zDnia) poz.push({ kod: "reprezentacja", stan: "ok", tekst: "Podpisujący (" + podp.join(", ") + ") uprawniony do reprezentacji " + kiedy + "." });
+        else poz.push({ kod: "reprezentacja", stan: "info", tekst: "Podpisujący (" + podp.join(", ") + ") figuruje w rejestrze " + kiedy + "; stanu na dzień podpisania" + (isDate(u.data_zawarcia) ? " (" + pl(u.data_zawarcia) + ")" : "") + " portal nie zna — w razie wątpliwości sprawdź odpis pełny." });
+      }
+    }
+  }
+  const wynik = poz.some((p) => p.stan === "brak") ? "braki" : poz.some((p) => p.stan === "uwaga") ? "uwagi" : "ok";
+  return { wynik, ma: { umowa: czynne.length > 0, ksiegowosc: maKs, kadry: maKd, powierzenie: pow.length > 0, pelnomocnictwo: peln.length > 0 }, pozycje: poz };
+}
+
+// ---------------------------------------------------------------- CSV (opens in Excel: ';', UTF-8 with BOM added by the page)
+export function csvPole(v: unknown): string {
+  let s = v == null ? "" : String(v);
+  // a cell starting with = + - @ (also after spaces, a tab or a line break) would run as a formula
+  if (/^[\s]*[=+\-@]/.test(s) || /^[\t\r\n]/.test(s)) s = "'" + s;
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+export const csvWiersz = (pola: unknown[]) => pola.map(csvPole).join(";");
+const STATUS: Any = { obslugiwany: "obsługiwany", wstrzymany: "wstrzymany", zakonczony: "zakończony" };
+export function csvBraki(wiersze: Array<{ k: Any; a: Audyt }>): string {
+  const tak = (b: boolean) => (b ? "tak" : "NIE");
+  const out = [csvWiersz(["Klient", "NIP", "Forma", "Opiekun", "Kadrowy", "Status obsługi", "Wynik audytu", "Umowa obowiązująca", "Obejmuje księgowość", "Obejmuje kadry", "Powierzenie danych", "Pełnomocnictwa", "Braki", "Uwagi do sprawdzenia"])];
+  for (const { k, a } of wiersze) {
+    out.push(csvWiersz([k.nazwa, k.nip ?? "", k.forma ?? "", k.opiekun ?? "", k.kadrowy ?? "", STATUS[k.status] ?? k.status,
+      a.wynik === "ok" ? "w porządku" : a.wynik, tak(a.ma.umowa), tak(a.ma.ksiegowosc), tak(a.ma.kadry), tak(a.ma.powierzenie), tak(a.ma.pelnomocnictwo),
+      a.pozycje.filter((p) => p.stan === "brak").map((p) => p.tekst).join(" | "), a.pozycje.filter((p) => p.stan === "uwaga").map((p) => p.tekst).join(" | ")]));
+  }
+  return out.join("\r\n") + "\r\n";
+}
