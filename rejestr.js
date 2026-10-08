@@ -20,9 +20,34 @@
     tab = b.getAttribute('data-t');
     document.querySelectorAll('#tabs button').forEach(function (x) { x.classList.toggle('active', x === b); });
     document.querySelectorAll('.panel').forEach(function (p) { p.classList.toggle('active', p.id === 'panel-' + tab); });
+    if (hasF) $('firmFilters').hidden = tab !== 'firmy';
     render();
   });
   $('search').addEventListener('input', function (e) { q = e.target.value.toLowerCase().trim(); render(); });
+  // firm filters: with / without workers, by account manager (opiekun), sort order — remembered per browser
+  var FKEY = 'tdcg_rejestr_filtry';
+  var ff = { prac: '', opiekun: '', sort: '' };
+  try { ff = Object.assign(ff, JSON.parse(localStorage.getItem(FKEY) || '{}')); } catch (e) {}
+  var hasF = !!$('fPrac'); // a page cached before the filters existed has no controls
+  if (!hasF) ff = { prac: '', opiekun: '', sort: '' };
+  ['fPrac', 'fOpiekun', 'fSort'].forEach(function (id) {
+    if (hasF) $(id).addEventListener('change', function () {
+      ff = { prac: $('fPrac').value, opiekun: $('fOpiekun').value, sort: $('fSort').value };
+      try { localStorage.setItem(FKEY, JSON.stringify(ff)); } catch (e) {}
+      renderFirmy();
+    });
+  });
+  function fillOpiekun() {
+    if (!hasF) return;
+    var names = {};
+    firms.forEach(function (f) { names[(f.opiekun || '').trim()] = 1; });
+    var list = Object.keys(names).filter(Boolean).sort(function (a, b) { return a.localeCompare(b, 'pl'); });
+    $('fOpiekun').innerHTML = '<option value="">wszyscy</option>' +
+      list.map(function (n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join('') +
+      (names[''] ? '<option value="__brak">bez opiekuna</option>' : '');
+    if (ff.opiekun && ff.opiekun !== '__brak' && list.indexOf(ff.opiekun) === -1) ff.opiekun = '';
+    $('fPrac').value = ff.prac; $('fOpiekun').value = ff.opiekun; $('fSort').value = ff.sort;
+  }
 
   async function load() {
     if (!window.sb) return;
@@ -47,6 +72,7 @@
       }
     } catch (e) { workers = []; }
     regroup();
+    fillOpiekun();
     render();
   }
 
@@ -147,7 +173,23 @@
       return (f.nazwa + ' ' + f.nip + ' ' + f.miasto + ' ' + f.opiekun + ' ' + f.kadrowy).toLowerCase().indexOf(q) !== -1
         || workersFor(f).some(function (w) { return (w.worker_name || '').toLowerCase().indexOf(q) !== -1; });
     });
-    if (!list.length) { el.innerHTML = '<div class="empty">Brak firm.</div>'; return; }
+    list = list.filter(function (f) {
+      var n = workersFor(f).length, op = (f.opiekun || '').trim();
+      if (ff.prac === 'tak' && !n) return false;
+      if (ff.prac === 'nie' && n) return false;
+      if (ff.opiekun === '__brak') return !op;
+      return !ff.opiekun || op === ff.opiekun;
+    });
+    if (ff.sort) {
+      list = list.slice().sort(function (a, b) {
+        var byName = (a.nazwa || '').localeCompare(b.nazwa || '', 'pl');
+        if (ff.sort === 'prac') return workersFor(b).length - workersFor(a).length || byName;
+        if (ff.sort === 'opiekun') return (a.opiekun || 'żżż').localeCompare(b.opiekun || 'żżż', 'pl') || byName;
+        return byName;
+      });
+    }
+    if (hasF) $('fCount').textContent = list.length + ' z ' + firms.length + ' firm';
+    if (!list.length) { el.innerHTML = '<div class="empty">Brak firm dla tych filtrów.</div>'; return; }
     el.innerHTML = '';
     list.forEach(function (f) {
       var ws = workersFor(f);

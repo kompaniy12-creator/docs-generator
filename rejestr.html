@@ -21,6 +21,12 @@
   .tabs{display:flex;gap:8px;justify-content:center;margin:0 0 18px;flex-wrap:wrap}
   .tabs button{border:1px solid #d4dbe6;background:#fff;color:#3a4759;border-radius:999px;padding:8px 18px;font:inherit;font-size:13.5px;cursor:pointer}
   .tabs button.active{background:var(--brand-navy);color:#fff;border-color:var(--brand-navy)}
+  .filters{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end;margin:0 0 16px}
+  .filters[hidden]{display:none}
+  .filters label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:#5a6577}
+  .filters select{padding:8px 10px;border:1px solid #d4dbe6;border-radius:9px;font:inherit;font-size:14px;background:#fff;min-width:170px;color:#111}
+  .fcount{font-size:13px;color:#5a6577;padding-bottom:9px}
+  @media(max-width:600px){.filters label{flex:1 1 100%}.filters select{width:100%}}
   .search{display:block;width:100%;max-width:420px;margin:0 auto 18px;padding:10px 14px;border:1px solid #d4dbe6;border-radius:10px;font:inherit;font-size:14px}
   .panel{display:none}.panel.active{display:block}
   .empty{text-align:center;color:#888;padding:36px;background:#fff;border:1px solid #e5e9ef;border-radius:12px}
@@ -75,12 +81,24 @@
     <button data-t="archiwum">🗄 Archiwum (byli pracownicy)</button>
   </div>
   <input type="search" id="search" class="search" placeholder="Szukaj: firma, NIP, pracownik…" />
+  <div class="filters" id="firmFilters">
+    <label>Pracownicy
+      <select id="fPrac"><option value="">wszystkie firmy</option><option value="tak">z pracownikami</option><option value="nie">bez pracowników</option></select>
+    </label>
+    <label>Opiekun
+      <select id="fOpiekun"><option value="">wszyscy</option></select>
+    </label>
+    <label>Sortuj
+      <select id="fSort"><option value="">jak w bazie klientów</option><option value="az">nazwa A–Z</option><option value="prac">najwięcej pracowników</option><option value="opiekun">według opiekuna</option></select>
+    </label>
+    <span class="fcount" id="fCount"></span>
+  </div>
 
   <div class="panel active" id="panel-firmy"><div class="loading">Ładowanie…</div></div>
   <div class="panel" id="panel-pracownicy"><div class="loading">Ładowanie…</div></div>
   <div class="panel" id="panel-terminy"><div class="loading">Ładowanie…</div></div>
   <div class="panel" id="panel-archiwum"><div class="loading">Ładowanie…</div></div>
 </main>
-<script src="rejestr.js"></script>
+<script src="rejestr.js?v=2"></script>
 </body>
 </html>
