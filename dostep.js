@@ -10,7 +10,7 @@
   var listEl = document.getElementById('list');
   var ui = document.getElementById('adminUi');
   var me = null;
-  var SECTIONS = [['rejestracja', 'Rejestracja spółki'], ['biezaca', 'Bieżąca działalność'], ['kadry', 'Kadry']];
+  var SECTIONS = [['rejestracja', 'Rejestracja spółki'], ['biezaca', 'Bieżąca działalność'], ['kadry', 'Kadry'], ['onboarding', 'Onboarding klientów']];
 
   function show(msg, type) { statusEl.textContent = msg; statusEl.className = 'status ' + (type || ''); }
   function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }

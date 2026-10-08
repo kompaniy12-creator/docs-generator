@@ -27,6 +27,9 @@
       { href: 'index.html#biezaca', ico: '💼', text: 'Bieżąca działalność', short: 'Bieżąca', sec: 'biezaca',
         pages: ['wynagrodzenie.html', 'e-urzad.html', 'pelnomocnictwo.html', 'zalacznik-pobyt.html', 'nip-8.html'] },
     ] },
+    { label: 'Klienci', items: [
+      { href: 'onboarding.html', ico: '🚀', text: 'Onboarding klientów', short: 'Onboarding', sec: 'onboarding', wide: true },
+    ] },
     { label: 'Ogólne', items: [
       { href: 'historia.html', ico: '🕘', text: 'Historia dokumentów', short: 'Historia', wide: true },
       { href: 'dostep.html', ico: '🔑', text: 'Dostęp do portalu', short: 'Dostęp', admin: true, wide: true },
