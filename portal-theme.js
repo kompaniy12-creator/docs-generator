@@ -128,6 +128,8 @@
     'html.pt-clear body.ps main .tile.zero b{color:rgba(255,255,255,.45)!important}',
     'html.pt-clear body.ps main :is(.box,.tile,.firm,.task,.rule,fieldset,.card,.item,table) :is(.cm,pre,.remfirm,.subgroup,.send-box,.pd-g){background:rgba(255,255,255,.08)!important}',
     'html.pt-clear body.ps main :is(th,td,.line,.row){border-color:rgba(255,255,255,.14)!important}',
+    // rows that light up on hover keep the light text readable
+    'html.pt-clear body.ps main :is(.card-head,.firm-head,.fhead,.docs a,.doc-add,.mini-btn,tr):hover{background:rgba(255,255,255,.1)!important}',
     'html.pt-clear body.ps main .bar{background:rgba(255,255,255,.2)}',
     'html.pt-clear body.ps main .bar i,html.pt-clear body.ps main .spark i{background:rgba(255,255,255,.82)}',
     'html.pt-clear body.ps main .spark i.z{background:rgba(255,255,255,.2)}',
