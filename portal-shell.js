@@ -40,7 +40,6 @@
     { label: 'Ogólne', items: [
       { href: 'zadania.html', ico: '✅', text: 'Zadania', short: 'Zadania', wide: true, tasks: true },
       { href: 'dostep.html', ico: '🔑', text: 'Dostęp do portalu', short: 'Dostęp', admin: true, wide: true },
-      { href: 'index.html#konsultacja', ico: '💬', text: 'Konsultacja', short: 'Pomoc' },
     ] },
   ];
   NAV[1].items[0].pages = ['rejestracja.html'];
