@@ -131,7 +131,8 @@
     // rows that light up on hover keep the light text readable
     'html.pt-clear body.ps main :is(.card-head,.firm-head,.fhead,.docs a,.doc-add,.mini-btn,tr):hover{background:rgba(255,255,255,.1)!important}',
     // opened rows: the inner panel is see-through, not a white sheet
-    'html.pt-clear body.ps main :is(.card,.firm,.box,.item) :is(.detail,.fbody,.body){background:transparent!important}',
+    'html.pt-clear body.ps main :is(.card,.firm,.box,.item) :is(.detail,.fbody,.body,.firm-body){background:transparent!important}',
+    'html.pt-clear body.ps main :is(.card,.firm,.box,.item) :is(.firm-body,.fbody,.detail) li{background:rgba(255,255,255,.07)!important;border-color:rgba(255,255,255,.16)!important}',
     'html.pt-clear body.ps main :is(.card,.firm,.box,.item) .docs a{background:rgba(255,255,255,.1)!important;border-color:rgba(255,255,255,.22)!important}',
     'html.pt-clear body.ps main .bar{background:rgba(255,255,255,.2)}',
     'html.pt-clear body.ps main .bar i,html.pt-clear body.ps main .spark i{background:rgba(255,255,255,.82)}',
