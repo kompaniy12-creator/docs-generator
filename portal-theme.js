@@ -113,6 +113,24 @@
     '#ptFab{position:fixed;right:16px;bottom:16px;z-index:999;width:46px;height:46px;border-radius:50%;border:none;background:rgba(255,255,255,.92);box-shadow:0 8px 24px rgba(15,23,42,.22);font-size:21px;cursor:pointer}',
     '#ptFab:hover{transform:scale(1.06)}',
     'body.pt-page #ptPanel{top:auto;bottom:72px}',
+    // ---- clear blocks on a dark background: dark glass, light text
+    'html.pt-clear body.ps main :is(.box,.tile,.firm,.task,.rule,fieldset,.card,.item,table){border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.92)}',
+    'html.pt-clear body.ps main :is(.box,.tile,.firm,.task,.rule,fieldset,.card,.item,table) :is(h2,h3,h4,p,span,small,strong,b,em,td,th,dt,dd,li,label,div,summary,a,pre):not(.pill,.badge,.mini,.btn,.ps-badge,.warnbox,.status,.krs-status,.msg,.krs-hit,.card-ico,.ico,.pill *,.warnbox *,.status *,.krs-status *,.msg *,.krs-hit *,button *,legend *){color:rgba(255,255,255,.92)!important}',
+    'html.pt-clear body.ps main :is(.box,.tile,.firm,.task,.rule,fieldset,.card,.item,table) :is(small,.hint,.sub,.d,th,dt){color:rgba(255,255,255,.66)!important}',
+    'html.pt-clear body.ps main .tile.red b{color:#fca5a5!important}',
+    'html.pt-clear body.ps main .tile.amber b{color:#fcd34d!important}',
+    'html.pt-clear body.ps main .tile.green b{color:#86efac!important}',
+    'html.pt-clear body.ps main .tile.zero b{color:rgba(255,255,255,.45)!important}',
+    'html.pt-clear body.ps main :is(.box,.tile,.firm,.task,.rule,fieldset,.card,.item,table) :is(.cm,pre,.remfirm,.subgroup,.send-box,.pd-g){background:rgba(255,255,255,.08)!important}',
+    'html.pt-clear body.ps main :is(th,td,.line,.row){border-color:rgba(255,255,255,.14)!important}',
+    'html.pt-clear body.ps main .bar{background:rgba(255,255,255,.2)}',
+    'html.pt-clear body.ps main .bar i,html.pt-clear body.ps main .spark i{background:rgba(255,255,255,.82)}',
+    'html.pt-clear body.ps main .spark i.z{background:rgba(255,255,255,.2)}',
+    'html.pt-clear body.ps main .box .remfirm,html.pt-clear body.ps main .box .task,html.pt-clear body.ps main fieldset fieldset{background:rgba(255,255,255,.07)}',
+    'html.pt-clear body.pt-page :is(.box,.tile){border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.92)}',
+    'html.pt-clear body.pt-page :is(.box,.tile) :is(h2,p,span,small,strong,b,div,a):not(.pill,.mini,.btn,.msg,.msg *,.pill *,button *){color:rgba(255,255,255,.92)!important}',
+    'html.pt-clear body.pt-page .tile.red b{color:#fca5a5!important}',
+    'html.pt-clear body.pt-page .tile.amber b{color:#fcd34d!important}',
     // picker
     '#ptPanel{position:fixed;right:18px;top:66px;width:340px;max-width:calc(100vw - 24px);max-height:calc(100vh - 90px);overflow:auto;z-index:1000;background:#fff;color:#111;border-radius:18px;box-shadow:0 24px 60px rgba(15,23,42,.28);padding:18px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}',
     '#ptPanel[hidden]{display:none}',
@@ -144,7 +162,7 @@
     var themed = c.id !== 'klasyczny' || c.accent.toLowerCase() !== '#1b3f7f';
     root.classList.toggle('pt', themed);
     root.classList.toggle('pt-dark', themed && c.dark);
-    if (!themed) { ['--pt-bg', '--pt-accent', '--pt-accent-d', '--pt-tint', '--pt-glass', '--pt-line', '--pt-card', '--pt-blur'].forEach(function (v) { st.removeProperty(v); }); return; }
+    if (!themed) { root.classList.remove('pt-clear'); ['--pt-bg', '--pt-accent', '--pt-accent-d', '--pt-tint', '--pt-glass', '--pt-line', '--pt-card', '--pt-blur'].forEach(function (v) { st.removeProperty(v); }); return; }
     st.setProperty('--pt-bg', c.own ? 'url("' + c.own + '")' : c.bg);
     st.setProperty('--pt-accent', c.accent);
     st.setProperty('--pt-accent-d', shade(c.accent, -0.22));
@@ -152,7 +170,11 @@
     st.setProperty('--pt-glass', (c.dark ? 'rgba(17,22,38,' : 'rgba(255,255,255,') + (c.menu / 100) + ')'); // matte; how solid is the user's choice
     // the clearer the menu, the less it blurs what is behind it
     st.setProperty('--pt-blur', Math.round(4 + c.menu * 0.26) + 'px');
-    st.setProperty('--pt-card', 'rgba(255,255,255,' + (c.card / 100) + ')');
+    // dark background + clear blocks: white glass with dark text stops being readable, so the
+    // blocks turn into dark glass and their text into light (class pt-clear)
+    var clear = c.dark && c.card < 56;
+    root.classList.toggle('pt-clear', clear);
+    st.setProperty('--pt-card', clear ? 'rgba(13,18,34,' + (0.24 + c.card / 100 * 0.5).toFixed(2) + ')' : 'rgba(255,255,255,' + (c.card / 100) + ')');
     st.setProperty('--pt-line', c.dark ? 'rgba(255,255,255,.16)' : 'rgba(15,23,42,.08)');
   }
 
