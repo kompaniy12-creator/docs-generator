@@ -77,7 +77,11 @@
     shell.src = 'portal-shell.js';
     shell.onload = function () { show(false); };
     shell.onerror = function () { show(true); };
-    document.head.appendChild(shell);
+    // the look (theme, background, accent) first, so the shell appears already themed
+    var theme = document.createElement('script');
+    theme.src = 'portal-theme.js';
+    theme.onload = theme.onerror = function () { document.head.appendChild(shell); };
+    document.head.appendChild(theme);
     setTimeout(function () { show(!document.getElementById('psSide')); }, 2500);
   }).catch(function () {
     gotoLogin();

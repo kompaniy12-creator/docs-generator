@@ -1,202 +1,3 @@
-/* Portal look: themes with backgrounds, glass navigation, accent colour, own picture.
-   The choice is personal and kept in this browser (localStorage). Applied before the shell
-   is mounted, so a page never flashes in the wrong colours. window.PortalTheme.open() shows
-   the picker. */
-(function () {
-  'use strict';
-  if (window.PortalTheme) return;
-  var KEY = 'tdcg_wyglad', IMG_KEY = 'tdcg_wyglad_tlo';
-  // bg: CSS background; dark: light text on the background and glass navigation
-  var THEMES = [
-    { id: 'klasyczny', sw: '#f6f8fb', name: 'Klasyczny', dark: false, accent: '#1B3F7F', bg: '#f6f8fb' },
-    { id: 'aurora', sw: 'linear-gradient(135deg,#7c3aed,#2563eb 55%,#06b6d4)', name: 'Aurora', dark: true, accent: '#5b5bf0',
-      bg: 'radial-gradient(1100px 700px at 12% 8%,#7c3aed 0%,transparent 60%),radial-gradient(900px 700px at 88% 18%,#2563eb 0%,transparent 62%),radial-gradient(1000px 800px at 70% 96%,#06b6d4 0%,transparent 58%),radial-gradient(900px 700px at 8% 92%,#4f46e5 0%,transparent 60%),#1e1b4b' },
-    { id: 'ocean', sw: 'linear-gradient(135deg,#0369a1,#22d3ee 60%,#0f766e)', name: 'Ocean', dark: true, accent: '#0e7490',
-      bg: 'radial-gradient(1000px 700px at 85% 5%,#22d3ee 0%,transparent 58%),radial-gradient(1100px 800px at 10% 30%,#0369a1 0%,transparent 62%),radial-gradient(1000px 700px at 60% 100%,#0f766e 0%,transparent 60%),#082f49' },
-    { id: 'zachod', sw: 'linear-gradient(135deg,#e11d48,#f59e0b 55%,#7c3aed)', name: 'Zachód słońca', dark: true, accent: '#c2410c',
-      bg: 'radial-gradient(1000px 700px at 88% 8%,#f59e0b 0%,transparent 55%),radial-gradient(1100px 800px at 20% 20%,#e11d48 0%,transparent 60%),radial-gradient(1100px 800px at 60% 100%,#7c3aed 0%,transparent 62%),#4a044e' },
-    { id: 'las', sw: 'linear-gradient(135deg,#16a34a,#0d9488 60%,#365314)', name: 'Las', dark: true, accent: '#15803d',
-      bg: 'radial-gradient(1000px 700px at 10% 10%,#16a34a 0%,transparent 58%),radial-gradient(1000px 800px at 90% 30%,#0d9488 0%,transparent 60%),radial-gradient(1000px 700px at 50% 100%,#365314 0%,transparent 62%),#052e16' },
-    { id: 'grafit', sw: 'linear-gradient(135deg,#475569,#0f172a 60%,#1e3a8a)', name: 'Grafit', dark: true, accent: '#334155',
-      bg: 'radial-gradient(1100px 700px at 15% 0%,#475569 0%,transparent 60%),radial-gradient(1000px 800px at 90% 90%,#1e3a8a 0%,transparent 62%),#0f172a' },
-    { id: 'piasek', sw: 'linear-gradient(135deg,#fde68a,#fecdd3 55%,#bae6fd)', name: 'Piasek', dark: false, accent: '#9a3412',
-      bg: 'radial-gradient(1000px 700px at 10% 0%,#fde68a 0%,transparent 60%),radial-gradient(1000px 800px at 95% 30%,#fecdd3 0%,transparent 60%),radial-gradient(1000px 700px at 50% 100%,#bae6fd 0%,transparent 62%),#fff7ed' },
-    { id: 'mietowy', sw: 'linear-gradient(135deg,#a7f3d0,#bfdbfe 55%,#ddd6fe)', name: 'Miętowy', dark: false, accent: '#0f766e',
-      bg: 'radial-gradient(1000px 700px at 5% 5%,#a7f3d0 0%,transparent 60%),radial-gradient(1000px 800px at 95% 20%,#bfdbfe 0%,transparent 60%),radial-gradient(1000px 700px at 60% 100%,#ddd6fe 0%,transparent 62%),#f0fdfa' },
-  ];
-  var ACCENTS = ['#1B3F7F', '#2563eb', '#5b5bf0', '#7c3aed', '#c026d3', '#e11d48', '#c2410c', '#b45309', '#15803d', '#0f766e', '#0e7490', '#334155'];
-
-  function read() { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } }
-  function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} }
-  function img() { try { return localStorage.getItem(IMG_KEY) || ''; } catch (e) { return ''; } }
-  function shade(hex, k) { // k < 0 darker
-    var n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
-    var f = function (c) { return Math.max(0, Math.min(255, Math.round(k < 0 ? c * (1 + k) : c + (255 - c) * k))); };
-    return '#' + [f(r), f(g), f(b)].map(function (c) { return ('0' + c.toString(16)).slice(-2); }).join('');
-  }
-  function current() {
-    var s = read();
-    var t = THEMES.filter(function (x) { return x.id === s.theme; })[0] || THEMES[0];
-    var own = s.theme === 'wlasne' && img();
-    return { id: own ? 'wlasne' : t.id, dark: own ? s.ownDark !== false : t.dark, accent: s.accent || t.accent, bg: own ? null : t.bg, own: own };
-  }
-
-  var css = document.createElement('style');
-  css.id = 'psThemeCss';
-  css.textContent = [
-    'html.pt body.ps{background:var(--pt-bg);background-attachment:fixed;background-size:cover;background-position:center}',
-    'html.pt body.ps::before{content:"";position:fixed;inset:0;z-index:-1;background:var(--pt-bg);background-size:cover;background-position:center}',
-    // accent everywhere: the shell and the pages share these variables
-    'html.pt{--ps-navy:var(--pt-accent);--brand-navy:var(--pt-accent);--brand-navy-dark:var(--pt-accent-d);--ps-tint:var(--pt-tint);--brand-tint:var(--pt-tint)}',
-    // glass navigation
-    'html.pt #psSide{background:var(--pt-glass);backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);border-right:1px solid var(--pt-line)}',
-    'html.pt #psBar,html.pt #psTop,html.pt #psTabs{background:var(--pt-glass);backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);border-color:var(--pt-line)}',
-    'html.pt #psSide .ps-brand img{border-radius:12px;box-shadow:0 4px 14px rgba(0,0,0,.18)}',
-    'html.pt .ps-item{border-radius:12px;transition:background .15s,transform .15s}',
-    'html.pt .ps-item:hover{transform:translateX(2px)}',
-    'html.pt .ps-item.on{box-shadow:0 6px 18px rgba(0,0,0,.18)}',
-    'html.pt .ps-ico{border-radius:9px;box-shadow:0 1px 3px rgba(0,0,0,.08)}',
-    // content cards: soft, slightly translucent, bigger radius
-    'html.pt body.ps main .box,html.pt body.ps main .card,html.pt body.ps main .tile,html.pt body.ps main .firm,html.pt body.ps main .task,html.pt body.ps main .rule,html.pt body.ps main .item,html.pt body.ps main fieldset,html.pt body.ps main .krs-find{border-radius:16px;border-color:rgba(255,255,255,.55);box-shadow:0 10px 30px rgba(15,23,42,.10)}',
-    'html.pt body.ps main .box,html.pt body.ps main .tile,html.pt body.ps main .firm,html.pt body.ps main .task,html.pt body.ps main .rule,html.pt body.ps main fieldset{background:rgba(255,255,255,.94)}',
-    'html.pt body.ps main table{border-radius:14px}',
-    // dark backgrounds: light text for everything that sits directly on the background
-    'html.pt-dark #psSide,html.pt-dark #psBar,html.pt-dark #psTop,html.pt-dark #psTabs{color:#fff}',
-    'html.pt-dark .ps-item,html.pt-dark .ps-top,html.pt-dark #psTabs a,html.pt-dark #psTabs button{color:rgba(255,255,255,.88)}',
-    'html.pt-dark .ps-label{color:rgba(255,255,255,.62)}',
-    'html.pt-dark .ps-item:hover,html.pt-dark .ps-top:hover,html.pt-dark .ps-label:hover{background:rgba(255,255,255,.14);color:#fff}',
-    'html.pt-dark .ps-item.on,html.pt-dark .ps-top.on{background:rgba(255,255,255,.24);color:#fff}',
-    'html.pt-dark .ps-group.has-on:not(.open) .ps-label{color:#fff}',
-    'html.pt-dark .ps-ico{background:rgba(255,255,255,.16);box-shadow:none}',
-    'html.pt-dark #psBar strong,html.pt-dark #psTop strong,html.pt-dark .ps-who,html.pt-dark .ps-rodo,html.pt-dark .ps-user{color:rgba(255,255,255,.9)}',
-    'html.pt-dark .ps-out{background:rgba(255,255,255,.2)}',
-    'html.pt-dark #psTop button{background:rgba(255,255,255,.16);color:#fff}',
-    'html.pt-dark #psTabs .on{color:#fff}',
-    'html.pt-dark body.ps main>h1,html.pt-dark body.ps .content-head h1,html.pt-dark body.ps main>h2{color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.35)}',
-    'html.pt-dark body.ps main>.lead,html.pt-dark body.ps .content-head .lead,html.pt-dark body.ps main>.hint,html.pt-dark body.ps main>p{color:rgba(255,255,255,.9);text-shadow:0 1px 8px rgba(0,0,0,.35)}',
-    'html.pt-dark body.ps main>.lead a,html.pt-dark body.ps .content-head .lead a{color:#fff}',
-    'html.pt-dark body.ps .filters label,html.pt-dark body.ps .fcount,html.pt-dark body.ps main>.empty,html.pt-dark body.ps #empty,html.pt-dark body.ps #loading,html.pt-dark body.ps #rules>h2,html.pt-dark body.ps .nav-label{color:rgba(255,255,255,.88)}',
-    'html.pt-dark body.ps .filters select,html.pt-dark body.ps .search,html.pt-dark body.ps .toolbar input{background:rgba(255,255,255,.95)}',
-    'html.pt-dark #onbBar{background:rgba(255,255,255,.92)}',
-    // picker
-    '#ptPanel{position:fixed;right:18px;top:66px;width:340px;max-width:calc(100vw - 24px);max-height:calc(100vh - 90px);overflow:auto;z-index:1000;background:#fff;color:#111;border-radius:18px;box-shadow:0 24px 60px rgba(15,23,42,.28);padding:18px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}',
-    '#ptPanel[hidden]{display:none}',
-    '#ptPanel h3{margin:0 0 2px;font-size:16px;color:#111}',
-    '#ptPanel p{margin:0 0 12px;font-size:12.5px;color:#6b7a90}',
-    '#ptPanel h4{margin:14px 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#8a97ab}',
-    '.pt-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}',
-    '.pt-sw{position:relative;aspect-ratio:4/3;border-radius:12px;border:2px solid transparent;cursor:pointer;padding:0;overflow:hidden;background-size:cover;background-position:center;box-shadow:inset 0 0 0 1px rgba(15,23,42,.12)}',
-    '.pt-sw.on{border-color:#111;box-shadow:0 0 0 2px #fff inset}',
-    '.pt-sw span{position:absolute;left:0;right:0;bottom:0;padding:3px 4px;font-size:10px;font-weight:600;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.55));text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-    '.pt-sw.light span{color:#111;background:linear-gradient(transparent,rgba(255,255,255,.8))}',
-    '.pt-colors{display:flex;flex-wrap:wrap;gap:8px;align-items:center}',
-    '.pt-c{width:28px;height:28px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(15,23,42,.18);cursor:pointer;padding:0}',
-    '.pt-c.on{box-shadow:0 0 0 2px #111}',
-    '.pt-colors input[type=color]{width:34px;height:30px;border:none;background:none;padding:0;cursor:pointer}',
-    '.pt-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}',
-    '.pt-btn{border:1px solid #d4dbe6;background:#fff;color:#111;border-radius:10px;padding:8px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}',
-    '.pt-btn:hover{border-color:#111}',
-    '.pt-check{display:flex;align-items:center;gap:8px;font-size:13px;color:#3a4759;margin-top:10px;cursor:pointer}',
-    '.pt-x{position:absolute;right:12px;top:10px;border:none;background:none;font-size:22px;line-height:1;color:#8a97ab;cursor:pointer}',
-  ].join('\n');
-  (document.head || document.documentElement).appendChild(css);
-
-  function apply() {
-    var c = current(), root = document.documentElement, st = root.style;
-    var themed = c.id !== 'klasyczny' || c.accent.toLowerCase() !== '#1b3f7f';
-    root.classList.toggle('pt', themed);
-    root.classList.toggle('pt-dark', themed && c.dark);
-    if (!themed) { ['--pt-bg', '--pt-accent', '--pt-accent-d', '--pt-tint', '--pt-glass', '--pt-line'].forEach(function (v) { st.removeProperty(v); }); return; }
-    st.setProperty('--pt-bg', c.own ? 'url("' + c.own + '")' : c.bg);
-    st.setProperty('--pt-accent', c.accent);
-    st.setProperty('--pt-accent-d', shade(c.accent, -0.22));
-    st.setProperty('--pt-tint', shade(c.accent, 0.9));
-    st.setProperty('--pt-glass', c.dark ? 'rgba(15,23,42,.34)' : 'rgba(255,255,255,.66)');
-    st.setProperty('--pt-line', c.dark ? 'rgba(255,255,255,.16)' : 'rgba(15,23,42,.08)');
-  }
-
-  // own picture: scaled down so it fits in the browser's storage
-  function loadImage(file, done) {
-    var url = URL.createObjectURL(file), im = new Image();
-    im.onload = function () {
-      var k = Math.min(1, 1920 / Math.max(im.width, im.height));
-      var cv = document.createElement('canvas');
-      cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k);
-      var ctx = cv.getContext('2d');
-      ctx.drawImage(im, 0, 0, cv.width, cv.height);
-      URL.revokeObjectURL(url);
-      // average brightness decides whether the text on it is light or dark
-      var d = ctx.getImageData(0, 0, cv.width, cv.height).data, sum = 0, n = 0;
-      for (var i = 0; i < d.length; i += 4 * 97) { sum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; n++; }
-      var q = 0.82, data = cv.toDataURL('image/jpeg', q);
-      while (data.length > 1400000 && q > 0.4) { q -= 0.1; data = cv.toDataURL('image/jpeg', q); }
-      done(data, sum / n < 150);
-    };
-    im.onerror = function () { URL.revokeObjectURL(url); done(null); };
-    im.src = url;
-  }
-
-  var panel = null;
-  function render() {
-    var s = read(), c = current();
-    panel.innerHTML = '<button type="button" class="pt-x" data-pt="close" aria-label="Zamknij">×</button>' +
-      '<h3>Wygląd portalu</h3><p>Ustawienie jest Twoje — zapisuje się w tej przeglądarce.</p>' +
-      '<h4>Motyw</h4><div class="pt-grid">' +
-      THEMES.map(function (t) { return '<button type="button" class="pt-sw' + (t.dark ? '' : ' light') + (c.id === t.id ? ' on' : '') + '" data-theme="' + t.id + '" style="background:' + t.sw + '"><span>' + t.name + '</span></button>'; }).join('') +
-      (img() ? '<button type="button" class="pt-sw' + (c.id === 'wlasne' ? ' on' : '') + '" data-theme="wlasne" style="background-image:url(' + img() + ')"><span>Własne</span></button>' : '') +
-      '</div>' +
-      '<h4>Własne tło</h4><div class="pt-row"><button type="button" class="pt-btn" data-pt="upload">Wgraj zdjęcie…</button>' +
-      (img() ? '<button type="button" class="pt-btn" data-pt="rmimg">Usuń zdjęcie</button>' : '') + '<input type="file" accept="image/*" hidden id="ptFile" /></div>' +
-      (c.id === 'wlasne' ? '<label class="pt-check"><input type="checkbox" id="ptDark"' + (c.dark ? ' checked' : '') + ' /> jasny tekst na tle (dla ciemnych zdjęć)</label>' : '') +
-      '<h4>Kolor akcentu</h4><div class="pt-colors">' +
-      ACCENTS.map(function (a) { return '<button type="button" class="pt-c' + (c.accent.toLowerCase() === a.toLowerCase() ? ' on' : '') + '" data-accent="' + a + '" style="background:' + a + '" title="' + a + '"></button>'; }).join('') +
-      '<input type="color" id="ptColor" value="' + c.accent + '" title="Dowolny kolor" /></div>' +
-      '<div class="pt-row" style="margin-top:16px"><button type="button" class="pt-btn" data-pt="reset">Przywróć klasyczny wygląd</button></div>';
-  }
-  function open() {
-    if (!panel) {
-      panel = document.createElement('div');
-      panel.id = 'ptPanel';
-      document.body.appendChild(panel);
-      panel.addEventListener('click', function (e) {
-        var s = read(), t = e.target;
-        var th = t.closest('[data-theme]'), ac = t.closest('[data-accent]'), act = t.closest('[data-pt]');
-        if (th) { s.theme = th.getAttribute('data-theme'); delete s.accent; }
-        else if (ac) s.accent = ac.getAttribute('data-accent');
-        else if (act) {
-          var a = act.getAttribute('data-pt');
-          if (a === 'close') { panel.hidden = true; return; }
-          if (a === 'upload') { panel.querySelector('#ptFile').click(); return; }
-          if (a === 'rmimg') { try { localStorage.removeItem(IMG_KEY); } catch (e2) {} if (s.theme === 'wlasne') s.theme = 'klasyczny'; }
-          if (a === 'reset') s = {};
-        } else return;
-        save(s); apply(); render();
-      });
-      panel.addEventListener('change', function (e) {
-        var s = read();
-        if (e.target.id === 'ptColor') { s.accent = e.target.value; save(s); apply(); render(); }
-        if (e.target.id === 'ptDark') { s.ownDark = e.target.checked; save(s); apply(); }
-        if (e.target.id === 'ptFile' && e.target.files[0]) {
-          loadImage(e.target.files[0], function (data, dark) {
-            if (!data) return alert('Nie udało się wczytać tego zdjęcia.');
-            try { localStorage.setItem(IMG_KEY, data); } catch (err) { return alert('To zdjęcie jest za duże dla pamięci przeglądarki — wybierz mniejsze.'); }
-            s.theme = 'wlasne'; s.ownDark = dark; delete s.accent;
-            save(s); apply(); render();
-          });
-        }
-      });
-      document.addEventListener('click', function (e) {
-        if (!panel.hidden && !e.target.closest('#ptPanel') && !e.target.closest('[data-pt-open]')) panel.hidden = true;
-      });
-    }
-    panel.hidden = false;
-    render();
-  }
-
-  apply();
-  window.PortalTheme = { apply: apply, open: open };
-})();
-
 /* Portal shell: the same navigation on every protected page.
    Loaded by auth-guard.js once access is confirmed (needs window.PortalAccess and
    window.PortalUser). Desktop: fixed sidebar, content uses the full width.
@@ -206,6 +7,8 @@
 (function () {
   'use strict';
   if (document.getElementById('psSide')) return;
+  // themes live in portal-theme.js (auth-guard loads it first; this is the fallback)
+  if (!window.PortalTheme) { var th = document.createElement('script'); th.src = 'portal-theme.js'; document.head.appendChild(th); }
   var acc = window.PortalAccess || { has: function () { return true; } };
   var user = window.PortalUser || {};
   var page = window.PortalPage || location.pathname.split('/').pop() || 'index.html';
@@ -289,7 +92,10 @@
     '.ps-item{display:flex;align-items:center;gap:11px;padding:10px 12px;margin-bottom:3px;border-radius:9px;font-size:14px;font-weight:500;color:#3a4759;text-decoration:none;line-height:1.3}',
     '.ps-item:hover{background:rgba(27,63,127,.07);color:var(--ps-navy)}',
     '.ps-item.on{background:var(--ps-navy);color:#fff;font-weight:600}',
-    '.ps-ico{width:26px;height:26px;flex:0 0 26px;display:flex;align-items:center;justify-content:center;font-size:16px;border-radius:7px;background:#fff}',
+    '.ps-ico{width:26px;height:26px;flex:0 0 26px;display:flex;align-items:center;justify-content:center;font-size:16px;border-radius:8px;background:rgba(27,63,127,.07);color:inherit}',
+    '.ps-top svg,.ps-drop svg,.ps-rodo svg{flex:0 0 auto;vertical-align:-4px}',
+    '.ps-drop a{display:flex!important;align-items:center;gap:10px}',
+    '#psTabs .i{display:flex;align-items:center;justify-content:center;height:22px}',
     '.ps-item.on .ps-ico{background:rgba(255,255,255,.18)}',
     '.ps-badge{margin-left:auto;min-width:22px;padding:1px 7px;border-radius:999px;background:#dc2626;color:#fff;font-size:11.5px;font-weight:700;text-align:center}',
     '.ps-foot{margin-top:auto;padding-top:14px}',
@@ -357,9 +163,35 @@
   document.head.appendChild(css);
 
   // ---------------- markup ----------------
+  // one-colour line icons instead of emoji: they take the colour of the text around them
+  var SVG = {
+    '🚦': '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    '📥': '<path d="M4 13v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="M12 4v10"/><path d="m8 10 4 4 4-4"/>',
+    '🧾': '<path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4"/><path d="M10 12h6M10 16h6"/>',
+    '🏢': '<path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/><path d="M16 9h2a2 2 0 0 1 2 2v10"/><path d="M3 21h18"/><path d="M8 7h4M8 11h4M8 15h4"/>',
+    '📤': '<path d="M4 13v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="M12 15V4"/><path d="m8 8 4-4 4 4"/>',
+    '⚖️': '<path d="M12 4v16"/><path d="M7 20h10"/><path d="M5 7h14"/><path d="m5 7-3 6a3 3 0 0 0 6 0z"/><path d="m19 7-3 6a3 3 0 0 0 6 0z"/>',
+    '🕘': '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/>',
+    '🔗': '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+    '📋': '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9 10h6M9 14h6"/>',
+    '💼': '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/>',
+    '🛂': '<rect x="5" y="3" width="14" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M9 17h6"/>',
+    '🚀': '<path d="M5 19c1-4 3-6 3-6l3 3s-2 2-6 3z"/><path d="M9 13c1-5 5-9 11-9 0 6-4 10-9 11z"/><circle cx="15" cy="9" r="1.5"/>',
+    '⏰': '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    '✅': '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/>',
+    '🔑': '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9"/><path d="m16 7 3 3"/>',
+    '📇': '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5a3 3 0 0 1 0 6M21 20a6 6 0 0 0-4-5.6"/>',
+    '⚙️': '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
+    '🎨': '<path d="M12 3a9 9 0 0 0 0 18c1.5 0 2-1 2-2 0-1.5 1-2 2-2h2a3 3 0 0 0 3-3c0-6-4-11-9-11z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/>',
+    '👥': '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5a3 3 0 0 1 0 6M21 20a6 6 0 0 0-4-5.6"/>',
+    '🔔': '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 21h4"/>',
+    '✉️': '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+    '🛡️': '<path d="M12 3 5 6v6c0 4 3 7 7 9 4-2 7-5 7-9V6z"/>',
+  };
+  function ico(e) { return SVG[e] ? '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + SVG[e] + '</svg>' : e; }
   function link(it, cls) {
     return '<a class="' + cls + '" href="' + it.href + '" data-href="' + it.href + '">' +
-      (cls === 'ps-item' ? '<span class="ps-ico">' + it.ico + '</span>' + esc(it.text) : '<span class="i">' + it.ico + '</span>' + esc(it.short)) +
+      (cls === 'ps-item' ? '<span class="ps-ico">' + ico(it.ico) + '</span>' + esc(it.text) : '<span class="i">' + ico(it.ico) + '</span>' + esc(it.short)) +
       (it.badge ? '<span class="ps-badge" data-badge hidden></span>' : '') + (it.tasks ? '<span class="ps-badge" data-tbadge hidden></span>' : '') + '</a>';
   }
   var side = document.createElement('nav');
@@ -370,12 +202,12 @@
       return '<div class="ps-group' + (g.mobile ? ' ps-m' : '') + '" data-group="' + esc(g.label) + '">' +
         '<button type="button" class="ps-label" data-fold aria-expanded="false"><span>' + esc(g.label) + '</span><span class="ps-chev">›</span></button>' +
         '<div class="ps-items">' + g.items.map(function (it) { return link(it, 'ps-item'); }).join('') +
-        (g.sec === 'kadry' ? '<button type="button" class="ps-item ps-copy" id="psCopy"><span class="ps-ico">🔗</span><span data-copy-text>Kopiuj link do formularza dla klienta</span></button>' : '') +
+        (g.sec === 'kadry' ? '<button type="button" class="ps-item ps-copy" id="psCopy"><span class="ps-ico">' + ico('🔗') + '</span><span data-copy-text>Kopiuj link do formularza dla klienta</span></button>' : '') +
         '</div></div>';
     }).join('') +
     '<div class="ps-foot">' +
       '<div class="ps-user ps-m"><span title="' + esc(user.email) + '">' + esc(user.email || 'zalogowano') + '</span><button type="button" class="ps-out" id="psOut">Wyloguj</button></div>' +
-      '<a class="ps-rodo ps-m" href="#" data-pt-open>🎨 Wygląd portalu</a>' +
+      '<a class="ps-rodo ps-m" href="#" data-pt-open>' + ico('🎨') + ' Wygląd portalu</a>' +
       '<a class="ps-rodo" href="rodo.html" target="_blank" rel="noopener">Informacja RODO</a>' +
     '</div>';
 
@@ -390,17 +222,17 @@
   bar.innerHTML =
     '<strong id="psBarTitle"></strong>' +
     '<nav>' +
-      '<a class="ps-top" href="' + CRM_URL + '" target="_blank" rel="noopener" title="CRM — leady, sprawy, klienci (otwiera się w nowej karcie)">📇 CRM ↗</a>' +
-      '<a class="ps-top" href="zadania.html" data-top="zadania.html">✅ Zadania<span class="ps-badge" data-tbadge hidden></span></a>' +
-      (acc.has('kadry') ? '<a class="ps-top" href="zatrudnienie.html" data-top="zatrudnienie.html" title="Nowe zgłoszenia pracowników">📥<span class="ps-badge" data-badge hidden></span></a>' : '') +
-      (user.admin ? '<a class="ps-top" href="dostep.html" data-top="dostep.html">🔑 Dostęp do portalu</a>' : '') +
-      '<button type="button" class="ps-top" data-pt-open title="Wygląd — motywy, tło i kolory">🎨</button>' +
-      '<div class="ps-menu"><button type="button" class="ps-top" id="psGear" aria-haspopup="true" aria-expanded="false" title="Ustawienia">⚙️ Ustawienia</button>' +
+      '<a class="ps-top" href="' + CRM_URL + '" target="_blank" rel="noopener" title="CRM — leady, sprawy, klienci (otwiera się w nowej karcie)">' + ico('📇') + ' CRM ↗</a>' +
+      '<a class="ps-top" href="zadania.html" data-top="zadania.html">' + ico('✅') + ' Zadania<span class="ps-badge" data-tbadge hidden></span></a>' +
+      (acc.has('kadry') ? '<a class="ps-top" href="zatrudnienie.html" data-top="zatrudnienie.html" title="Nowe zgłoszenia pracowników">' + ico('📥') + '<span class="ps-badge" data-badge hidden></span></a>' : '') +
+      (user.admin ? '<a class="ps-top" href="dostep.html" data-top="dostep.html">' + ico('🔑') + ' Dostęp do portalu</a>' : '') +
+      '<button type="button" class="ps-top" data-pt-open title="Wygląd — motywy, tło i kolory">' + ico('🎨') + '</button>' +
+      '<div class="ps-menu"><button type="button" class="ps-top" id="psGear" aria-haspopup="true" aria-expanded="false" title="Ustawienia">' + ico('⚙️') + ' Ustawienia</button>' +
         '<div class="ps-drop" id="psDrop" hidden>' +
-          (user.admin ? '<a href="dostep.html">👥 Użytkownicy i dostęp do modułów</a><a href="zadania.html#settings">🔔 Powiadomienia Telegram i eskalacje</a>' : '') +
-          (acc.has('kadry') ? '<a href="kontrola.html#rem">✉️ Przypomnienia dla klientów</a><a href="wiedza.html">⚖️ Baza wiedzy — przepisy</a>' : '') +
-          '<a href="#" data-pt-open>🎨 Wygląd — motywy, tło i kolory</a>' +
-          '<a href="rodo.html" target="_blank" rel="noopener">🛡️ Informacja RODO</a>' +
+          (user.admin ? '<a href="dostep.html">' + ico('👥') + ' Użytkownicy i dostęp do modułów</a><a href="zadania.html#settings">' + ico('🔔') + ' Powiadomienia Telegram i eskalacje</a>' : '') +
+          (acc.has('kadry') ? '<a href="kontrola.html#rem">' + ico('✉️') + ' Przypomnienia dla klientów</a><a href="wiedza.html">' + ico('⚖️') + ' Baza wiedzy — przepisy</a>' : '') +
+          '<a href="#" data-pt-open>' + ico('🎨') + ' Wygląd — motywy, tło i kolory</a>' +
+          '<a href="rodo.html" target="_blank" rel="noopener">' + ico('🛡️') + ' Informacja RODO</a>' +
         '</div></div>' +
       '<span class="ps-who" title="' + esc(user.email) + '">' + esc(user.email || '') + '</span>' +
       '<button type="button" class="ps-out" id="psOut2">Wyloguj</button>' +
@@ -472,7 +304,7 @@
       e.preventDefault();
       var dd = document.getElementById('psDrop'); if (dd) dd.hidden = true;
       document.body.classList.remove('ps-open');
-      return window.PortalTheme.open();
+      return window.PortalTheme ? window.PortalTheme.open() : undefined;
     }
     var drop = document.getElementById('psDrop');
     if (t.closest('#psGear')) {
