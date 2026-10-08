@@ -21,17 +21,20 @@
       { href: 'rejestr.html', ico: '🏢', text: 'Rejestr i terminy', short: 'Rejestr', wide: true },
       { href: 'import.html', ico: '📤', text: 'Import pracowników', short: 'Import', wide: true },
       { href: 'wiedza.html', ico: '⚖️', text: 'Baza wiedzy — przepisy', short: 'Przepisy', wide: true },
+      { href: 'historia.html?s=kadry', ico: '🕘', text: 'Historia dokumentów', short: 'Historia', wide: true },
     ] },
     { label: 'Spółka', items: [
       { href: 'index.html#rejestracja', ico: '📋', text: 'Rejestracja spółki', short: 'Rejestracja', sec: 'rejestracja' },
       { href: 'index.html#biezaca', ico: '💼', text: 'Bieżąca działalność', short: 'Bieżąca', sec: 'biezaca',
         pages: ['wynagrodzenie.html', 'e-urzad.html', 'pelnomocnictwo.html', 'zalacznik-pobyt.html', 'nip-8.html'] },
+      { href: 'historia.html?s=spolka', ico: '🕘', text: 'Historia dokumentów', short: 'Historia', wide: true },
     ] },
-    { label: 'Klienci', items: [
-      { href: 'onboarding.html', ico: '🚀', text: 'Onboarding klientów', short: 'Onboarding', sec: 'onboarding', wide: true },
+    { label: 'Księgowość', sec: 'onboarding', items: [
+      { href: 'onboarding.html', ico: '🚀', text: 'Onboarding klientów', short: 'Onboarding', wide: true },
+      { href: 'onboarding.html?p=/deadlines', ico: '⏰', text: 'Terminy klientów', short: 'Terminy', wide: true },
     ] },
     { label: 'Ogólne', items: [
-      { href: 'historia.html', ico: '🕘', text: 'Historia dokumentów', short: 'Historia', wide: true },
+      { href: 'zadania.html', ico: '✅', text: 'Zadania', short: 'Zadania', wide: true, tasks: true },
       { href: 'dostep.html', ico: '🔑', text: 'Dostęp do portalu', short: 'Dostęp', admin: true, wide: true },
       { href: 'index.html#konsultacja', ico: '💬', text: 'Konsultacja', short: 'Pomoc' },
     ] },
@@ -56,8 +59,10 @@
   function isActive(it) {
     var parts = it.href.split('#');
     if (it.pages && it.pages.indexOf(page) !== -1) return true;
-    if (parts[0] !== page) return false;
-    if (page !== 'index.html') return true;
+    var q = parts[0].split('?');
+    if (q[0] !== page) return false;
+    if (q[1]) return location.search.replace('?', '') === q[1];
+    if (page !== 'index.html') return !location.search || !items.some(function (o) { return o !== it && o.href.split('#')[0] === page + location.search; });
     // on the start page the open panel decides (no hash = the default panel)
     var open = document.querySelector('.panel.active');
     return (location.hash.replace('#', '') || (open ? open.getAttribute('data-panel') : '')) === (parts[1] || '');
@@ -80,8 +85,7 @@
     '.ps-item.on .ps-ico{background:rgba(255,255,255,.18)}',
     '.ps-badge{margin-left:auto;min-width:22px;padding:1px 7px;border-radius:999px;background:#dc2626;color:#fff;font-size:11.5px;font-weight:700;text-align:center}',
     '.ps-foot{margin-top:auto;padding-top:14px}',
-    '.ps-copy{width:100%;border:1.5px dashed #b8c4d8;background:#fff;color:var(--ps-navy);border-radius:9px;padding:9px 10px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;text-align:left;line-height:1.35}',
-    '.ps-copy:hover{border-color:var(--ps-navy)}',
+    'button.ps-copy{width:100%;border:none;background:none;font-family:inherit;cursor:pointer;text-align:left}',
     '.ps-user{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:#5a6577}',
     '.ps-user span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.ps-out{border:none;background:var(--ps-navy);color:#fff;border-radius:999px;padding:6px 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}',
@@ -127,16 +131,16 @@
   function link(it, cls) {
     return '<a class="' + cls + '" href="' + it.href + '" data-href="' + it.href + '">' +
       (cls === 'ps-item' ? '<span class="ps-ico">' + it.ico + '</span>' + esc(it.text) : '<span class="i">' + it.ico + '</span>' + esc(it.short)) +
-      (it.badge ? '<span class="ps-badge" data-badge hidden></span>' : '') + '</a>';
+      (it.badge ? '<span class="ps-badge" data-badge hidden></span>' : '') + (it.tasks ? '<span class="ps-badge" data-tbadge hidden></span>' : '') + '</a>';
   }
   var side = document.createElement('nav');
   side.id = 'psSide';
   side.innerHTML = '<a class="ps-brand" href="index.html"><img src="logo.png" alt="TD Consulting Group" /></a>' +
     NAV.filter(function (g) { return g.items.length; }).map(function (g) {
-      return '<div class="ps-label">' + g.label + '</div>' + g.items.map(function (it) { return link(it, 'ps-item'); }).join('');
+      return '<div class="ps-label">' + g.label + '</div>' + g.items.map(function (it) { return link(it, 'ps-item'); }).join('') +
+        (g.sec === 'kadry' ? '<button type="button" class="ps-item ps-copy" id="psCopy"><span class="ps-ico">🔗</span><span data-copy-text>Kopiuj link do formularza dla klienta</span></button>' : '');
     }).join('') +
     '<div class="ps-foot">' +
-      (acc.has('kadry') ? '<button type="button" class="ps-copy" id="psCopy">🔗 Kopiuj link do formularza dla klienta</button>' : '') +
       '<div class="ps-user"><span title="' + esc(user.email) + '">' + esc(user.email || 'zalogowano') + '</span><button type="button" class="ps-out" id="psOut">Wyloguj</button></div>' +
       '<a class="ps-rodo" href="rodo.html" target="_blank" rel="noopener">Informacja RODO</a>' +
     '</div>';
@@ -161,6 +165,7 @@
     document.body.appendChild(tabs);
     refresh();
     loadBadge();
+    loadTasks();
   }
 
   function refresh() {
@@ -185,7 +190,8 @@
     }
     var copy = t.closest('#psCopy');
     if (copy) {
-      var done = function () { copy.textContent = '✓ Skopiowano — wyślij klientowi'; setTimeout(function () { copy.textContent = '🔗 Kopiuj link do formularza dla klienta'; }, 2200); };
+      var lbl = copy.querySelector('[data-copy-text]');
+      var done = function () { lbl.textContent = '✓ Skopiowano — wyślij klientowi'; setTimeout(function () { lbl.textContent = 'Kopiuj link do formularza dla klienta'; }, 2200); };
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(FORM_URL).then(done, function () { prompt('Link do formularza:', FORM_URL); });
       else prompt('Link do formularza:', FORM_URL);
     }
@@ -200,7 +206,15 @@
       document.querySelectorAll('[data-badge]').forEach(function (b) { b.hidden = !n; b.textContent = n; });
     });
   }
-  window.PortalShell = { refreshBadge: loadBadge };
+  // my open tasks
+  function loadTasks() {
+    if (!window.sb || !user.email) return;
+    window.sb.from('portal_zadania').select('id', { count: 'exact', head: true }).eq('assignee', String(user.email).toLowerCase()).in('status', ['nowe', 'w_toku']).then(function (r) {
+      var n = r && !r.error ? r.count : 0;
+      document.querySelectorAll('[data-tbadge]').forEach(function (b) { b.hidden = !n; b.textContent = n; });
+    });
+  }
+  window.PortalShell = { refreshBadge: loadBadge, refreshTasks: loadTasks };
 
   if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
 })();

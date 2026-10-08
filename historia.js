@@ -9,6 +9,20 @@
 
   var rows = [];
 
+  // every module has its own history: ?s=kadry — employment packets, ?s=spolka — company documents
+  var SEC = new URLSearchParams(location.search).get('s') || '';
+  var SECTIONS = {
+    kadry: { title: 'Historia dokumentów — Kadry', lead: 'Komplety dokumentów zatrudnienia wygenerowane w module Kadry.', empty: 'Brak dokumentów. Wygeneruj pierwszy komplet w „Komplet dokumentów”.', has: function (t) { return t === 'umowa-zlecenie'; } },
+    spolka: { title: 'Historia dokumentów — Spółka', lead: 'Dokumenty rejestracji spółki i bieżącej działalności.', empty: 'Brak dokumentów. Wygeneruj pierwszy dokument w module Spółka.', has: function (t) { return t !== 'umowa-zlecenie'; } },
+  };
+  var sec = SECTIONS[SEC] || null;
+  if (sec) {
+    document.title = sec.title + ' — TD Consulting Group';
+    var h = document.querySelector('main h1'), l = document.querySelector('main .lead');
+    if (h) h.textContent = sec.title;
+    if (l) l.textContent = sec.lead;
+  }
+
   function showError(msg) { errEl.textContent = msg; errEl.style.display = 'block'; }
   function clearError() { errEl.style.display = 'none'; }
 
@@ -52,7 +66,7 @@
     if (filtered.length === 0) {
       emptyEl.style.display = 'block';
       emptyEl.textContent = rows.length === 0
-        ? 'Brak zapisanych dokumentów. Wygeneruj pierwszy komplet w module Kadry.'
+        ? (sec ? sec.empty : 'Brak zapisanych dokumentów.')
         : 'Brak wyników dla podanego zapytania.';
       return;
     }
@@ -151,7 +165,7 @@
     emptyEl.style.display = 'none';
     listEl.innerHTML = '';
     try {
-      rows = await window.DocHistory.list();
+      rows = (await window.DocHistory.list()).filter(function (r) { return !sec || sec.has(r.doc_type); });
       render();
     } catch (e) {
       showError('Nie udało się wczytać historii: ' + (e.message || e));
