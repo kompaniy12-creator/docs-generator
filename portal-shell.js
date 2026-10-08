@@ -26,8 +26,12 @@
     { label: 'Spółka', items: [
       { href: 'index.html#rejestracja', ico: '📋', text: 'Rejestracja spółki', short: 'Rejestracja', sec: 'rejestracja' },
       { href: 'index.html#biezaca', ico: '💼', text: 'Bieżąca działalność', short: 'Bieżąca', sec: 'biezaca',
-        pages: ['wynagrodzenie.html', 'e-urzad.html', 'pelnomocnictwo.html', 'zalacznik-pobyt.html', 'nip-8.html'] },
+        pages: ['wynagrodzenie.html', 'e-urzad.html', 'pelnomocnictwo.html', 'nip-8.html'] },
       { href: 'historia.html?s=spolka', ico: '🕘', text: 'Historia dokumentów', short: 'Historia', wide: true },
+    ] },
+    { label: 'Legalizacja pobytu', sec: 'biezaca', items: [
+      { href: 'zalacznik-pobyt.html', ico: '🛂', text: 'Załącznik nr 1 do wniosku o pobyt', short: 'Załącznik' },
+      { href: 'historia.html?s=legalizacja', ico: '🕘', text: 'Historia dokumentów', short: 'Historia', wide: true },
     ] },
     { label: 'Księgowość', sec: 'onboarding', items: [
       { href: 'onboarding.html', ico: '🚀', text: 'Onboarding klientów', short: 'Onboarding', wide: true },

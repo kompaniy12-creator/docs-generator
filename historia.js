@@ -13,7 +13,8 @@
   var SEC = new URLSearchParams(location.search).get('s') || '';
   var SECTIONS = {
     kadry: { title: 'Historia dokumentów — Kadry', lead: 'Komplety dokumentów zatrudnienia wygenerowane w module Kadry.', empty: 'Brak dokumentów. Wygeneruj pierwszy komplet w „Komplet dokumentów”.', has: function (t) { return t === 'umowa-zlecenie'; } },
-    spolka: { title: 'Historia dokumentów — Spółka', lead: 'Dokumenty rejestracji spółki i bieżącej działalności.', empty: 'Brak dokumentów. Wygeneruj pierwszy dokument w module Spółka.', has: function (t) { return t !== 'umowa-zlecenie'; } },
+    spolka: { title: 'Historia dokumentów — Spółka', lead: 'Dokumenty rejestracji spółki i bieżącej działalności.', empty: 'Brak dokumentów. Wygeneruj pierwszy dokument w module Spółka.', has: function (t) { return t !== 'umowa-zlecenie' && t !== 'zalacznik-pobyt'; } },
+    legalizacja: { title: 'Historia dokumentów — Legalizacja pobytu', lead: 'Dokumenty do wniosków pobytowych cudzoziemców.', empty: 'Brak dokumentów. Wygeneruj pierwszy w module Legalizacja pobytu.', has: function (t) { return t === 'zalacznik-pobyt'; } },
   };
   var sec = SECTIONS[SEC] || null;
   if (sec) {
