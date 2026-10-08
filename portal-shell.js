@@ -8,20 +8,20 @@
   var KEY = 'tdcg_wyglad', IMG_KEY = 'tdcg_wyglad_tlo';
   // bg: CSS background; dark: light text on the background and glass navigation
   var THEMES = [
-    { id: 'klasyczny', name: 'Klasyczny', dark: false, accent: '#1B3F7F', bg: '#f6f8fb' },
-    { id: 'aurora', name: 'Aurora', dark: true, accent: '#5b5bf0',
+    { id: 'klasyczny', sw: '#f6f8fb', name: 'Klasyczny', dark: false, accent: '#1B3F7F', bg: '#f6f8fb' },
+    { id: 'aurora', sw: 'linear-gradient(135deg,#7c3aed,#2563eb 55%,#06b6d4)', name: 'Aurora', dark: true, accent: '#5b5bf0',
       bg: 'radial-gradient(1100px 700px at 12% 8%,#7c3aed 0%,transparent 60%),radial-gradient(900px 700px at 88% 18%,#2563eb 0%,transparent 62%),radial-gradient(1000px 800px at 70% 96%,#06b6d4 0%,transparent 58%),radial-gradient(900px 700px at 8% 92%,#4f46e5 0%,transparent 60%),#1e1b4b' },
-    { id: 'ocean', name: 'Ocean', dark: true, accent: '#0e7490',
+    { id: 'ocean', sw: 'linear-gradient(135deg,#0369a1,#22d3ee 60%,#0f766e)', name: 'Ocean', dark: true, accent: '#0e7490',
       bg: 'radial-gradient(1000px 700px at 85% 5%,#22d3ee 0%,transparent 58%),radial-gradient(1100px 800px at 10% 30%,#0369a1 0%,transparent 62%),radial-gradient(1000px 700px at 60% 100%,#0f766e 0%,transparent 60%),#082f49' },
-    { id: 'zachod', name: 'Zachód słońca', dark: true, accent: '#c2410c',
+    { id: 'zachod', sw: 'linear-gradient(135deg,#e11d48,#f59e0b 55%,#7c3aed)', name: 'Zachód słońca', dark: true, accent: '#c2410c',
       bg: 'radial-gradient(1000px 700px at 88% 8%,#f59e0b 0%,transparent 55%),radial-gradient(1100px 800px at 20% 20%,#e11d48 0%,transparent 60%),radial-gradient(1100px 800px at 60% 100%,#7c3aed 0%,transparent 62%),#4a044e' },
-    { id: 'las', name: 'Las', dark: true, accent: '#15803d',
+    { id: 'las', sw: 'linear-gradient(135deg,#16a34a,#0d9488 60%,#365314)', name: 'Las', dark: true, accent: '#15803d',
       bg: 'radial-gradient(1000px 700px at 10% 10%,#16a34a 0%,transparent 58%),radial-gradient(1000px 800px at 90% 30%,#0d9488 0%,transparent 60%),radial-gradient(1000px 700px at 50% 100%,#365314 0%,transparent 62%),#052e16' },
-    { id: 'grafit', name: 'Grafit', dark: true, accent: '#334155',
+    { id: 'grafit', sw: 'linear-gradient(135deg,#475569,#0f172a 60%,#1e3a8a)', name: 'Grafit', dark: true, accent: '#334155',
       bg: 'radial-gradient(1100px 700px at 15% 0%,#475569 0%,transparent 60%),radial-gradient(1000px 800px at 90% 90%,#1e3a8a 0%,transparent 62%),#0f172a' },
-    { id: 'piasek', name: 'Piasek', dark: false, accent: '#9a3412',
+    { id: 'piasek', sw: 'linear-gradient(135deg,#fde68a,#fecdd3 55%,#bae6fd)', name: 'Piasek', dark: false, accent: '#9a3412',
       bg: 'radial-gradient(1000px 700px at 10% 0%,#fde68a 0%,transparent 60%),radial-gradient(1000px 800px at 95% 30%,#fecdd3 0%,transparent 60%),radial-gradient(1000px 700px at 50% 100%,#bae6fd 0%,transparent 62%),#fff7ed' },
-    { id: 'mietowy', name: 'Miętowy', dark: false, accent: '#0f766e',
+    { id: 'mietowy', sw: 'linear-gradient(135deg,#a7f3d0,#bfdbfe 55%,#ddd6fe)', name: 'Miętowy', dark: false, accent: '#0f766e',
       bg: 'radial-gradient(1000px 700px at 5% 5%,#a7f3d0 0%,transparent 60%),radial-gradient(1000px 800px at 95% 20%,#bfdbfe 0%,transparent 60%),radial-gradient(1000px 700px at 60% 100%,#ddd6fe 0%,transparent 62%),#f0fdfa' },
   ];
   var ACCENTS = ['#1B3F7F', '#2563eb', '#5b5bf0', '#7c3aed', '#c026d3', '#e11d48', '#c2410c', '#b45309', '#15803d', '#0f766e', '#0e7490', '#334155'];
@@ -142,7 +142,7 @@
     panel.innerHTML = '<button type="button" class="pt-x" data-pt="close" aria-label="Zamknij">×</button>' +
       '<h3>Wygląd portalu</h3><p>Ustawienie jest Twoje — zapisuje się w tej przeglądarce.</p>' +
       '<h4>Motyw</h4><div class="pt-grid">' +
-      THEMES.map(function (t) { return '<button type="button" class="pt-sw' + (t.dark ? '' : ' light') + (c.id === t.id ? ' on' : '') + '" data-theme="' + t.id + '" style="background:' + t.bg + '"><span>' + t.name + '</span></button>'; }).join('') +
+      THEMES.map(function (t) { return '<button type="button" class="pt-sw' + (t.dark ? '' : ' light') + (c.id === t.id ? ' on' : '') + '" data-theme="' + t.id + '" style="background:' + t.sw + '"><span>' + t.name + '</span></button>'; }).join('') +
       (img() ? '<button type="button" class="pt-sw' + (c.id === 'wlasne' ? ' on' : '') + '" data-theme="wlasne" style="background-image:url(' + img() + ')"><span>Własne</span></button>' : '') +
       '</div>' +
       '<h4>Własne tło</h4><div class="pt-row"><button type="button" class="pt-btn" data-pt="upload">Wgraj zdjęcie…</button>' +
