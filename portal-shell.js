@@ -22,6 +22,7 @@
       { href: 'umowa-zlecenie.html', ico: '🧾', text: 'Komplet dokumentów', short: 'Komplet' },
       { href: 'rejestr.html', ico: '🏢', text: 'Rejestr i terminy', short: 'Rejestr', wide: true },
       { href: 'akta.html', ico: '🗂️', text: 'Akta osobowe', short: 'Akta', wide: true },
+      { href: 'podpisy.html', ico: '✍️', text: 'Podpisy elektroniczne', short: 'Podpisy', wide: true },
       { href: 'import.html', ico: '📤', text: 'Import pracowników', short: 'Import', wide: true },
       { href: 'wiedza.html', ico: '⚖️', text: 'Baza wiedzy — przepisy', short: 'Przepisy', wide: true },
       { href: 'historia.html?s=kadry', ico: '🕘', text: 'Historia dokumentów', short: 'Historia', wide: true },

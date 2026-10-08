@@ -59,6 +59,24 @@
   .progress i{display:block;height:100%;background:var(--green)}
   .empty{color:#8a97ab;font-size:14px;padding:6px 0}
   .search{width:100%;max-width:320px;padding:9px 12px;border:1px solid #d4dbe6;border-radius:9px;font:inherit;font-size:14px;margin:0 0 6px}
+  /* dokumenty do podpisu: only layout here — blocks, rows, pills and messages are the standard ones */
+  .box h2 .pill{vertical-align:middle;margin-left:6px}
+  .mini:disabled{opacity:.6;cursor:wait}
+  .pdocs{padding:0 0 8px 14px}
+  .pdocs .mini{white-space:normal;text-align:left}
+  .pdocs .pill{white-space:normal}
+  .pdok .pbody{flex:0 0 100%;min-width:0}
+  .pbody .hint{margin:0 0 6px}
+  .pstep{font-size:13.5px;font-weight:600;margin:14px 0 4px}
+  .pacts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0 0}
+  .opt,.chk{display:flex;gap:10px;align-items:flex-start;font-size:14px;font-weight:400;color:inherit;margin:0;padding:7px 0;cursor:pointer}
+  .opt input,.chk input{margin-top:3px;width:18px;height:18px;flex:none}
+  .opt small{display:block;color:#7a8699;font-size:12.5px}
+  .chk{font-weight:600;margin-top:6px}
+  .msg.warn{background:#fef3c7;color:#78350f;border:1px solid #f59e0b;white-space:pre-line}
+  .msg.warn b{display:block;margin-bottom:4px}
+  ol.how{margin:4px 0 12px;padding-left:20px;font-size:13.5px}
+  ol.how li{margin:0 0 4px}
   footer{max-width:1100px;margin:0 auto;padding:0 18px 30px;color:#8a97ab;font-size:12px}
   footer a{color:#8a97ab}
   [hidden]{display:none!important}
@@ -114,8 +132,15 @@
       <a class="btn green" id="newWorker" target="_blank" rel="noopener">+ Zgłoś pracownika do zatrudnienia</a>
     </div>
 
+    <div class="box" id="boxPodpisy" hidden>
+      <h2>Dokumenty do podpisu <span class="pill p-amber" id="podpisyIle" hidden></span></h2>
+      <p class="hint">Dokumenty, które biuro przygotowało do podpisania przez internet. Podpis składają Państwo poza profilem — tutaj pobiera się dokument i odsyła podpisany plik, a biuro sprawdza każdy podpis.</p>
+      <div id="podpisyJak"></div>
+      <div id="podpisy"></div>
+    </div>
+
     <div class="box" id="boxSign" hidden>
-      <h2>Dokumenty do podpisu</h2>
+      <h2>Komplet dokumentów do wydruku</h2>
       <p class="hint">Prosimy wydrukować, podpisać (pracownik i osoba reprezentująca firmę) i odesłać skan do biura.</p>
       <div id="sign"></div>
     </div>
@@ -151,6 +176,6 @@
   </main>
   <footer>TD Consulting Group · <a href="../rodo.html" target="_blank" rel="noopener">Informacja o przetwarzaniu danych (RODO)</a> · kontakt: <a href="mailto:kadry@td-group.pl">kadry@td-group.pl</a></footer>
 </div>
-<script src="klient.js?v=2"></script>
+<script src="klient.js?v=3"></script>
 </body>
 </html>
