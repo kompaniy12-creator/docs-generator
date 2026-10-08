@@ -10,7 +10,7 @@
 // asks for it explicitly. The logic lives in ../_shared/firma.ts, which the public
 // client form also uses through klient-by-nip. Sole proprietors are not in KRS -> { found: false }.
 
-import { firmaConfigured, getFirma } from "../_shared/firma.ts";
+import { firmaConfigured, getFirma, getOdpis, searchFirmy } from "../_shared/firma.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -42,10 +42,23 @@ Deno.serve(async (req) => {
   if (!firmaConfigured()) return json({ error: "Brak konfiguracji REJESTR_IO_KEY." }, 500, origin);
 
   const url = new URL(req.url);
+  const fresh = !!url.searchParams.get("fresh");
+  const q = (url.searchParams.get("q") ?? "").trim();
+  const krs = (url.searchParams.get("krs") ?? "").replace(/\D/g, "");
+  const odpis = (url.searchParams.get("odpis") ?? "").replace(/\D/g, "");
   const nip = (url.searchParams.get("nip") ?? "").replace(/\D/g, "");
-  if (nip.length !== 10) return json({ error: "Nieprawidłowy NIP (10 cyfr)." }, 400, origin);
   try {
-    return json(await getFirma(nip, !!url.searchParams.get("fresh")), 200, origin);
+    //   ?q=name | NIP | KRS | REGON  -> { hits: [{ krs, nip, nazwa, miasto, forma, wykreslona }] }
+    if (q) {
+      if (q.length < 3) return json({ error: "Wpisz co najmniej 3 znaki." }, 400, origin);
+      return json({ hits: await searchFirmy(q.slice(0, 120)) }, 200, origin);
+    }
+    //   ?odpis=KRS -> { pdf (base64), pobrano } — the current KRS extract, for PESEL numbers
+    if (odpis) return json(await getOdpis(odpis.padStart(10, "0"), fresh), 200, origin);
+    //   ?krs=KRS -> the same firm data as by NIP
+    if (krs) return json(await getFirma("", fresh, krs.padStart(10, "0")), 200, origin);
+    if (nip.length !== 10) return json({ error: "Nieprawidłowy NIP (10 cyfr)." }, 400, origin);
+    return json(await getFirma(nip, fresh), 200, origin);
   } catch (e) {
     console.error(e);
     return json({ error: "Nie udało się pobrać danych z rejestr.io (" + String((e as Error)?.message ?? e).slice(0, 120) + ")." }, 502, origin);

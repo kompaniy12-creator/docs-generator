@@ -138,6 +138,11 @@
       const afterIdx = labelRe.lastIndex;
       const lookahead = sectionText.slice(afterIdx, afterIdx + 1200);
       const entry = { nazwisko, imie };
+      // "4.Numer PESEL/REGON lub data urodzenia 90010112345" — only the next few fields of this person
+      const next = lookahead.search(/1\.?\s*Nazwisko\s*\/\s*Nazwa/);
+      const own = next >= 0 ? lookahead.slice(0, next) : lookahead;
+      const pe = own.match(/PESEL[^\d\n]{0,40}(\d{11})(?!\d)/i);
+      if (pe) entry.pesel = pe[1];
 
       if (type === 'wsp') {
         // Look for udziały count: "5.Posiadane przez wspólnika udziały X UDZIAŁ..."

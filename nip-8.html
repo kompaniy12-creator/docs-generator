@@ -105,7 +105,7 @@
   <a href="index.html" class="back">← Powrót do portalu</a>
   <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
   <h1>NIP-8 — zgłoszenie danych uzupełniających</h1>
-  <p class="lead">Zgłoszenie identyfikacyjne / aktualizacyjne w zakresie danych uzupełniających dla spółki wpisanej do KRS (dane nieobjęte wpisem do KRS: nazwa skrócona, rachunki bankowe, miejsca prowadzenia działalności, biuro rachunkowe, dane kontaktowe). Dane spółki wczytasz po NIP z bazy klientów albo z odpisu KRS. Wygenerowany PDF to oficjalny wzór <strong>NIP-8(4)</strong> gotowy do podpisu i złożenia w urzędzie skarbowym.</p>
+  <p class="lead">Zgłoszenie identyfikacyjne / aktualizacyjne w zakresie danych uzupełniających dla spółki wpisanej do KRS (dane nieobjęte wpisem do KRS: nazwa skrócona, rachunki bankowe, miejsca prowadzenia działalności, biuro rachunkowe, dane kontaktowe). Dane spółki wczytasz, wyszukując ją po NIP, KRS albo nazwie. Wygenerowany PDF to oficjalny wzór <strong>NIP-8(4)</strong> gotowy do podpisu i złożenia w urzędzie skarbowym.</p>
 
   <div class="krs-upload">
     <input type="file" id="krsFile" accept="application/pdf" hidden />
@@ -452,9 +452,11 @@
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="krs-parser.js"></script>
+<script src="krs-parser.js?v=2"></script>
 <script src="history.js"></script>
-<script src="nip-8.js"></script>
+<script src="nip-8.js?v=5"></script>
+<script>window.KRS_PESEL = true;</script>
+<script src="krs-szukaj.js?v=1"></script>
 <script>window.AUTOSAVE = { key: 'nip-8', form: '#form', lists: [] };</script>
 <script src="autosave.js"></script>
 </body>

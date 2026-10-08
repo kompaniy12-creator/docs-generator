@@ -268,6 +268,7 @@ function applyKRSData(d) {
     imie: capitalizeWords(z.imie || ''),
     nazwisko: capitalizeWords(z.nazwisko || ''),
     funkcja: capitalizeWords(z.funkcja || ''),
+    pesel: z.pesel || '',
   }));
   populateSigners();
 }
@@ -289,7 +290,7 @@ function copySeatTo(prefix) {
 
 $('copySeatBtn').addEventListener('click', () => {
   if (!copySeatTo('d_')) {
-    setKrsStatus('Najpierw wczytaj dane spółki (po NIP albo z odpisu KRS).', 'error');
+    setKrsStatus('Najpierw wczytaj dane spółki — wyszukaj ją po NIP, KRS albo nazwie.', 'error');
   }
 });
 $('copyDzialBtn').addEventListener('click', () => {
@@ -328,6 +329,7 @@ function applySigner(prefix, z) {
   setVal(prefix + 'imie', z.imie);
   setVal(prefix + 'nazwisko', z.nazwisko);
   setVal(prefix + 'funkcja', z.funkcja);
+  if (z.pesel) setVal(prefix + 'pesel', z.pesel);
 }
 [['signer1', 's1_'], ['signer2', 's2_']].forEach(([selId, prefix]) => {
   $(selId).addEventListener('change', (e) => {
