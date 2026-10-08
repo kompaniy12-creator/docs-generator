@@ -54,7 +54,8 @@
     // glass navigation
     'html.pt #psSide{background:var(--pt-glass);backdrop-filter:blur(30px) saturate(1.05);-webkit-backdrop-filter:blur(30px) saturate(1.05);border-right:1px solid var(--pt-line)}',
     'html.pt #psBar,html.pt #psTop,html.pt #psTabs{background:var(--pt-glass);backdrop-filter:blur(30px) saturate(1.05);-webkit-backdrop-filter:blur(30px) saturate(1.05);border-color:var(--pt-line)}',
-    'html.pt-dark .ps-logo{background:#fff}',
+    // on dark menus the navy parts of the logo need a little light to stay readable
+    'html.pt-dark .ps-logo{filter:brightness(1.35) drop-shadow(0 0 10px rgba(255,255,255,.28))}',
     'html.pt .ps-item{border-radius:12px;transition:background .15s,transform .15s}',
     'html.pt .ps-item:hover{transform:translateX(2px)}',
     'html.pt .ps-item.on{box-shadow:0 6px 18px rgba(0,0,0,.18)}',

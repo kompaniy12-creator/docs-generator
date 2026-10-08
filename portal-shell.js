@@ -82,8 +82,8 @@
     'body.ps{padding-left:var(--ps-w);background:#f6f8fb}',
     '#psSide{position:fixed;left:0;top:0;bottom:0;width:var(--ps-w);z-index:900;background:var(--ps-tint);border-right:1px solid #e1e7f0;display:flex;flex-direction:column;padding:18px 14px;overflow-y:auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}',
     '#psSide .ps-brand{display:block;text-align:center;padding:4px 8px 14px}',
-    // one-colour logo: the shape of logo-mono.png filled with the colour of the menu text
-    '.ps-logo{display:inline-block;width:92px;height:64px;background:var(--ps-navy);-webkit-mask:url(logo-mono.png) center/contain no-repeat;mask:url(logo-mono.png) center/contain no-repeat}',
+    // the logo in its own colours on a transparent background (logo-kolor.png)
+    '.ps-logo{display:inline-block;width:96px;height:68px;background:url(logo-kolor.png) center/contain no-repeat}',
     '#psTop .ps-logo{width:50px;height:34px;flex:0 0 auto}',
     '.ps-label{display:flex;align-items:center;justify-content:space-between;width:100%;border:none;background:none;font-family:inherit;cursor:pointer;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#6b7a90;margin:6px 0 2px;padding:9px 10px;border-radius:8px;text-align:left}',
     '.ps-label:hover{background:rgba(27,63,127,.07);color:var(--ps-navy)}',
