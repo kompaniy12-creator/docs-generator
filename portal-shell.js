@@ -81,7 +81,13 @@
     '#psSide{position:fixed;left:0;top:0;bottom:0;width:var(--ps-w);z-index:900;background:var(--ps-tint);border-right:1px solid #e1e7f0;display:flex;flex-direction:column;padding:18px 14px;overflow-y:auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}',
     '#psSide .ps-brand{display:block;text-align:center;padding:4px 8px 14px}',
     '#psSide .ps-brand img{height:56px;width:auto}',
-    '.ps-label{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#8a97ab;margin:14px 10px 6px}',
+    '.ps-label{display:flex;align-items:center;justify-content:space-between;width:100%;border:none;background:none;font-family:inherit;cursor:pointer;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#6b7a90;margin:6px 0 2px;padding:9px 10px;border-radius:8px;text-align:left}',
+    '.ps-label:hover{background:rgba(27,63,127,.07);color:var(--ps-navy)}',
+    '.ps-chev{font-size:15px;line-height:1;transition:transform .15s;letter-spacing:0}',
+    '.ps-group.open .ps-chev{transform:rotate(90deg)}',
+    '.ps-group .ps-items{display:none}',
+    '.ps-group.open .ps-items{display:block}',
+    '.ps-group.has-on:not(.open) .ps-label{color:var(--ps-navy)}',
     '.ps-item{display:flex;align-items:center;gap:11px;padding:10px 12px;margin-bottom:3px;border-radius:9px;font-size:14px;font-weight:500;color:#3a4759;text-decoration:none;line-height:1.3}',
     '.ps-item:hover{background:rgba(27,63,127,.07);color:var(--ps-navy)}',
     '.ps-item.on{background:var(--ps-navy);color:#fff;font-weight:600}',
@@ -141,8 +147,12 @@
   side.id = 'psSide';
   side.innerHTML = '<a class="ps-brand" href="index.html"><img src="logo.png" alt="TD Consulting Group" /></a>' +
     NAV.filter(function (g) { return g.items.length; }).map(function (g) {
-      return '<div class="ps-label">' + g.label + '</div>' + g.items.map(function (it) { return link(it, 'ps-item'); }).join('') +
-        (g.sec === 'kadry' ? '<button type="button" class="ps-item ps-copy" id="psCopy"><span class="ps-ico">🔗</span><span data-copy-text>Kopiuj link do formularza dla klienta</span></button>' : '');
+      // every module folds; the one with the current page is open, the rest as the user left them
+      return '<div class="ps-group" data-group="' + esc(g.label) + '">' +
+        '<button type="button" class="ps-label" data-fold aria-expanded="false"><span>' + esc(g.label) + '</span><span class="ps-chev">›</span></button>' +
+        '<div class="ps-items">' + g.items.map(function (it) { return link(it, 'ps-item'); }).join('') +
+        (g.sec === 'kadry' ? '<button type="button" class="ps-item ps-copy" id="psCopy"><span class="ps-ico">🔗</span><span data-copy-text>Kopiuj link do formularza dla klienta</span></button>' : '') +
+        '</div></div>';
     }).join('') +
     '<div class="ps-foot">' +
       '<div class="ps-user"><span title="' + esc(user.email) + '">' + esc(user.email || 'zalogowano') + '</span><button type="button" class="ps-out" id="psOut">Wyloguj</button></div>' +
@@ -172,6 +182,21 @@
     loadTasks();
   }
 
+  var FOLD_KEY = 'tdcg_menu_open';
+  function foldState() { try { return JSON.parse(localStorage.getItem(FOLD_KEY) || '{}'); } catch (e) { return {}; } }
+  function applyFold() {
+    var st = foldState();
+    document.querySelectorAll('#psSide .ps-group').forEach(function (g) {
+      var name = g.getAttribute('data-group'), on = !!g.querySelector('.ps-item.on');
+      // the module of the current page opens unless the user folded it on this very page
+      var isOpen = name in st ? st[name] : on;
+      if (on && st[name] === false && !g.dataset.touched) isOpen = true;
+      g.classList.toggle('open', isOpen);
+      g.classList.toggle('has-on', on);
+      g.querySelector('[data-fold]').setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    });
+  }
+
   function refresh() {
     var current = null;
     items.forEach(function (it) { if (!current && isActive(it)) current = it; });
@@ -181,12 +206,21 @@
     document.body.classList.toggle('ps-wide', !!(current && current.wide));
     document.getElementById('psTitle').textContent = current ? current.text : 'Portal dokumentów';
     document.body.classList.remove('ps-open');
+    applyFold();
   }
 
   function toggleMenu() { document.body.classList.toggle('ps-open'); }
   document.addEventListener('click', function (e) {
     var t = e.target;
     if (t.closest('#psMenu') || t.closest('#psMore')) return toggleMenu();
+    var fold = t.closest('[data-fold]');
+    if (fold) {
+      var grp = fold.closest('.ps-group'), st = foldState();
+      st[grp.getAttribute('data-group')] = !grp.classList.contains('open');
+      grp.dataset.touched = '1';
+      try { localStorage.setItem(FOLD_KEY, JSON.stringify(st)); } catch (e2) {}
+      return applyFold();
+    }
     if (t.closest('#psDim') || t.closest('#psSide a')) return document.body.classList.remove('ps-open');
     if (t.closest('#psOut')) {
       t.closest('#psOut').disabled = true;
