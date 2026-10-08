@@ -16,7 +16,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const MIN_PASSWORD = 10;
-const SECTIONS = ["rejestracja", "biezaca", "kadry", "onboarding"];
+const SECTIONS = ["rejestracja", "biezaca", "kadry", "legalizacja", "onboarding"];
 // null = every section; otherwise the known keys only
 function cleanSections(v: unknown): string[] | null {
   return Array.isArray(v) ? SECTIONS.filter((s) => v.includes(s)) : null;

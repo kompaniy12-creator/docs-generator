@@ -29,7 +29,7 @@
         pages: ['wynagrodzenie.html', 'e-urzad.html', 'pelnomocnictwo.html', 'nip-8.html'] },
       { href: 'historia.html?s=spolka', ico: '🕘', text: 'Historia dokumentów', short: 'Historia', wide: true },
     ] },
-    { label: 'Legalizacja pobytu', sec: 'biezaca', items: [
+    { label: 'Legalizacja pobytu', sec: 'legalizacja', items: [
       { href: 'zalacznik-pobyt.html', ico: '🛂', text: 'Załącznik nr 1 do wniosku o pobyt', short: 'Załącznik' },
       { href: 'historia.html?s=legalizacja', ico: '🕘', text: 'Historia dokumentów', short: 'Historia', wide: true },
     ] },
