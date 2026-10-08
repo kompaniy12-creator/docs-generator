@@ -28,7 +28,7 @@
         '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
           (k.aktywny ? '<button type="button" class="btn-soft" data-kk="mail">Wyślij zaproszenie e-mailem</button><button type="button" class="btn-soft" data-kk="link">Kopiuj link logowania</button>' : '') +
           '<button type="button" class="btn-soft" data-kk="toggle">' + (k.aktywny ? 'Wyłącz' : 'Włącz') + '</button>' +
-          '<button type="button" class="btn-danger" data-kk="del">Usuń</button></div></div></div>';
+          '<button type="button" class="btn-del" data-kk="del">Usuń</button></div></div></div>';
     }).join('') : '<div class="hint">Nie ma jeszcze kont klientów.</div>';
   }
   async function load() {
