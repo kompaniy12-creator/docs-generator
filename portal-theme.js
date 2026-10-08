@@ -49,6 +49,11 @@
       card: pct(s.card, !own && t.card !== undefined ? t.card : dark ? 80 : 72), menu: pct(s.menu, !own && t.menu !== undefined ? t.menu : dark ? 16 : 45) }; // menus: almost clear, the background shows through
   }
 
+  // content blocks (BLK), their inner panels that pages paint light (PANEL) and solid chips that
+  // keep their own colours (CHIP) — the rules for clear blocks on a dark background use these lists
+  var BLK = ':is(.box,.tile,.firm,.task,.rule,fieldset,.card,.item,table,.step,.docs-list,.krs-find)';
+  var PANEL = ':is(.cm,pre,.remfirm,.subgroup,.send-box,.pd-g,.wlist li,.check-row,.drop,.res,:is([style*="background:#f"],[style*="background: rgb(24"],[style*="background: rgb(25"]):not(button,label,a,span,input,select,textarea))';
+  var CHIP = '.pill,.badge,.mini,.btn,.ps-badge,.warnbox,.status,.krs-status,.msg,.krs-hit,.card-ico,.ico,.term-pill,.add-btn,.pill *,.warnbox *,.status *,.krs-status *,.msg *,.krs-hit *,.add-btn *,button *,legend *';
   var css = document.createElement('style');
   css.id = 'psThemeCss';
   css.textContent = [
@@ -66,14 +71,14 @@
     'html.pt .ps-item.on{box-shadow:0 6px 18px rgba(0,0,0,.18)}',
     'html.pt .ps-ico{border-radius:9px}',
     // content cards: soft, slightly translucent, bigger radius
-    'html.pt body.ps main .box,html.pt body.ps main .card,html.pt body.ps main .tile,html.pt body.ps main .firm,html.pt body.ps main .task,html.pt body.ps main .rule,html.pt body.ps main .item,html.pt body.ps main fieldset,html.pt body.ps main .krs-find{border-radius:16px;border-color:rgba(255,255,255,.55);box-shadow:0 10px 30px rgba(15,23,42,.10)}',
+    'html.pt body.ps main .box,html.pt body.ps main .card,html.pt body.ps main .tile,html.pt body.ps main .firm,html.pt body.ps main .task,html.pt body.ps main .rule,html.pt body.ps main .item,html.pt body.ps main fieldset,html.pt body.ps main .krs-find,html.pt body.ps main .step{border-radius:16px;border-color:rgba(255,255,255,.55);box-shadow:0 10px 30px rgba(15,23,42,.10)}',
     // content blocks are frosted glass: the background shows through a little
-    'html.pt body.ps main .box,html.pt body.ps main .tile,html.pt body.ps main .firm,html.pt body.ps main .task,html.pt body.ps main .rule,html.pt body.ps main fieldset,html.pt body.ps main .card,html.pt body.ps main .item,html.pt body.ps main .remfirm{background:var(--pt-card);backdrop-filter:blur(20px) saturate(1.1);-webkit-backdrop-filter:blur(20px) saturate(1.1)}',
+    'html.pt body.ps main .box,html.pt body.ps main .tile,html.pt body.ps main .firm,html.pt body.ps main .task,html.pt body.ps main .rule,html.pt body.ps main fieldset,html.pt body.ps main .card,html.pt body.ps main .item,html.pt body.ps main .remfirm,html.pt body.ps main .step{background:var(--pt-card);backdrop-filter:blur(20px) saturate(1.1);-webkit-backdrop-filter:blur(20px) saturate(1.1)}',
     'html.pt body.ps main .box .remfirm,html.pt body.ps main .box .task,html.pt body.ps main fieldset fieldset{background:rgba(255,255,255,.5);backdrop-filter:none;-webkit-backdrop-filter:none}',
     // a table standing on its own is a block too; inside a block it stays clear
     'html.pt body.ps main table{background:var(--pt-card);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}',
     'html.pt body.ps main th,html.pt body.ps main td{background:transparent}',
-    'html.pt body.ps main .box table,html.pt body.ps main .card table,html.pt body.ps main fieldset table{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none}',
+    'html.pt body.ps main :is(.box,.card,fieldset,.step,.firm,.task,.rule,.item) table{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none}',
     // section titles of forms sit on the edge of the block: give them their own solid label
     'html.pt body.ps main legend{background:#fff;color:var(--pt-accent);border-radius:999px;padding:5px 14px;margin-left:-4px;font-weight:700;box-shadow:0 4px 14px rgba(15,23,42,.14)}',
     'html.pt body.ps main fieldset{padding-top:18px}',
@@ -100,10 +105,16 @@
     'html.pt-dark body.ps main>.lead,html.pt-dark body.ps .content-head .lead,html.pt-dark body.ps main>.hint,html.pt-dark body.ps main>p{color:rgba(255,255,255,.9);text-shadow:0 1px 8px rgba(0,0,0,.35)}',
     'html.pt-dark body.ps main>.lead a,html.pt-dark body.ps .content-head .lead a{color:#fff}',
     'html.pt-dark body.ps .filters label,html.pt-dark body.ps .fcount,html.pt-dark body.ps main>.empty,html.pt-dark body.ps #empty,html.pt-dark body.ps #loading,html.pt-dark body.ps #rules>h2,html.pt-dark body.ps .nav-label{color:rgba(255,255,255,.88)}',
+    // filters placed inside a white block keep dark labels
+    'html.pt-dark:not(.pt-clear) body.ps main :is(.box,.card,fieldset,.step) :is(.filters label,.fcount){color:#5a6577}',
     'html.pt-dark body.ps .filters select,html.pt-dark body.ps .search,html.pt-dark body.ps .toolbar input{background:rgba(255,255,255,.95)}',
     'html.pt-dark #onbBar{background:rgba(255,255,255,.92)}',
     // small texts that stand directly on the background: empty states, footers, stamps, links in the lead
     'html.pt-dark body.ps main .empty,html.pt-dark body.ps main .loading,html.pt-dark body.ps main>.stamp,html.pt-dark body.ps footer,html.pt-dark body.ps footer a,html.pt-dark body.ps main>.lead a,html.pt-dark body.ps .content-head .lead a{color:rgba(255,255,255,.88);text-shadow:0 1px 8px rgba(0,0,0,.35)}',
+    // an empty state painted as a white card would hide its light text; a link coloured inline too
+    'html.pt-dark body.ps main .empty{background:transparent;border-color:rgba(255,255,255,.28)}',
+    'html.pt-dark body.ps main>.lead a,html.pt-dark body.ps .content-head .lead a{color:#fff!important}',
+    'html.pt-dark body.ps main .now{color:#86efac}',
     'html.pt-dark body.ps main .box .empty,html.pt-dark body.ps main .card .empty,html.pt-dark body.ps main table .empty,html.pt-dark body.ps main fieldset .empty,html.pt-dark body.ps main .firm .empty,html.pt-dark body.ps main .task .empty,html.pt-dark body.ps main .box .loading{color:#7a8699;text-shadow:none}',
     // pages without the portal shell (sign-in, client profile) carry body.pt-page
     'html.pt{--navy:var(--pt-accent);--navy-d:var(--pt-accent-d);--tint:var(--pt-tint)}',
@@ -119,17 +130,28 @@
     '#ptFab:hover{transform:scale(1.06)}',
     'body.pt-page #ptPanel{top:auto;bottom:72px}',
     // ---- clear blocks on a dark background: dark glass, light text
-    'html.pt-clear body.ps main :is(.box,.tile,.firm,.task,.rule,fieldset,.card,.item,table){border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.92)}',
-    'html.pt-clear body.ps main :is(.box,.tile,.firm,.task,.rule,fieldset,.card,.item,table) :is(h2,h3,h4,p,span,small,strong,b,em,td,th,dt,dd,li,label,div,summary,a,pre):not(.pill,.badge,.mini,.btn,.ps-badge,.warnbox,.status,.krs-status,.msg,.krs-hit,.card-ico,.ico,.pill *,.warnbox *,.status *,.krs-status *,.msg *,.krs-hit *,button *,legend *){color:rgba(255,255,255,.92)!important}',
-    'html.pt-clear body.ps main :is(.box,.tile,.firm,.task,.rule,fieldset,.card,.item,table) :is(small,.hint,.sub,.d,th,dt){color:rgba(255,255,255,.66)!important}',
+    'html.pt-clear body.ps main ' + BLK + '{border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.92)}',
+    'html.pt-clear body.ps main ' + BLK + ' :is(h2,h3,h4,p,span,small,strong,b,em,td,th,dt,dd,li,label,div,summary,a,pre,code):not(' + CHIP + '){color:rgba(255,255,255,.92)!important}',
+    'html.pt-clear body.ps main ' + BLK + ' :is(small,.hint,.sub,.d,th,dt,.law,.muted,.part):not(' + CHIP + '){color:rgba(255,255,255,.66)!important}',
+    // tiles are often buttons or links: their number and caption are light too
+    'html.pt-clear body.ps main .tile b{color:#fff!important}',
+    'html.pt-clear body.ps main .tile :is(span,small,em){color:rgba(255,255,255,.72)!important}',
     'html.pt-clear body.ps main .tile.red b{color:#fca5a5!important}',
     'html.pt-clear body.ps main .tile.amber b{color:#fcd34d!important}',
     'html.pt-clear body.ps main .tile.green b{color:#86efac!important}',
     'html.pt-clear body.ps main .tile.zero b{color:rgba(255,255,255,.45)!important}',
-    'html.pt-clear body.ps main :is(.box,.tile,.firm,.task,.rule,fieldset,.card,.item,table) :is(.cm,pre,.remfirm,.subgroup,.send-box,.pd-g){background:rgba(255,255,255,.08)!important}',
-    'html.pt-clear body.ps main :is(th,td,.line,.row){border-color:rgba(255,255,255,.14)!important}',
+    'html.pt-clear body.ps main .tile.on{border-color:rgba(255,255,255,.75);box-shadow:0 0 0 3px rgba(255,255,255,.16)}',
+    'html.pt-clear body.ps main .pd-x{color:#fca5a5!important}',
+    // light panels inside a block (also the ones coloured inline) become a faint veil
+    'html.pt-clear body.ps main ' + BLK + ' ' + PANEL + '{background:rgba(255,255,255,.08)!important;border-color:rgba(255,255,255,.2)!important}',
+    'html.pt-clear body.ps main ' + BLK + ' :is(.drop.over,.drop.drag){background:rgba(255,255,255,.2)!important;border-color:#fff!important}',
+    'html.pt-clear body.ps main ' + BLK + ' .res.err{background:rgba(239,68,68,.22)!important;border-color:rgba(252,165,165,.5)!important}',
+    'html.pt-dark.pt-clear body.ps main ' + BLK + ' :is(.moved,.warn,.bad){color:#fcd34d!important}',
+    'html.pt-clear body.ps main :is(.docs-list,.krs-find){background:var(--pt-card)!important;backdrop-filter:blur(20px) saturate(1.1);-webkit-backdrop-filter:blur(20px) saturate(1.1)}',
+    'html.pt-clear body.ps main :is(.krs-status.loading,.krs-again){color:rgba(255,255,255,.85)!important}',
+    'html.pt-clear body.ps main :is(th,td,.line,.row,.item,.doc,.worker,.user){border-color:rgba(255,255,255,.14)!important}',
     // rows that light up on hover keep the light text readable
-    'html.pt-clear body.ps main :is(.card-head,.firm-head,.fhead,.docs a,.doc-add,.mini-btn,tr):hover{background:rgba(255,255,255,.1)!important}',
+    'html.pt-clear body.ps main :is(.card-head,.firm-head,.fhead,.docs a,tr):hover{background:rgba(255,255,255,.1)!important}',
     // opened rows: the inner panel is see-through, not a white sheet
     'html.pt-clear body.ps main :is(.card,.firm,.box,.item) :is(.detail,.fbody,.body,.firm-body){background:transparent!important}',
     'html.pt-clear body.ps main :is(.card,.firm,.box,.item) :is(.firm-body,.fbody,.detail) li{background:rgba(255,255,255,.07)!important;border-color:rgba(255,255,255,.16)!important}',
@@ -138,8 +160,11 @@
     'html.pt-clear body.ps main .bar i,html.pt-clear body.ps main .spark i{background:rgba(255,255,255,.82)}',
     'html.pt-clear body.ps main .spark i.z{background:rgba(255,255,255,.2)}',
     'html.pt-clear body.ps main .box .remfirm,html.pt-clear body.ps main .box .task,html.pt-clear body.ps main fieldset fieldset{background:rgba(255,255,255,.07)}',
-    'html.pt-clear body.pt-page :is(.box,.tile){border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.92)}',
-    'html.pt-clear body.pt-page :is(.box,.tile) :is(h2,p,span,small,strong,b,div,a):not(.pill,.mini,.btn,.msg,.msg *,.pill *,button *){color:rgba(255,255,255,.92)!important}',
+    // sign-in page and client profile
+    'html.pt-clear body.pt-page :is(.box,.tile,.login,.card){border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.92)}',
+    'html.pt-clear body.pt-page :is(.box,.tile,.login,.card) :is(h1,h2,h3,p,span,small,strong,b,em,div,a,label,li,td,th,.linkbtn):not(.pill,.mini,.btn,.msg,.status,.msg *,.status *,.pill *,button:not(.linkbtn) *){color:rgba(255,255,255,.92)!important}',
+    'html.pt-dark.pt-clear body.pt-page :is(.box,.tile,.login,.card) :is(small,.hint,.sub,th,label,.foot):not(.pill *,.msg *){color:rgba(255,255,255,.7)!important}',
+    'html.pt-clear body.pt-page :is(th,td,.row){border-color:rgba(255,255,255,.14)!important}',
     'html.pt-clear body.pt-page .tile.red b{color:#fca5a5!important}',
     'html.pt-clear body.pt-page .tile.amber b{color:#fcd34d!important}',
     // picker
