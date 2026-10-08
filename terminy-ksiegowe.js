@@ -54,10 +54,10 @@
     var html = kolej.map(function (d) {
       var n = zaIle(d, t), przed = '';
       if (tenMiesiac && !znacznik && d >= t) przed = dzisLinia();
-      return przed + '<div class="day' + (n < 0 ? ' past' : n === 0 ? ' today' : '') + '">' +
+      return przed + '<div class="box day' + (n < 0 ? ' past' : n === 0 ? ' today' : '') + '">' +
         '<div class="dhead"><div><strong>' + (+d.slice(8)) + ' ' + MIES_D[+d.slice(5, 7) - 1] + '</strong><small>' + DNI[new Date(utc(d)).getUTCDay()] + '</small></div>' + pill(n) + '</div>' +
         dniMap[d].map(function (x) {
-          return '<div class="item"><div class="n"><b>' + esc(x.nazwa) + '</b><span class="pill p-navy">za: ' + esc(x.dotyczy) + '</span></div>' +
+          return '<div class="trm"><div class="n"><b>' + esc(x.nazwa) + '</b><span class="pill p-navy">za: ' + esc(x.dotyczy) + '</span></div>' +
             '<p>' + esc(x.opis) + '</p>' +
             (x.przesunieto ? '<div class="moved">Termin ustawowy ' + pl(x.nominalna) + ' (' + esc(K.czyWolny(x.nominalna)) + ') — przesunięty na najbliższy dzień roboczy.</div>' : '') +
             '<div class="law">Podstawa: ' + esc(x.podstawa) + ' · <a href="' + link(x.eli) + '" target="_blank" rel="noopener">' + esc(dzu(x.eli)) + ' ↗</a></div></div>';
