@@ -74,12 +74,12 @@
       reveal();
     };
     var shell = document.createElement('script');
-    shell.src = 'portal-shell.js';
+    shell.src = 'portal-shell.js?t=' + Math.floor(Date.now() / 3e5);
     shell.onload = function () { show(false); };
     shell.onerror = function () { show(true); };
     // the look (theme, background, accent) first, so the shell appears already themed
     var theme = document.createElement('script');
-    theme.src = 'portal-theme.js';
+    theme.src = 'portal-theme.js?t=' + Math.floor(Date.now() / 3e5);
     theme.onload = theme.onerror = function () { document.head.appendChild(shell); };
     document.head.appendChild(theme);
     setTimeout(function () { show(!document.getElementById('psSide')); }, 2500);
