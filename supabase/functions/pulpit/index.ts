@@ -51,24 +51,26 @@ Deno.serve(async (req) => {
   try {
     const dzis = today();
     const [rows, zadania, onb, klienci, konta, klog, joby, powiad, wiedza, akty, faktury, hist] = await Promise.all([
-      all("zatrudnienie_zgloszenia?select=id,status,created_at,payload"),
-      all("portal_zadania?select=assignee,status,termin,pilne,eskalacja,done_at,zrodlo,tytul"),
+      all("zatrudnienie_zgloszenia?select=id,worker_name,status,created_at,payload"),
+      all("portal_zadania?select=assignee,status,termin,pilne,eskalacja,done_at,done_by,created_at,created_by,zrodlo,tytul"),
       all("onboarding_clients?select=data"),
       all("portal_klienci?select=nip,dane"),
       all("klient_konta?select=aktywny,last_login,haslo_hash"),
-      all(`klient_log?select=akcja,at&at=gte.${ago(7)}`),
+      all(`klient_log?select=akcja,at,email&at=gte.${ago(7)}`),
       all(`portal_zadania_log?select=zadanie,started_at,ok,info&started_at=gte.${ago(8)}&order=started_at.desc`),
       all(`portal_powiadomienia?select=rodzaj,status,created_at&created_at=gte.${ago(30)}`),
       all("portal_wiedza?select=do_sprawdzenia"),
       all("portal_prawo_akty?select=skrot,zmiana_wykryta,checked_at"),
       db("invoices?select=synced_at&order=synced_at.desc&limit=1").then((r) => (r.ok ? r.json() : [])),
-      all(`portal_doc_history?select=doc_type,created_at&created_at=gte.${ago(30)}`),
+      all(`portal_doc_history?select=doc_type,created_at,user_email,title,subject&created_at=gte.${ago(30)}`),
     ]);
 
     // ---- Kadry
     const st: Record<string, number> = {};
     const firmy = new Map<string, number>();
     let cudz = 0, brakTerminow = 0, dokPo = 0, dok30 = 0, umowy30 = 0, umowyPo = 0;
+    const terminy: Any[] = [];
+    const DOKI: Record<string, string> = { p_karta_do: "karta pobytu", p_zezwolenie_do: "zezwolenie / wiza", p_paszport_do: "paszport", p_badania_do: "badania lekarskie", u_do: "umowa" };
     const perDay = new Map<string, number>();
     for (const w of rows) {
       st[w.status] = (st[w.status] ?? 0) + 1;
@@ -83,8 +85,9 @@ Deno.serve(async (req) => {
         if (!isDate(p[k])) continue;
         const d = days(p[k], dzis);
         if (d < 0) dokPo++; else if (d <= 30) dok30++;
+        if (d >= -30 && d <= 90) terminy.push({ kto: w.worker_name ?? "", firma: p.z_nazwa ?? "", co: DOKI[k], data: p[k], dni: d });
       }
-      if (isDate(p.u_do) && p.u_bezterminowo !== true) { const d = days(p.u_do, dzis); if (d < 0) umowyPo++; else if (d <= 30) umowy30++; }
+      if (isDate(p.u_do) && p.u_bezterminowo !== true) { const d = days(p.u_do, dzis); if (d < 0) umowyPo++; else if (d <= 30) umowy30++; if (d >= -30 && d <= 90) terminy.push({ kto: w.worker_name ?? "", firma: p.z_nazwa ?? "", co: DOKI.u_do, data: p.u_do, dni: d }); }
     }
     const dni: { d: string; n: number }[] = [];
     for (let i = 29; i >= 0; i--) { const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10); dni.push({ d, n: perDay.get(d) ?? 0 }); }
@@ -127,6 +130,17 @@ Deno.serve(async (req) => {
     const JOBS = ["terminy", "watchdog", "zadania", "prawo", "faktury"];
     const automaty = JOBS.map((z) => { const j = lastJob.get(z); return { zadanie: z, ostatnio: j?.started_at ?? null, ok: j ? j.ok : null, problem: j && j.ok === false ? (j.info?.error ?? (j.info?.problems ?? []).join("; ") ?? "") : "" }; });
 
+    // ---- recent activity across the modules
+    const akt: { at: string; modul: string; tekst: string }[] = [];
+    for (const w of rows) if (!w.payload?._import && Date.parse(w.created_at) > Date.now() - 14 * 86400000) akt.push({ at: w.created_at, modul: "Kadry", tekst: `Nowe zgłoszenie — ${w.payload?.z_nazwa ?? "firma"}` });
+    for (const z of zadania) {
+      if (z.done_at && Date.parse(z.done_at) > Date.now() - 14 * 86400000) akt.push({ at: z.done_at, modul: "Zadania", tekst: `Zrobione: ${z.tytul} (${String(z.done_by ?? "").split("@")[0] || "portal"})` });
+      else if (z.created_at && Date.parse(z.created_at) > Date.now() - 14 * 86400000 && z.zrodlo === "reczne") akt.push({ at: z.created_at, modul: "Zadania", tekst: `Nowe zadanie: ${z.tytul} → ${String(z.assignee).split("@")[0]}` });
+    }
+    for (const l of klog) if (/^logowanie/.test(l.akcja)) akt.push({ at: l.at, modul: "Klienci", tekst: `Klient zalogował się do profilu (${l.email ?? "?"})` });
+    for (const h of hist) if (Date.parse(h.created_at) > Date.now() - 14 * 86400000) akt.push({ at: h.created_at, modul: "Dokumenty", tekst: `${h.title ?? h.doc_type}${h.subject ? " — " + h.subject : ""} (${String(h.user_email ?? "").split("@")[0]})` });
+    akt.sort((a, b) => b.at.localeCompare(a.at));
+
     const docs = new Map<string, number>();
     for (const h of hist) docs.set(h.doc_type, (docs.get(h.doc_type) ?? 0) + 1);
 
@@ -135,17 +149,20 @@ Deno.serve(async (req) => {
       kadry: {
         pracownicy: st.zatrudniony ?? 0, archiwum: st.archiwum ?? 0, nowe: st.nowe ?? 0, w_toku: (st.sprawdzone ?? 0) + (st.wyslane ?? 0),
         cudzoziemcy: cudz, bez_terminow_pobytu: brakTerminow, dokumenty_po_terminie: dokPo, dokumenty_30: dok30, umowy_30: umowy30, umowy_po_terminie: umowyPo,
-        firmy_z_pracownikami: firmy.size, top_firmy: top(firmy, 6), zgloszenia_30dni: dni,
+        firmy_z_pracownikami: firmy.size, top_firmy: top(firmy, 15), zgloszenia_30dni: dni,
+        terminy_najblizsze: terminy.sort((a, b) => a.dni - b.dni).slice(0, 25),
       },
       zadania: {
         otwarte: open.length, po_terminie: late.length, pilne: open.filter((z) => z.pilne).length, eskalowane: open.filter((z) => z.eskalacja).length,
         z_systemu: open.filter((z) => z.zrodlo === "system").length,
         zespol: [...team.entries()].map(([email, v]) => ({ email, ...v })).sort((a, b) => b.po_terminie - a.po_terminie || b.otwarte - a.otwarte),
-        najstarsze: late.sort((a, b) => a.termin.localeCompare(b.termin)).slice(0, 6).map((z) => ({ tytul: z.tytul, assignee: z.assignee, termin: z.termin })),
+        pilne_lista: open.filter((z) => z.pilne).slice(0, 15).map((z) => ({ tytul: z.tytul, assignee: z.assignee, termin: z.termin })),
+        zrobione7: zadania.filter((z) => z.status === "zrobione" && z.done_at && Date.parse(z.done_at) > Date.now() - 7 * 86400000).length,
+        najstarsze: late.sort((a, b) => a.termin.localeCompare(b.termin)).slice(0, 15).map((z) => ({ tytul: z.tytul, assignee: z.assignee, termin: z.termin })),
       },
-      onboarding: { firmy: oc.length, sredni_postep: oc.length ? Math.round(oPct / oc.length) : 0, zadania_po_terminie: oLate, czekamy_na_klienta: oWait, lista: oList.slice(0, 8) },
+      onboarding: { firmy: oc.length, sredni_postep: oc.length ? Math.round(oPct / oc.length) : 0, zadania_po_terminie: oLate, czekamy_na_klienta: oWait, lista: oList.slice(0, 25) },
       klienci: {
-        wszystkie: klienci.length, opiekunowie: top(opiek, 8), formy: top(formy, 4),
+        wszystkie: klienci.length, opiekunowie: top(opiek, 12), formy: top(formy, 6),
         konta: konta.length, konta_aktywne: konta.filter((k) => k.aktywny).length, konta_z_haslem: konta.filter((k) => k.haslo_hash).length,
         logowania_7dni: klog.filter((l) => /^logowanie/.test(l.akcja)).length,
       },
@@ -153,7 +170,8 @@ Deno.serve(async (req) => {
       powiadomienia_30dni: { wyslane: powiad.filter((p) => p.status === "ok").length, bledy: powiad.filter((p) => p.status !== "ok").length },
       prawo: { zasady_do_sprawdzenia: wiedza.filter((w) => w.do_sprawdzenia).length, zmienione_akty: akty.filter((a) => a.zmiana_wykryta).map((a) => a.skrot), akty: akty.length },
       faktury: { ostatnia_synchronizacja: faktury[0]?.synced_at ?? null },
-      dokumenty_30dni: top(docs, 8),
+      dokumenty_30dni: top(docs, 12),
+      aktywnosc: akt.slice(0, 40),
     }, 200, origin);
   } catch (e) {
     console.error(e);
