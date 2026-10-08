@@ -54,6 +54,9 @@
   .sheet h3{margin:0 0 2px;font-size:17px;color:var(--brand-navy)}
   .sheet label{display:block;font-size:13px;font-weight:600;color:#3b4658;margin:12px 0 4px}
   .sheet input{width:100%;padding:10px 12px;border:1px solid #d4dbe6;border-radius:9px;font:inherit;font-size:15px}
+  .sheet label.bt{display:flex;align-items:center;gap:8px;margin:6px 0 0;font-size:12.5px;font-weight:700;letter-spacing:.03em;color:var(--brand-navy);cursor:pointer}
+  .sheet label.bt input{width:auto;margin:0}
+  .sheet input[type=date]:disabled{background:#f1f4f8;color:#9aa6b8}
   .sheet .row{display:flex;gap:10px;margin-top:18px}
   .sheet .row button{flex:1;padding:11px;border-radius:9px;font:inherit;font-weight:600;cursor:pointer;border:1px solid #d4dbe6;background:#fff}
   .sheet .row .go{background:var(--brand-navy);border-color:var(--brand-navy);color:#fff}
@@ -87,15 +90,15 @@
   <div class="sheet">
     <h3>Terminy pracownika</h3>
     <div class="sub" id="edName"></div>
-    <label for="ed_p_karta_do">Karta pobytu — ważna do</label><input type="date" id="ed_p_karta_do" />
-    <label for="ed_p_zezwolenie_do">Zezwolenie na pracę / wiza / oświadczenie — do</label><input type="date" id="ed_p_zezwolenie_do" />
-    <label for="ed_p_paszport_do">Paszport — ważny do</label><input type="date" id="ed_p_paszport_do" />
-    <label for="ed_p_badania_do">Badania lekarskie — ważne do</label><input type="date" id="ed_p_badania_do" />
-    <label for="ed_u_do">Umowa — koniec (puste = bezterminowo)</label><input type="date" id="ed_u_do" />
+    <label for="ed_p_karta_do">Karta pobytu — ważna do</label><input type="date" id="ed_p_karta_do" /><label class="bt"><input type="checkbox" id="bt_p_karta_do" /> BEZTERMINOWO</label>
+    <label for="ed_p_zezwolenie_do">Zezwolenie na pracę / wiza / oświadczenie — do</label><input type="date" id="ed_p_zezwolenie_do" /><label class="bt"><input type="checkbox" id="bt_p_zezwolenie_do" /> BEZTERMINOWO</label>
+    <label for="ed_p_paszport_do">Paszport — ważny do</label><input type="date" id="ed_p_paszport_do" /><label class="bt"><input type="checkbox" id="bt_p_paszport_do" /> BEZTERMINOWO</label>
+    <label for="ed_p_badania_do">Badania lekarskie — ważne do</label><input type="date" id="ed_p_badania_do" /><label class="bt"><input type="checkbox" id="bt_p_badania_do" /> BEZTERMINOWO</label>
+    <label for="ed_u_do">Umowa — koniec</label><input type="date" id="ed_u_do" /><label class="bt"><input type="checkbox" id="bt_u_do" /> BEZTERMINOWO</label>
     <div class="sub" id="edMsg" style="margin-top:8px;color:#b91c1c"></div>
     <div class="row"><button type="button" id="edCancel">Anuluj</button><button type="button" class="go" id="edSave">Zapisz</button></div>
   </div>
 </div>
-<script src="kontrola.js"></script>
+<script src="kontrola.js?v=3"></script>
 </body>
 </html>

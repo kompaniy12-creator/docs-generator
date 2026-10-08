@@ -22,6 +22,9 @@
     { k: 'u_do', label: 'Umowa — koniec', contract: true },
   ];
   var rows = [], view = 'nowe', q = '';
+  // "no end date" flag of a document (permanent residence, open-ended contract, …)
+  function btKey(k) { return k === 'u_do' ? 'u_bezterminowo' : k.replace(/_do$/, '_bezterm'); }
+  function bezterm(p, k) { return p[btKey(k)] === true; }
 
   function foreigner(p) { var o = (p.p_obywatelstwo || '').toLowerCase(); return !!o && !/^pol/.test(o); }
   function pill(d) {
@@ -56,8 +59,8 @@
       if (!p.p_obywatelstwo) miss.push('obywatelstwo');
       if (!p.a_miejscowosc) miss.push('adres');
       if (!p.u_typ && !p.u_umowa) miss.push('rodzaj umowy');
-      if (foreigner(p) && !isDate(p.p_karta_do) && !isDate(p.p_zezwolenie_do)) miss.push('termin karty pobytu / zezwolenia');
-      if (foreigner(p) && !isDate(p.p_paszport_do)) miss.push('termin paszportu');
+      if (foreigner(p) && !isDate(p.p_karta_do) && !isDate(p.p_zezwolenie_do) && !bezterm(p, 'p_karta_do') && !bezterm(p, 'p_zezwolenie_do')) miss.push('termin karty pobytu / zezwolenia');
+      if (foreigner(p) && !isDate(p.p_paszport_do) && !bezterm(p, 'p_paszport_do')) miss.push('termin paszportu');
       if (miss.length) out.push({ w: w, miss: miss });
     });
     return out.sort(function (a, b) { return b.miss.length - a.miss.length; });
@@ -196,21 +199,33 @@
     if (!editing) return;
     var p = editing.payload || {};
     $('edName').textContent = (editing.worker_name || '') + (p.z_nazwa ? ' — ' + p.z_nazwa : '');
-    DOCS.forEach(function (d) { $('ed_' + d.k).value = isDate(p[d.k]) ? p[d.k] : ''; });
+    DOCS.forEach(function (d) {
+      var bt = bezterm(p, d.k);
+      $('bt_' + d.k).checked = bt;
+      $('ed_' + d.k).value = !bt && isDate(p[d.k]) ? p[d.k] : '';
+      $('ed_' + d.k).disabled = bt;
+    });
     $('edMsg').textContent = '';
     $('edit').hidden = false;
+  });
+  // ticking BEZTERMINOWO clears and locks the date of that item
+  DOCS.forEach(function (d) {
+    $('bt_' + d.k).addEventListener('change', function () {
+      $('ed_' + d.k).disabled = this.checked;
+      if (this.checked) $('ed_' + d.k).value = '';
+    });
   });
   $('edCancel').addEventListener('click', function () { $('edit').hidden = true; });
   $('edit').addEventListener('click', function (e) { if (e.target === $('edit')) $('edit').hidden = true; });
   $('edSave').addEventListener('click', async function () {
     var f = {}, bad = false;
     DOCS.forEach(function (d) {
-      var v = $('ed_' + d.k).value;
+      var bt = $('bt_' + d.k).checked, v = bt ? '' : $('ed_' + d.k).value;
       if (v && !isDate(v)) bad = true;
       f[d.k] = v || '';
+      f[btKey(d.k)] = bt;
     });
     if (bad) { $('edMsg').textContent = 'Popraw datę.'; return; }
-    if (f.u_do) f.u_bezterminowo = false;
     this.disabled = true;
     try { await patchWorker(editing.id, f); $('edit').hidden = true; render(); loadReminders(); }
     catch (err) { $('edMsg').textContent = 'Błąd: ' + err.message; }
