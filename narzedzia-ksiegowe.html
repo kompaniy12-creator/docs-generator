@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>Narzędzia księgowe — TD Consulting Group</title>
+<style>
+  :root{--brand-navy:#1B3F7F;--brand-navy-dark:#15315F;--brand-green:#1FA84B;--brand-tint:#EEF3F9;}
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f6f8fb;color:#111;line-height:1.5}
+  main{max-width:900px;margin:0 auto;padding:36px 20px 96px}
+  .back{display:inline-block;margin-bottom:14px;font-size:14px;color:#666;text-decoration:none}
+  .brand{text-align:center;margin:0 0 14px}.brand img{height:60px}
+  h1{font-size:23px;font-weight:700;margin:0 0 4px;color:var(--brand-navy);text-align:center}
+  .lead{color:#666;margin:0 auto 18px;font-size:14px;text-align:center;max-width:720px}
+  .box{background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:16px;margin:0 0 16px}
+  .box h2{font-size:15px;margin:0 0 4px;color:var(--brand-navy)}
+  .hint{color:#7a8699;font-size:12.5px;margin:0 0 10px}
+  label{display:block;font-size:12px;font-weight:600;color:#5a6577;margin-bottom:4px}
+  select,input[type=text],input[type=search],input[type=date]{width:100%;padding:9px 11px;border:1px solid #d4dbe6;border-radius:9px;font:inherit;font-size:14px;background:#fff;min-height:40px}
+  .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+  .tabs button{font:inherit;font-size:13.5px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid #d4dbe6;background:#fff;color:#3a4759;cursor:pointer}
+  .tabs button.on{background:var(--brand-navy);border-color:var(--brand-navy);color:#fff}
+  .acts{display:flex;gap:6px;flex-wrap:wrap}
+  .mini{font:inherit;font-size:12.5px;font-weight:600;padding:5px 10px;border-radius:8px;border:1px solid #d4dbe6;background:#fff;color:var(--brand-navy);cursor:pointer;white-space:nowrap;text-decoration:none}
+  .mini:hover{border-color:var(--brand-navy)}.mini.ok{background:var(--brand-green);border-color:var(--brand-green);color:#fff}
+  .pill{display:inline-block;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .p-red{background:#fee2e2;color:#991b1b}.p-amber{background:#fef3c7;color:#92400e}.p-ok{background:#dcfce7;color:#166534}.p-grey{background:#eef1f6;color:#5a6577}.p-navy{background:var(--brand-tint);color:var(--brand-navy)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .two,.three{margin-bottom:10px}
+  @media(max-width:640px){.two,.three{grid-template-columns:1fr}main{padding:24px 14px 96px}}
+  .panel[hidden]{display:none}
+  .res{background:var(--brand-tint);border:1px solid #d6e0ee;border-radius:10px;padding:12px 14px;margin-top:12px;font-size:14px}
+  .res.err{background:#fef2f2;border-color:#f3c7c7;color:#991b1b}
+  .res p{margin:8px 0 0}
+  .lab{font-size:12px;font-weight:600;color:#5a6577}
+  .big{font-size:21px;font-weight:700;color:var(--brand-navy);line-height:1.35;overflow-wrap:anywhere}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  .res .acts{margin-top:8px}
+  .warn{color:#92400e;font-size:13px}
+  .scroll{overflow-x:auto;margin-top:10px}
+  .tbl{width:100%;border-collapse:collapse;font-size:13px}
+  .tbl th,.tbl td{text-align:left;padding:6px 8px;border-top:1px solid #dfe6f0;white-space:nowrap}
+  .tbl th{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:#7a8699;border-top:none}
+  .tbl td:last-child{white-space:normal;min-width:130px;color:#5a6577}
+  .kv{display:grid;grid-template-columns:90px 1fr auto;gap:10px;align-items:center;padding:5px 0}
+  .kv+.kv{border-top:1px solid #dfe6f0}
+  .kv span:nth-child(2){text-align:right;font-variant-numeric:tabular-nums}
+  details{margin-top:12px;font-size:13px}
+  summary{cursor:pointer;color:var(--brand-navy);font-weight:600}
+  .law{border-top:1px solid #eef1f6;margin:14px 0 0;padding-top:10px;color:#5a6577;font-size:12.5px}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Narzędzia księgowe</h1>
+  <p class="lead">Podręczne kalkulatory: mikrorachunek podatkowy, sprawdzenie numeru rachunku, odsetki podatkowe i ustawowe, VAT. Wszystko liczy się w przeglądarce — wpisane dane nigdzie nie są wysyłane ani zapisywane.</p>
+
+  <div class="tabs" id="tabs" role="tablist">
+    <button type="button" class="on" data-tab="mikro" role="tab" aria-selected="true">Mikrorachunek</button>
+    <button type="button" data-tab="rachunek" role="tab" aria-selected="false">Weryfikacja rachunku</button>
+    <button type="button" data-tab="podatkowe" role="tab" aria-selected="false">Odsetki podatkowe</button>
+    <button type="button" data-tab="ustawowe" role="tab" aria-selected="false">Odsetki ustawowe</button>
+    <button type="button" data-tab="vat" role="tab" aria-selected="false">Brutto ↔ netto</button>
+  </div>
+
+  <!-- 1 -->
+  <section class="box panel" id="p-mikro">
+    <h2>Mikrorachunek podatkowy</h2>
+    <p class="hint">NIP — gdy podatnik prowadzi działalność, jest podatnikiem VAT albo płatnikiem podatków lub składek. PESEL — osoba fizyczna bez działalności i bez rejestracji do VAT.</p>
+    <div class="two">
+      <div><label for="mkTyp">Identyfikator</label><select id="mkTyp"><option value="NIP">NIP (firma, podatnik VAT, płatnik)</option><option value="PESEL">PESEL (osoba fizyczna)</option></select></div>
+      <div><label for="mkId" id="mkIdLab">NIP</label><input type="text" id="mkId" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="10 cyfr" /></div>
+    </div>
+    <div id="mkOut" aria-live="polite"></div>
+    <p class="law">Podstawa: art. 61b Ordynacji podatkowej (t.j. Dz.U. 2026 poz. 622). Budowa numeru według opisu Ministerstwa Finansów (podatki.gov.pl): liczba kontrolna + 10100071 + 222 + cyfra 1 (PESEL) albo 2 (NIP) + identyfikator + zera do 26 znaków; liczba kontrolna jak w każdym NRB (mod 97). Stan na <span data-wer></span>.</p>
+  </section>
+
+  <!-- 2 -->
+  <section class="box panel" id="p-rachunek" hidden>
+    <h2>Weryfikacja rachunku (NRB / IBAN)</h2>
+    <p class="hint">Sprawdza liczbę kontrolną polskiego rachunku (26 cyfr, z „PL” albo bez, spacje dozwolone). Rozpoznaje mikrorachunek podatkowy i rachunek składkowy ZUS (NRS) i pokazuje zapisany w nich NIP lub PESEL.</p>
+    <label for="rbNr">Numer rachunku</label>
+    <input type="text" id="rbNr" class="mono" inputmode="numeric" autocomplete="off" maxlength="40" placeholder="00 0000 0000 0000 0000 0000 0000" />
+    <div id="rbOut" aria-live="polite"></div>
+    <p class="law">Liczba kontrolna: algorytm mod 97 standardu IBAN (ISO 13616), kod kraju PL. Mikrorachunek: opis MF na podatki.gov.pl. NRS: 2 cyfry kontrolne + stały numer ZUS 60000002026 + 3-cyfrowa liczba uzupełniająca + 10 cyfr NIP płatnika (zus.pl, „Jak wypełnić dokument płatniczy”). Poprawna liczba kontrolna nie potwierdza istnienia rachunku ani jego właściciela. Stan na <span data-wer></span>.</p>
+  </section>
+
+  <!-- 3 -->
+  <section class="box panel" id="p-podatkowe" hidden>
+    <h2>Odsetki za zwłokę od zaległości podatkowych</h2>
+    <p class="hint">Liczone od dnia następnego po terminie płatności do dnia zapłaty włącznie, osobno dla każdego okresu obowiązywania stawki; suma zaokrąglana do pełnych złotych.</p>
+    <div class="three">
+      <div><label for="opKwota">Kwota zaległości (zł)</label><input type="text" id="opKwota" inputmode="decimal" autocomplete="off" placeholder="np. 1 250,00" /></div>
+      <div><label for="opTermin">Termin płatności</label><input type="date" id="opTermin" /></div>
+      <div><label for="opZaplata">Dzień zapłaty</label><input type="date" id="opZaplata" /></div>
+    </div>
+    <div class="three">
+      <div><label for="opRodzaj">Stawka</label><select id="opRodzaj">
+        <option value="podst">podstawowa (art. 56 § 1)</option>
+        <option value="obniz">obniżona — 50% (art. 56a)</option>
+        <option value="podwyz">podwyższona — 150% (art. 56b)</option></select></div>
+      <div><label for="opStawka">Własna stawka roczna w % (opcjonalnie)</label><input type="text" id="opStawka" inputmode="decimal" autocomplete="off" placeholder="puste = tabela wbudowana" /></div>
+      <div><label for="opProg">Próg nienaliczania (zł)</label><input type="text" id="opProg" inputmode="decimal" autocomplete="off" /></div>
+    </div>
+    <p class="hint">Wbudowana tabela stawki podstawowej jest zweryfikowana od <b id="opOd"></b>, a stawek obniżonej i podwyższonej — od <b id="opOdWar"></b>. Dla wcześniejszych okresów wpisz własną stawkę. Wpisana własna stawka zastępuje tabelę dla całego okresu.</p>
+    <div id="opOut" aria-live="polite"></div>
+    <details><summary>Stawki użyte w kalkulatorze</summary><div id="opTabela"></div>
+      <p class="hint" style="margin-top:8px">Obwieszczenia Ministra Finansów wydawane od 2016 r. nie podają dnia, od którego stawka obowiązuje — zgodnie z art. 56c jest to dzień zmiany stopy lombardowej NBP. Dni przyjęto z obwieszczeń Ministra Sprawiedliwości wydanych po tych samych decyzjach NBP.</p></details>
+    <p class="law">Podstawa: art. 53 § 1 i 4, art. 54 § 1 pkt 5, art. 56, 56a, 56b, 56c i art. 63 § 1 Ordynacji podatkowej (t.j. Dz.U. 2026 poz. 622); § 2–2b i § 4 rozporządzenia Ministra Finansów z 22.08.2005 r. w sprawie naliczania odsetek za zwłokę (t.j. Dz.U. 2021 poz. 703, zm. Dz.U. 2026 poz. 1228): wzór Kz × L × O / 365. Stawka obniżona — korekta deklaracji w ciągu 6 miesięcy od terminu jej złożenia i zapłata w 7 dni od korekty; podwyższona — m.in. zaniżenia w VAT i akcyzie ujawnione w kontroli. Próg: odsetek nie nalicza się, jeżeli nie przekraczałyby trzykrotności opłaty Poczty Polskiej za traktowanie przesyłki listowej jako poleconej — kalkulator MF podaje 8,70 zł; po zmianie cennika popraw pole. Stan na <span data-wer></span>.</p>
+  </section>
+
+  <!-- 4 -->
+  <section class="box panel" id="p-ustawowe" hidden>
+    <h2>Odsetki ustawowe za opóźnienie</h2>
+    <p class="hint">Liczone od dnia następnego po terminie zapłaty do dnia zapłaty włącznie, osobno dla każdego okresu obowiązywania stawki; przyjęto rok = 365 dni, wynik zaokrąglony do groszy.</p>
+    <div class="three">
+      <div><label for="ocKwota">Kwota należności (zł)</label><input type="text" id="ocKwota" inputmode="decimal" autocomplete="off" placeholder="np. 4 920,00" /></div>
+      <div><label for="ocTermin">Termin zapłaty</label><input type="date" id="ocTermin" /></div>
+      <div><label for="ocZaplata">Dzień zapłaty</label><input type="date" id="ocZaplata" /></div>
+    </div>
+    <div class="two">
+      <div><label for="ocRodzaj">Rodzaj odsetek</label><select id="ocRodzaj">
+        <option value="ustawowe">ustawowe za opóźnienie (art. 481 KC)</option>
+        <option value="handlowe">w transakcjach handlowych</option>
+        <option value="handlowe_leczn">w transakcjach handlowych — dłużnik: publiczny podmiot leczniczy</option></select></div>
+      <div><label for="ocStawka">Własna stawka roczna w % (opcjonalnie)</label><input type="text" id="ocStawka" inputmode="decimal" autocomplete="off" placeholder="puste = tabela wbudowana" /></div>
+    </div>
+    <div id="ocOut" aria-live="polite"></div>
+    <details><summary>Stawki odsetek ustawowych za opóźnienie</summary><div id="ocTabelaU"></div></details>
+    <details><summary>Stawki odsetek w transakcjach handlowych</summary><div id="ocTabelaH"></div></details>
+    <p class="law" id="ocPodstawa"></p>
+  </section>
+
+  <!-- 5 -->
+  <section class="box panel" id="p-vat" hidden>
+    <h2>Brutto ↔ netto VAT</h2>
+    <p class="hint">Od netto: podatek = netto × stawka. Od brutto: podatek = brutto × stawka / (100 + stawka). Kwoty zaokrąglane do pełnych groszy.</p>
+    <div class="three">
+      <div><label for="vtKier">Mam kwotę</label><select id="vtKier"><option value="netto">netto → policz brutto</option><option value="brutto">brutto → policz netto</option></select></div>
+      <div><label for="vtKwota" id="vtKwotaLab">Kwota netto</label><input type="text" id="vtKwota" inputmode="decimal" autocomplete="off" placeholder="np. 1 000,00" /></div>
+      <div><label for="vtStawka">Stawka VAT</label><select id="vtStawka"></select></div>
+    </div>
+    <div id="vtOut" aria-live="polite"></div>
+    <p class="law">Podstawa: art. 41 ust. 1, 2 i 2a w zw. z art. 146ef ustawy o podatku od towarów i usług (stawki 23%, 8%, 5%; 0% — m.in. art. 41 ust. 4); art. 106e ust. 7 i 11 (podatek „w stu”, zaokrąglenie do pełnych groszy). Na fakturze z wieloma pozycjami sumę podatku liczy się zgodnie z przyjętą metodą (od sumy netto albo jako sumę pozycji) — wynik może różnić się o grosze. Stan na <span data-wer></span>.</p>
+  </section>
+</main>
+<script src="narzedzia-ksiegowe.js?v=1"></script>
+</body>
+</html>

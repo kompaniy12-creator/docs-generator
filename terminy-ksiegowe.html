@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>Kalendarz terminów — TD Consulting Group</title>
+<style>
+  :root{--brand-navy:#1B3F7F;--brand-navy-dark:#15315F;--brand-green:#1FA84B;--brand-tint:#EEF3F9;}
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f6f8fb;color:#111;line-height:1.5}
+  main{max-width:1000px;margin:0 auto;padding:36px 20px 96px}
+  .back{display:inline-block;margin-bottom:14px;font-size:14px;color:#666;text-decoration:none}
+  .brand{text-align:center;margin:0 0 14px}.brand img{height:60px}
+  h1{font-size:23px;font-weight:700;margin:0 0 4px;color:var(--brand-navy);text-align:center}
+  .lead{color:#666;margin:0 auto 18px;font-size:14px;text-align:center;max-width:820px}
+  .box{background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:16px;margin:0 0 16px}
+  .box h2{font-size:15px;margin:0 0 4px;color:var(--brand-navy)}
+  .hint{color:#7a8699;font-size:12.5px;margin:0 0 10px}
+  .month{display:flex;align-items:center;justify-content:center;gap:10px;margin:0 0 14px;flex-wrap:wrap}
+  .month strong{font-size:19px;color:var(--brand-navy);min-width:210px;text-align:center;text-transform:capitalize}
+  .mini{font:inherit;font-size:12.5px;font-weight:600;padding:5px 10px;border-radius:8px;border:1px solid #d4dbe6;background:#fff;color:var(--brand-navy);cursor:pointer;white-space:nowrap;text-decoration:none}
+  .mini:hover{border-color:var(--brand-navy)}
+  .month .mini{font-size:15px;padding:7px 13px}
+  @media(max-width:560px){.month strong{min-width:150px;font-size:17px}}
+  .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 4px;justify-content:center}
+  .tabs button{font:inherit;font-size:13.5px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid #d4dbe6;background:#fff;color:#3a4759;cursor:pointer}
+  .tabs button.on{background:var(--brand-navy);border-color:var(--brand-navy);color:#fff}
+  .tabs b{margin-left:5px;opacity:.85}
+  .day{background:#fff;border:1px solid #e5e9ef;border-radius:12px;margin:0 0 10px;overflow:hidden}
+  .day.past{opacity:.72}
+  .day.today{border-color:var(--brand-green);box-shadow:0 0 0 2px rgba(31,168,75,.18)}
+  .dhead{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:11px 14px;background:var(--brand-tint);flex-wrap:wrap}
+  .dhead strong{font-size:15px;color:var(--brand-navy)}.dhead small{color:#5a6577;margin-left:6px}
+  .item{padding:10px 14px;border-top:1px solid #eef1f6;font-size:13.5px}
+  .item .n{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+  .item .n b{font-size:14.5px}
+  .item p{margin:3px 0 0;color:#3a4759}
+  .item .law{margin-top:4px;color:#7a8699;font-size:12.5px}
+  .item .law a{color:var(--brand-navy);white-space:nowrap}
+  .item .moved{margin-top:4px;color:#92400e;font-size:12.5px}
+  .pill{display:inline-block;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .p-red{background:#fee2e2;color:#991b1b}.p-amber{background:#fef3c7;color:#92400e}.p-ok{background:#dcfce7;color:#166534}.p-grey{background:#eef1f6;color:#5a6577}.p-navy{background:var(--brand-tint);color:var(--brand-navy)}
+  .now{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--brand-green);font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+  .now::before,.now::after{content:"";flex:1;height:2px;background:var(--brand-green);border-radius:2px}
+  .empty{text-align:center;color:#888;padding:26px}
+  .foot{font-size:13px;color:#3a4759}.foot p{margin:0 0 8px}.foot p:last-child{margin:0}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Kalendarz terminów</h1>
+  <p class="lead">Ustawowe terminy podatkowe, ZUS i sprawozdawcze w wybranym miesiącu — z podstawą prawną i liczbą dni do terminu. Termin przypadający w sobotę lub dzień ustawowo wolny od pracy jest już przesunięty na najbliższy dzień roboczy.</p>
+
+  <div class="box">
+    <div class="month">
+      <button type="button" class="mini" id="prev" aria-label="Poprzedni miesiąc">←</button>
+      <strong id="title"></strong>
+      <button type="button" class="mini" id="next" aria-label="Następny miesiąc">→</button>
+      <button type="button" class="mini" id="today">Dziś</button>
+    </div>
+    <div class="tabs" id="tabs"></div>
+  </div>
+
+  <div id="list"><div class="empty">Ładowanie…</div></div>
+
+  <div class="box foot" id="foot"></div>
+</main>
+<script src="ksieg-terminy.js?v=1"></script>
+<script src="terminy-ksiegowe.js?v=1"></script>
+</body>
+</html>

@@ -31,7 +31,7 @@
     'wynagrodzenie.html': 'biezaca', 'e-urzad.html': 'biezaca', 'pelnomocnictwo.html': 'biezaca',
     'zalacznik-pobyt.html': 'legalizacja', 'nip-8.html': 'biezaca',
     'umowa-zlecenie.html': 'kadry', 'rejestr.html': 'kadry', 'zatrudnienie.html': 'kadry', 'import.html': 'kadry', 'kontrola.html': 'kadry', 'wiedza.html': 'kadry', 'akta.html': 'kadry',
-    'onboarding.html': 'onboarding',
+    'onboarding.html': 'onboarding', 'ksiegowosc.html': 'onboarding', 'terminy-ksiegowe.html': 'onboarding', 'narzedzia-ksiegowe.html': 'onboarding',
   };
   function hasSection(user, section) {
     var m = (user && user.app_metadata) || {};
