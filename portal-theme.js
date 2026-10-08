@@ -61,7 +61,10 @@
     // content blocks are frosted glass: the background shows through a little
     'html.pt body.ps main .box,html.pt body.ps main .tile,html.pt body.ps main .firm,html.pt body.ps main .task,html.pt body.ps main .rule,html.pt body.ps main fieldset,html.pt body.ps main .card,html.pt body.ps main .item,html.pt body.ps main .remfirm{background:var(--pt-card);backdrop-filter:blur(20px) saturate(1.1);-webkit-backdrop-filter:blur(20px) saturate(1.1)}',
     'html.pt body.ps main .box .remfirm,html.pt body.ps main .box .task,html.pt body.ps main fieldset fieldset{background:rgba(255,255,255,.55);backdrop-filter:none;-webkit-backdrop-filter:none}',
-    'html.pt body.ps main table,html.pt body.ps main th,html.pt body.ps main td{background:transparent}',
+    // a table standing on its own is a block too; inside a block it stays clear
+    'html.pt body.ps main table{background:var(--pt-card);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}',
+    'html.pt body.ps main th,html.pt body.ps main td{background:transparent}',
+    'html.pt body.ps main .box table,html.pt body.ps main .card table,html.pt body.ps main fieldset table{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none}',
     // section titles of forms sit on the edge of the block: give them their own solid label
     'html.pt body.ps main legend{background:#fff;color:var(--pt-accent);border-radius:999px;padding:5px 14px;margin-left:-4px;font-weight:700;box-shadow:0 4px 14px rgba(15,23,42,.14)}',
     'html.pt body.ps main fieldset{padding-top:18px}',
