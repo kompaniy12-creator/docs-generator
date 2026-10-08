@@ -105,12 +105,9 @@
     '.ps-chev{font-size:17px;line-height:1;transition:transform .15s;opacity:.7}',
     '.ps-group.open .ps-chev{transform:rotate(90deg)}',
     '.ps-group .ps-items{display:none}',
-    '.ps-group{position:relative}',
-    '.ps-move{position:absolute;right:30px;top:8px;display:none;gap:2px;z-index:2}',
-    '.ps-group:hover>.ps-move,.ps-move:focus-within{display:flex}',
-    '.ps-move button{width:22px;height:22px;border-radius:6px;border:1px solid rgba(120,135,160,.35);background:rgba(255,255,255,.14);color:inherit;font:inherit;font-size:12px;line-height:1;cursor:pointer;padding:0;opacity:.8}',
-    '.ps-move button:hover{opacity:1;background:rgba(255,255,255,.3)}',
-    '.ps-move button:disabled{opacity:.25;cursor:default}',
+    '.ps-group.ps-drag{opacity:.85;box-shadow:0 8px 24px rgba(0,0,0,.28);cursor:grabbing;position:relative;z-index:3}',
+    '.ps-group.ps-drag .ps-label{cursor:grabbing}',
+    'body.ps-dragging{user-select:none;-webkit-user-select:none}',
     '.ps-group.open .ps-items{display:block}',
     '.ps-group.has-on:not(.open){background:rgba(27,63,127,.08)}',
     '.ps-group.has-on:not(.open) .ps-label{color:var(--ps-navy)}',
@@ -236,7 +233,6 @@
     NAV.filter(function (g) { return g.items.length; }).map(function (g) {
       // every module folds; the one with the current page is open, the rest as the user left them
       return '<div class="ps-group' + (g.mobile ? ' ps-m' : '') + '" data-group="' + esc(g.label) + '">' +
-        (g.mobile ? '' : '<span class="ps-move"><button type="button" data-move="-1" title="Przesuń moduł wyżej" aria-label="Przesuń moduł ' + esc(g.label) + ' wyżej">↑</button><button type="button" data-move="1" title="Przesuń moduł niżej" aria-label="Przesuń moduł ' + esc(g.label) + ' niżej">↓</button></span>') +
         '<button type="button" class="ps-label" data-fold aria-expanded="false"><span class="ps-gname"><span class="ps-ico">' + ico(g.ico) + '</span>' + esc(g.label) + '</span><span class="ps-chev">›</span></button>' +
         '<div class="ps-items">' + g.items.map(function (it) { return link(it, 'ps-item'); }).join('') +
         (g.sec === 'kadry' ? '<button type="button" class="ps-item ps-copy" id="psCopy"><span class="ps-ico">' + ico('🔗') + '</span><span data-copy-text>Kopiuj link do formularza dla klienta</span></button>' : '') +
@@ -311,13 +307,43 @@
     });
   }
 
-  function moveState() {
+  // modules are reordered by pressing a module header and dragging it; a plain click still folds
+  var drag = null, dragJust = false;
+  document.addEventListener('pointerdown', function (e) {
+    if (e.button !== 0 || e.pointerType !== 'mouse') return; // on touch the menu scrolls instead
+    var lab = e.target.closest && e.target.closest('#psSide .ps-group:not(.ps-m)>.ps-label');
+    if (lab) drag = { g: lab.parentNode, y: e.clientY, on: false, id: e.pointerId };
+  });
+  document.addEventListener('pointermove', function (e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (!drag.on) {
+      if (Math.abs(e.clientY - drag.y) < 7) return;
+      drag.on = true; drag.g.classList.add('ps-drag'); document.body.classList.add('ps-dragging');
+    }
+    e.preventDefault();
     var gs = document.querySelectorAll('#psSide .ps-group:not(.ps-m)');
-    [].forEach.call(gs, function (g, i) {
-      var b = g.querySelectorAll('.ps-move button');
-      if (b.length) { b[0].disabled = i === 0; b[1].disabled = i === gs.length - 1; }
-    });
+    for (var i = 0; i < gs.length; i++) {
+      var o = gs[i]; if (o === drag.g) continue;
+      var r = o.getBoundingClientRect();
+      if (e.clientY < r.top || e.clientY > r.bottom) continue;
+      var before = e.clientY < r.top + r.height / 2;
+      if (before && o.previousElementSibling !== drag.g) o.parentNode.insertBefore(drag.g, o);
+      else if (!before && o.nextElementSibling !== drag.g) o.parentNode.insertBefore(drag.g, o.nextElementSibling);
+      break;
+    }
+  }, { passive: false });
+  function dragEnd(e) {
+    if (!drag || (e && e.pointerId !== drag.id)) return;
+    if (drag.on) {
+      drag.g.classList.remove('ps-drag'); document.body.classList.remove('ps-dragging');
+      var order = [].map.call(document.querySelectorAll('#psSide .ps-group:not(.ps-m)'), function (x) { return x.getAttribute('data-group'); });
+      try { localStorage.setItem(ORDER_KEY, JSON.stringify(order)); } catch (e3) {}
+      dragJust = true; setTimeout(function () { dragJust = false; }, 300);
+    }
+    drag = null;
   }
+  document.addEventListener('pointerup', dragEnd);
+  document.addEventListener('pointercancel', dragEnd);
   function refresh() {
     var current = null;
     items.forEach(function (it) { if (!current && isActive(it)) current = it; });
@@ -330,25 +356,13 @@
     document.querySelectorAll('#psBar [data-top]').forEach(function (l) { l.classList.toggle('on', l.getAttribute('data-top') === page); });
     document.body.classList.remove('ps-open');
     applyFold();
-    moveState();
   }
 
   function toggleMenu() { document.body.classList.toggle('ps-open'); }
   document.addEventListener('click', function (e) {
     var t = e.target;
     if (t.closest('#psMenu') || t.closest('#psMore')) return toggleMenu();
-    var mv = t.closest('[data-move]');
-    if (mv) {
-      var g0 = mv.closest('.ps-group'), dir = +mv.getAttribute('data-move');
-      var sib = dir < 0 ? g0.previousElementSibling : g0.nextElementSibling;
-      if (sib && sib.classList.contains('ps-group') && !sib.classList.contains('ps-m')) {
-        g0.parentNode.insertBefore(dir < 0 ? g0 : sib, dir < 0 ? sib : g0);
-        var order = [].map.call(document.querySelectorAll('#psSide .ps-group:not(.ps-m)'), function (x) { return x.getAttribute('data-group'); });
-        try { localStorage.setItem(ORDER_KEY, JSON.stringify(order)); } catch (e3) {}
-        moveState();
-      }
-      return;
-    }
+    if (dragJust) { dragJust = false; if (t.closest('[data-fold]')) return; }
     var fold = t.closest('[data-fold]');
     if (fold) {
       var grp = fold.closest('.ps-group'), st = foldState();
