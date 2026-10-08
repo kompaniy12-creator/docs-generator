@@ -58,7 +58,10 @@
     'html.pt .ps-ico{border-radius:9px}',
     // content cards: soft, slightly translucent, bigger radius
     'html.pt body.ps main .box,html.pt body.ps main .card,html.pt body.ps main .tile,html.pt body.ps main .firm,html.pt body.ps main .task,html.pt body.ps main .rule,html.pt body.ps main .item,html.pt body.ps main fieldset,html.pt body.ps main .krs-find{border-radius:16px;border-color:rgba(255,255,255,.55);box-shadow:0 10px 30px rgba(15,23,42,.10)}',
-    'html.pt body.ps main .box,html.pt body.ps main .tile,html.pt body.ps main .firm,html.pt body.ps main .task,html.pt body.ps main .rule,html.pt body.ps main fieldset{background:rgba(255,255,255,.94)}',
+    // content blocks are frosted glass: the background shows through a little
+    'html.pt body.ps main .box,html.pt body.ps main .tile,html.pt body.ps main .firm,html.pt body.ps main .task,html.pt body.ps main .rule,html.pt body.ps main fieldset,html.pt body.ps main .card,html.pt body.ps main .item,html.pt body.ps main .remfirm{background:var(--pt-card);backdrop-filter:blur(20px) saturate(1.1);-webkit-backdrop-filter:blur(20px) saturate(1.1)}',
+    'html.pt body.ps main .box .remfirm,html.pt body.ps main .box .task,html.pt body.ps main fieldset fieldset{background:rgba(255,255,255,.55);backdrop-filter:none;-webkit-backdrop-filter:none}',
+    'html.pt body.ps main table,html.pt body.ps main th,html.pt body.ps main td{background:transparent}',
     'html.pt body.ps main table{border-radius:14px}',
     // dark backgrounds: light text for everything that sits directly on the background
     'html.pt-dark #psSide,html.pt-dark #psBar,html.pt-dark #psTop,html.pt-dark #psTabs{color:#fff}',
@@ -82,7 +85,7 @@
     'html.pt{--navy:var(--pt-accent);--navy-d:var(--pt-accent-d);--tint:var(--pt-tint)}',
     'html.pt body.pt-page{background:var(--pt-bg);background-attachment:fixed;background-size:cover;background-position:center;min-height:100vh}',
     'html.pt body.pt-page header{background:var(--pt-glass);backdrop-filter:blur(30px) saturate(1.05);-webkit-backdrop-filter:blur(30px) saturate(1.05);border-color:var(--pt-line)}',
-    'html.pt body.pt-page .box,html.pt body.pt-page .tile,html.pt body.pt-page .login,html.pt body.pt-page .card{background:rgba(255,255,255,.94);border-radius:18px;border-color:rgba(255,255,255,.55);box-shadow:0 14px 40px rgba(15,23,42,.16)}',
+    'html.pt body.pt-page .box,html.pt body.pt-page .tile,html.pt body.pt-page .login,html.pt body.pt-page .card{background:var(--pt-card);backdrop-filter:blur(20px) saturate(1.1);-webkit-backdrop-filter:blur(20px) saturate(1.1);border-radius:18px;border-color:rgba(255,255,255,.55);box-shadow:0 14px 40px rgba(15,23,42,.16)}',
     'html.pt body.pt-page header img{border-radius:10px}',
     'html.pt-dark body.pt-page header strong{color:#fff}',
     'html.pt-dark body.pt-page header button{background:rgba(255,255,255,.18);color:#fff}',
@@ -119,12 +122,13 @@
     var themed = c.id !== 'klasyczny' || c.accent.toLowerCase() !== '#1b3f7f';
     root.classList.toggle('pt', themed);
     root.classList.toggle('pt-dark', themed && c.dark);
-    if (!themed) { ['--pt-bg', '--pt-accent', '--pt-accent-d', '--pt-tint', '--pt-glass', '--pt-line'].forEach(function (v) { st.removeProperty(v); }); return; }
+    if (!themed) { ['--pt-bg', '--pt-accent', '--pt-accent-d', '--pt-tint', '--pt-glass', '--pt-line', '--pt-card'].forEach(function (v) { st.removeProperty(v); }); return; }
     st.setProperty('--pt-bg', c.own ? 'url("' + c.own + '")' : c.bg);
     st.setProperty('--pt-accent', c.accent);
     st.setProperty('--pt-accent-d', shade(c.accent, -0.22));
     st.setProperty('--pt-tint', shade(c.accent, 0.9));
     st.setProperty('--pt-glass', c.dark ? 'rgba(17,22,38,.58)' : 'rgba(255,255,255,.80)'); // matte, not see-through
+    st.setProperty('--pt-card', c.dark ? 'rgba(255,255,255,.80)' : 'rgba(255,255,255,.72)');
     st.setProperty('--pt-line', c.dark ? 'rgba(255,255,255,.16)' : 'rgba(15,23,42,.08)');
   }
 
