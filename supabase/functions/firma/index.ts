@@ -32,17 +32,30 @@ async function requirePortal(req: Request) {
   const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: ANON, Authorization: `Bearer ${token}` } });
   if (!r.ok) return false;
   const u = await r.json();
-  return u?.app_metadata?.portal === true;
+  const m = u?.app_metadata ?? {};
+  if (m.portal !== true) return false;
+  const admin = m.portal_admin === true;
+  const sec = (x: string) => admin || !Array.isArray(m.portal_sections) || m.portal_sections.includes(x);
+  return { admin, sec };
+}
+const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const ODPISY_DZIENNIE = 40; // paid KRS extracts fetched per day by the whole office
+// how many extracts were fetched from the register today (the cache keeps the fetch time)
+async function odpisyDzis(): Promise<number> {
+  const od = new Date().toISOString().slice(0, 10);
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/portal_odpisy_cache?select=krs&fetched_at=gte.${od}`, { headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, Prefer: "count=exact", Range: "0-0" } });
+  return Number((r.headers.get("content-range") ?? "").split("/")[1]) || 0;
 }
 Deno.serve(async (req) => {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (req.method !== "GET") return json({ error: "Method not allowed" }, 405, origin);
-  if (!(await requirePortal(req))) return json({ error: "Brak dostępu (portal)." }, 403, origin);
+  const kto = await requirePortal(req);
+  if (!kto) return json({ error: "Brak dostępu (portal)." }, 403, origin);
   if (!firmaConfigured()) return json({ error: "Brak konfiguracji REJESTR_IO_KEY." }, 500, origin);
 
   const url = new URL(req.url);
-  const fresh = !!url.searchParams.get("fresh");
+  const fresh = !!url.searchParams.get("fresh") && kto.admin; // a paid re-fetch past the cache: administrators only
   const q = (url.searchParams.get("q") ?? "").trim();
   const krs = (url.searchParams.get("krs") ?? "").replace(/\D/g, "");
   const odpis = (url.searchParams.get("odpis") ?? "").replace(/\D/g, "");
@@ -54,7 +67,12 @@ Deno.serve(async (req) => {
       return json({ hits: await searchFirmy(q.slice(0, 120)) }, 200, origin);
     }
     //   ?odpis=KRS -> { pdf (base64), pobrano } — the current KRS extract, for PESEL numbers
-    if (odpis) return json(await getOdpis(odpis.padStart(10, "0"), fresh), 200, origin);
+    //   the extract carries PESEL numbers: only for the sections whose forms need them, and capped per day
+    if (odpis) {
+      if (!kto.sec("biezaca") && !kto.sec("rejestracja")) return json({ error: "Brak dostępu do odpisu KRS." }, 403, origin);
+      if (await odpisyDzis() >= ODPISY_DZIENNIE) return json({ error: "Dzienny limit odpisów KRS został wykorzystany — spróbuj jutro." }, 429, origin);
+      return json(await getOdpis(odpis.padStart(10, "0"), fresh), 200, origin);
+    }
     //   ?krs=KRS -> the same firm data as by NIP
     if (krs) return json(await getFirma("", fresh, krs.padStart(10, "0")), 200, origin);
     if (nip.length !== 10) return json({ error: "Nieprawidłowy NIP (10 cyfr)." }, 400, origin);
