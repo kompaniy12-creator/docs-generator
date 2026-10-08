@@ -38,7 +38,10 @@
     var s = read();
     var t = THEMES.filter(function (x) { return x.id === s.theme; })[0] || THEMES[0];
     var own = s.theme === 'wlasne' && img();
-    return { id: own ? 'wlasne' : t.id, dark: own ? s.ownDark !== false : t.dark, accent: s.accent || t.accent, bg: own ? null : t.bg, own: own };
+    var dark = own ? s.ownDark !== false : t.dark;
+    var pct = function (v, def) { v = Number(v); return v >= 30 && v <= 100 ? v : def; };
+    return { id: own ? 'wlasne' : t.id, dark: dark, accent: s.accent || t.accent, bg: own ? null : t.bg, own: own,
+      card: pct(s.card, dark ? 80 : 72), menu: pct(s.menu, dark ? 58 : 80) };
   }
 
   var css = document.createElement('style');
@@ -60,7 +63,7 @@
     'html.pt body.ps main .box,html.pt body.ps main .card,html.pt body.ps main .tile,html.pt body.ps main .firm,html.pt body.ps main .task,html.pt body.ps main .rule,html.pt body.ps main .item,html.pt body.ps main fieldset,html.pt body.ps main .krs-find{border-radius:16px;border-color:rgba(255,255,255,.55);box-shadow:0 10px 30px rgba(15,23,42,.10)}',
     // content blocks are frosted glass: the background shows through a little
     'html.pt body.ps main .box,html.pt body.ps main .tile,html.pt body.ps main .firm,html.pt body.ps main .task,html.pt body.ps main .rule,html.pt body.ps main fieldset,html.pt body.ps main .card,html.pt body.ps main .item,html.pt body.ps main .remfirm{background:var(--pt-card);backdrop-filter:blur(20px) saturate(1.1);-webkit-backdrop-filter:blur(20px) saturate(1.1)}',
-    'html.pt body.ps main .box .remfirm,html.pt body.ps main .box .task,html.pt body.ps main fieldset fieldset{background:rgba(255,255,255,.55);backdrop-filter:none;-webkit-backdrop-filter:none}',
+    'html.pt body.ps main .box .remfirm,html.pt body.ps main .box .task,html.pt body.ps main fieldset fieldset{background:rgba(255,255,255,.5);backdrop-filter:none;-webkit-backdrop-filter:none}',
     // a table standing on its own is a block too; inside a block it stays clear
     'html.pt body.ps main table{background:var(--pt-card);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}',
     'html.pt body.ps main th,html.pt body.ps main td{background:transparent}',
@@ -122,6 +125,9 @@
     '.pt-btn{border:1px solid #d4dbe6;background:#fff;color:#111;border-radius:10px;padding:8px 12px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}',
     '.pt-btn:hover{border-color:#111}',
     '.pt-check{display:flex;align-items:center;gap:8px;font-size:13px;color:#3a4759;margin-top:10px;cursor:pointer}',
+    '.pt-range{display:grid;grid-template-columns:1fr 120px 40px;gap:10px;align-items:center;font-size:13px;color:#3a4759;margin:0 0 8px}',
+    '.pt-range input{width:100%;accent-color:#111}',
+    '.pt-range b{font-size:12.5px;color:#111;text-align:right}',
     '.pt-x{position:absolute;right:12px;top:10px;border:none;background:none;font-size:22px;line-height:1;color:#8a97ab;cursor:pointer}',
   ].join('\n');
   (document.head || document.documentElement).appendChild(css);
@@ -136,8 +142,8 @@
     st.setProperty('--pt-accent', c.accent);
     st.setProperty('--pt-accent-d', shade(c.accent, -0.22));
     st.setProperty('--pt-tint', shade(c.accent, 0.9));
-    st.setProperty('--pt-glass', c.dark ? 'rgba(17,22,38,.58)' : 'rgba(255,255,255,.80)'); // matte, not see-through
-    st.setProperty('--pt-card', c.dark ? 'rgba(255,255,255,.80)' : 'rgba(255,255,255,.72)');
+    st.setProperty('--pt-glass', (c.dark ? 'rgba(17,22,38,' : 'rgba(255,255,255,') + (c.menu / 100) + ')'); // matte; how solid is the user's choice
+    st.setProperty('--pt-card', 'rgba(255,255,255,' + (c.card / 100) + ')');
     st.setProperty('--pt-line', c.dark ? 'rgba(255,255,255,.16)' : 'rgba(15,23,42,.08)');
   }
 
@@ -177,6 +183,11 @@
       '<h4>Kolor akcentu</h4><div class="pt-colors">' +
       ACCENTS.map(function (a) { return '<button type="button" class="pt-c' + (c.accent.toLowerCase() === a.toLowerCase() ? ' on' : '') + '" data-accent="' + a + '" style="background:' + a + '" title="' + a + '"></button>'; }).join('') +
       '<input type="color" id="ptColor" value="' + c.accent + '" title="Dowolny kolor" /></div>' +
+      (c.id !== 'klasyczny' || c.accent.toLowerCase() !== '#1b3f7f'
+        ? '<h4>Przezroczystość</h4>' +
+          '<label class="pt-range"><span>Bloki z treścią</span><input type="range" min="30" max="100" step="2" id="ptCard" value="' + c.card + '" /><b id="ptCardV">' + (100 - c.card) + '%</b></label>' +
+          '<label class="pt-range"><span>Menu boczne i górne</span><input type="range" min="30" max="100" step="2" id="ptMenu" value="' + c.menu + '" /><b id="ptMenuV">' + (100 - c.menu) + '%</b></label>'
+        : '') +
       '<div class="pt-row" style="margin-top:16px"><button type="button" class="pt-btn" data-pt="reset">Przywróć klasyczny wygląd</button></div>';
   }
   function open() {
@@ -187,7 +198,7 @@
       panel.addEventListener('click', function (e) {
         var s = read(), t = e.target;
         var th = t.closest('[data-theme]'), ac = t.closest('[data-accent]'), act = t.closest('[data-pt]');
-        if (th) { s.theme = th.getAttribute('data-theme'); delete s.accent; }
+        if (th) { s.theme = th.getAttribute('data-theme'); delete s.accent; delete s.card; delete s.menu; }
         else if (ac) s.accent = ac.getAttribute('data-accent');
         else if (act) {
           var a = act.getAttribute('data-pt');
@@ -197,6 +208,15 @@
           if (a === 'reset') s = {};
         } else return;
         save(s); apply(); render();
+      });
+      // sliders act while they are dragged; the panel is not redrawn so the thumb keeps its grip
+      panel.addEventListener('input', function (e) {
+        var id = e.target.id;
+        if (id !== 'ptCard' && id !== 'ptMenu') return;
+        var s = read();
+        s[id === 'ptCard' ? 'card' : 'menu'] = Number(e.target.value);
+        save(s); apply();
+        panel.querySelector('#' + id + 'V').textContent = (100 - Number(e.target.value)) + '%';
       });
       panel.addEventListener('change', function (e) {
         var s = read();
