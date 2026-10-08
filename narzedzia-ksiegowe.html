@@ -61,7 +61,7 @@
   <a href="index.html" class="back">← Powrót do portalu</a>
   <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
   <h1>Narzędzia księgowe</h1>
-  <p class="lead">Podręczne kalkulatory: mikrorachunek podatkowy, sprawdzenie numeru rachunku, odsetki podatkowe i ustawowe, VAT. Wszystko liczy się w przeglądarce — wpisane dane nigdzie nie są wysyłane ani zapisywane.</p>
+  <p class="lead">Podręczne kalkulatory: mikrorachunek podatkowy, sprawdzenie numeru rachunku, odsetki podatkowe i ustawowe, VAT — liczą się w przeglądarce i wpisanych do nich danych nigdzie nie wysyłają. Wyjątek: „Biała lista VAT” i „VAT UE (VIES)” wysyłają zapytanie przez portal do Ministerstwa Finansów albo Komisji Europejskiej; portal odnotowuje, kto i co sprawdzał (numer rachunku — tylko 4 ostatnie cyfry).</p>
 
   <div class="tabs" id="tabs" role="tablist">
     <button type="button" class="on" data-tab="mikro" role="tab" aria-selected="true">Mikrorachunek</button>
@@ -69,6 +69,8 @@
     <button type="button" data-tab="podatkowe" role="tab" aria-selected="false">Odsetki podatkowe</button>
     <button type="button" data-tab="ustawowe" role="tab" aria-selected="false">Odsetki ustawowe</button>
     <button type="button" data-tab="vat" role="tab" aria-selected="false">Brutto ↔ netto</button>
+    <button type="button" data-tab="biala" role="tab" aria-selected="false">Biała lista VAT</button>
+    <button type="button" data-tab="vies" role="tab" aria-selected="false">VAT UE (VIES)</button>
   </div>
 
   <!-- 1 -->
@@ -151,7 +153,49 @@
     <div id="vtOut" aria-live="polite"></div>
     <p class="law">Podstawa: art. 41 ust. 1, 2 i 2a w zw. z art. 146ef ustawy o podatku od towarów i usług (stawki 23%, 8%, 5%; 0% — m.in. art. 41 ust. 4); art. 106e ust. 7 i 11 (podatek „w stu”, zaokrąglenie do pełnych groszy). Na fakturze z wieloma pozycjami sumę podatku liczy się zgodnie z przyjętą metodą (od sumy netto albo jako sumę pozycji) — wynik może różnić się o grosze. Stan na <span data-wer></span>.</p>
   </section>
+
+  <!-- 6 -->
+  <section class="box panel" id="p-biala" hidden>
+    <h2>Biała lista — Wykaz podatników VAT</h2>
+    <p class="hint">Zapytanie trafia przez portal do Wykazu podatników VAT Ministerstwa Finansów (wl-api.mf.gov.pl). Każda odpowiedź ma identyfikator wyszukiwania — to on jest dowodem sprawdzenia, zachowaj go przy płatności. Limity MF: <b>100 wyszukiwań</b> podmiotu i <b>5000 sprawdzeń</b> pary NIP + rachunek dziennie; po wyczerpaniu limitu MF może zablokować dostęp do godz. 0:00. Portal pyta ze wspólnego serwera, więc limit dzielą wszyscy użytkownicy — do potwierdzenia rachunku przed przelewem wybieraj „Para NIP + rachunek”.</p>
+    <div class="two">
+      <div><label for="wlTryb">Co sprawdzasz</label><select id="wlTryb">
+        <option value="szukaj">Podmiot — status VAT, dane i rachunki</option>
+        <option value="para">Para NIP + rachunek (TAK / NIE)</option></select></div>
+      <div><label for="wlData">Stan na dzień</label><input type="date" id="wlData" /></div>
+    </div>
+    <div id="wlSzukaj">
+      <div class="two">
+        <div><label for="wlBy">Szukaj po</label><select id="wlBy"><option value="nip">NIP</option><option value="regon">REGON</option><option value="konto">numerze rachunku</option></select></div>
+        <div><label for="wlVal" id="wlValLab">NIP</label><input type="text" id="wlVal" inputmode="numeric" autocomplete="off" maxlength="40" placeholder="10 cyfr" /></div>
+      </div>
+    </div>
+    <div id="wlPara" hidden>
+      <div class="two">
+        <div><label for="wlNip">NIP kontrahenta</label><input type="text" id="wlNip" inputmode="numeric" autocomplete="off" maxlength="16" placeholder="10 cyfr" /></div>
+        <div><label for="wlKonto">Numer rachunku z faktury</label><input type="text" id="wlKonto" class="mono" inputmode="numeric" autocomplete="off" maxlength="40" placeholder="00 0000 0000 0000 0000 0000 0000" /></div>
+      </div>
+    </div>
+    <div class="acts"><button type="button" class="mini ok" id="wlGo">Sprawdź w wykazie</button></div>
+    <div id="wlOut" aria-live="polite"></div>
+    <p class="law">Podstawa: art. 96b ust. 1–3 i 8 ustawy o podatku od towarów i usług (t.j. Dz.U. 2026 poz. 1263) — wykaz prowadzi Szef KAS; sprawdzenie na wybrany dzień, nie wcześniejszy niż w okresie 5 lat poprzedzających rok sprawdzenia; nazwa, NIP, status i REGON są podawane według stanu na dzień sprawdzenia, pozostałe dane — na wybrany dzień (ust. 2); aktualizacja raz na dobę w dni robocze (ust. 8). Liczy się stan wykazu <b>na dzień zlecenia przelewu</b>. Gdy transakcja między przedsiębiorcami przekracza 15 000 zł (art. 19 Prawa przedsiębiorców, t.j. Dz.U. 2025 poz. 1480), a zapłata za fakturę podatnika VAT czynnego poszła przelewem na rachunek spoza wykazu: wydatek w tej części nie jest kosztem uzyskania przychodów — art. 22p ust. 1 pkt 2 ustawy o PIT (t.j. Dz.U. 2026 poz. 592) i art. 15d ust. 1 pkt 2 ustawy o CIT (t.j. Dz.U. 2026 poz. 554) — a nabywca odpowiada solidarnie za zaległy VAT dostawcy przypadający na tę transakcję — art. 117ba § 1 Ordynacji podatkowej (t.j. Dz.U. 2026 poz. 622). Skutków tych nie ma m.in., gdy podatnik w 7 dni od zlecenia przelewu zawiadomił o rachunku naczelnika swojego urzędu skarbowego albo zapłacił w mechanizmie podzielonej płatności (art. 117ba § 3 pkt 2 i 4 O.p.; art. 22p ust. 4 pkt 1 i 3 ustawy o PIT; art. 15d ust. 4 ustawy o CIT). Limity i opis API: gov.pl/web/kas/api-wykazu-podatnikow-vat. Stan na <span data-wer></span>.</p>
+  </section>
+
+  <!-- 7 -->
+  <section class="box panel" id="p-vies" hidden>
+    <h2>VAT UE — sprawdzenie numeru w VIES</h2>
+    <p class="hint">Zapytanie trafia przez portal do systemu VIES Komisji Europejskiej, który pyta rejestr państwa członkowskiego; odpowiedź dotyczy chwili zapytania. Wpisz własny numer VAT UE, a VIES nada <b>numer potwierdzenia</b> (consultation number) — dowód weryfikacji kontrahenta. Grecja ma w VIES kod EL, a XI to Irlandia Północna. Nazwę i adres pokazują tylko niektóre państwa.</p>
+    <div class="two">
+      <div><label for="vsKraj">Państwo kontrahenta</label><select id="vsKraj"></select></div>
+      <div><label for="vsNumer">Numer VAT (bez kodu kraju albo z kodem)</label><input type="text" id="vsNumer" class="mono" autocomplete="off" maxlength="20" placeholder="np. 123456789" /></div>
+    </div>
+    <label for="vsWlasny">Twój numer VAT UE (opcjonalnie — potrzebny do numeru potwierdzenia)</label>
+    <input type="text" id="vsWlasny" class="mono" autocomplete="off" maxlength="20" placeholder="np. PL 1234567890 — zapamiętywany w tej przeglądarce" />
+    <div class="acts" style="margin-top:10px"><button type="button" class="mini ok" id="vsGo">Sprawdź w VIES</button></div>
+    <div id="vsOut" aria-live="polite"></div>
+    <p class="law">Podstawa: art. 42 ust. 1 pkt 1 i 3 ustawy o podatku od towarów i usług (t.j. Dz.U. 2026 poz. 1263) — wewnątrzwspólnotowa dostawa towarów jest opodatkowana stawką 0%, gdy nabywca posiada właściwy i ważny numer identyfikacyjny dla transakcji wewnątrzwspólnotowych, nadany przez państwo członkowskie właściwe dla nabywcy, zawierający dwuliterowy kod kraju, i podał go dostawcy, a dostawca, składając deklarację, jest zarejestrowany jako podatnik VAT UE; do tego dowody wywozu towaru (ust. 1 pkt 2). Stawki 0% nie stosuje się, gdy dostawca nie złożył informacji podsumowującej albo podał w niej nieprawidłowe dane, chyba że należycie wyjaśnił to na piśmie naczelnikowi urzędu skarbowego (ust. 1a). Usługa: VIES, Komisja Europejska (ec.europa.eu/taxation_customs/vies). Stan na <span data-wer></span>.</p>
+  </section>
 </main>
-<script src="narzedzia-ksiegowe.js?v=1"></script>
+<script src="narzedzia-ksiegowe.js?v=2"></script>
 </body>
 </html>

@@ -1,6 +1,8 @@
 /* Narzędzia księgowe — calculators for the office's accountants (Księgowość module).
    Pure calculation functions first (also loadable in node: `require('./narzedzia-ksiegowe.js')`),
-   DOM code at the bottom, guarded. No data leaves the browser: nothing here calls the backend. */
+   DOM code at the bottom, guarded. The calculators send nothing anywhere. The two register checks — biała lista VAT
+   and VIES — are the exception: they call the `vat` edge function, which asks the Ministry of Finance / the
+   European Commission and logs the check. */
 (function (root) {
   'use strict';
 
@@ -326,7 +328,94 @@
       : { nettoGr: gr, vatGr: podatek, bruttoGr: gr + podatek, stawka: s };
   }
 
+  // ───────────────────────── registers: biała lista VAT, VIES ─────────────────────────
+  // VIES member-state codes (check-status of the VIES REST API): 27 EU states — Greece is EL — and XI (Northern Ireland)
+  var KRAJE_VIES = [['AT', 'Austria'], ['BE', 'Belgia'], ['BG', 'Bułgaria'], ['HR', 'Chorwacja'], ['CY', 'Cypr'], ['CZ', 'Czechy'], ['DK', 'Dania'],
+    ['EE', 'Estonia'], ['FI', 'Finlandia'], ['FR', 'Francja'], ['EL', 'Grecja'], ['ES', 'Hiszpania'], ['NL', 'Holandia'], ['IE', 'Irlandia'],
+    ['XI', 'Irlandia Północna'], ['LT', 'Litwa'], ['LU', 'Luksemburg'], ['LV', 'Łotwa'], ['MT', 'Malta'], ['DE', 'Niemcy'], ['PL', 'Polska'],
+    ['PT', 'Portugalia'], ['RO', 'Rumunia'], ['SK', 'Słowacja'], ['SI', 'Słowenia'], ['SE', 'Szwecja'], ['HU', 'Węgry'], ['IT', 'Włochy']];
+
+  function regonOk(v) {
+    var n = cyfry(v); if (!/^(\d{9}|\d{14})$/.test(n) || /^0+$/.test(n)) return false;
+    function suma(w) { var x = 0; for (var i = 0; i < w.length; i++) x += w[i] * Number(n[i]); return x % 11 % 10; }
+    if (suma([8, 9, 2, 3, 4, 5, 6, 7]) !== Number(n[8])) return false;
+    return n.length === 9 || suma([2, 4, 8, 5, 0, 9, 7, 3, 6, 1, 2, 4, 8]) === Number(n[13]);
+  }
+  // an account from the register: 26 digits, or a mask of virtual accounts with letters in place of digits
+  function grupujKonto(k) { var t = String(k == null ? '' : k).replace(/\s/g, ''); return t.slice(0, 2) + ' ' + t.slice(2).replace(/(.{4})(?=.)/g, '$1 '); }
+  // the register stamps its answers "DD-MM-RRRR GG:MM:SS" (Polish time)
+  function czasWl(s) { var m = /^(\d{2})-(\d{2})-(\d{4}) (\d{2}:\d{2}:\d{2})$/.exec(String(s || '')); return m ? m[1] + '.' + m[2] + '.' + m[3] + ' r., godz. ' + m[4] : String(s || ''); }
+  // VIES stamps in UTC (ISO); shown in Polish time
+  function czasVies(s) {
+    var d = new Date(String(s || '')); if (isNaN(d)) return String(s || '');
+    var c = {}; new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+      .formatToParts(d).forEach(function (x) { c[x.type] = x.value; });
+    return c.day + '.' + c.month + '.' + c.year + ' r., godz. ' + c.hour + ':' + c.minute + ':' + c.second;
+  }
+  function dataIso(s) { var n = dzien(s); return n === null ? String(s || '') : dataPl(n); }
+  var STATUS_VAT = { 'Czynny': ['Podatnik VAT czynny', 'p-ok'], 'Zwolniony': ['Podatnik VAT zwolniony', 'p-amber'], 'Niezarejestrowany': ['Niezarejestrowany jako podatnik VAT', 'p-red'] };
+  function statusVat(s) { return STATUS_VAT[s] || [s ? 'Status: ' + s : 'Brak statusu w wykazie', 'p-grey']; }
+  var SZUKANE = { nip: 'NIP', regon: 'REGON', konto: 'rachunek' };
+
+  // One-paragraph confirmations for the file. d = answer of the `vat` function, zap = what was asked.
+  function potwierdzenieWl(d, zap) {
+    var co = SZUKANE[zap.by] + ' ' + (zap.by === 'konto' ? grupujKonto(zap.value) : zap.value);
+    var lista = (d.podmioty || []).map(function (p) {
+      return (p.nazwa || 'podmiot bez nazwy') + (p.nip ? ', NIP ' + p.nip : '') + ' — ' + statusVat(p.status)[0];
+    });
+    return 'Potwierdzenie sprawdzenia w Wykazie podatników VAT (art. 96b ustawy o podatku od towarów i usług). Zapytanie z dnia ' + czasWl(d.requestDateTime)
+      + ' o: ' + co + ', według stanu na dzień ' + dataIso(d.date) + ' r. Wynik: '
+      + (lista.length ? lista.join('; ') + ' (status według stanu na dzień sprawdzenia).' : 'podmiotu nie ma w wykazie.')
+      + ' Identyfikator wyszukiwania: ' + (d.requestId || 'brak') + '.';
+  }
+  function potwierdzeniePary(d) {
+    return 'Potwierdzenie sprawdzenia rachunku w Wykazie podatników VAT (art. 96b ustawy o podatku od towarów i usług). Zapytanie z dnia ' + czasWl(d.requestDateTime)
+      + ': czy rachunek ' + grupujKonto(d.konto) + ' jest przypisany w wykazie do podmiotu o NIP ' + d.nip + ' według stanu na dzień ' + dataIso(d.date) + ' r. Odpowiedź wykazu: '
+      + (d.przypisany === 'TAK' ? 'TAK — rachunek jest przypisany do tego podmiotu.' : 'NIE — rachunek nie jest przypisany do tego podmiotu jako podatnika VAT czynnego.')
+      + ' Identyfikator wyszukiwania: ' + (d.requestId || 'brak') + '.';
+  }
+  function potwierdzenieVies(d) {
+    return 'Potwierdzenie sprawdzenia numeru VAT UE w systemie VIES Komisji Europejskiej. Zapytanie z dnia ' + czasVies(d.dataZapytania) + ' o numer ' + d.kraj + d.numer + '. Wynik: '
+      + (d.wazny ? 'numer aktywny (ważny dla transakcji wewnątrzwspólnotowych)' : 'numer nieaktywny (VIES nie potwierdza go jako ważnego)')
+      + (d.nazwa ? '; nazwa: ' + d.nazwa.replace(/\s*\n\s*/g, ', ') : '') + (d.adres ? '; adres: ' + d.adres.replace(/\s*\n\s*/g, ', ') : '') + '.'
+      + (d.identyfikator ? ' Numer pytającego: ' + d.zWlasnym + '. Numer potwierdzenia (consultation number): ' + d.identyfikator + '.' : ' Bez numeru potwierdzenia — nie podano własnego numeru VAT UE.');
+  }
+  // what the user typed -> request for the `vat` function, or { blad }. Mirrors the server's checks so that
+  // typing mistakes do not use up the Ministry's daily limit.
+  function zapytanieWl(p) {
+    var d = dzien(p.date);
+    if (d === null) return { blad: 'Wybierz dzień, na który sprawdzasz wykaz.' };
+    if (p.dzis && p.date > p.dzis) return { blad: 'Data nie może być datą przyszłą.' };
+    if (p.tryb === 'para') {
+      if (!nipOk(String(p.nip || '').replace(/^\s*PL/i, ''))) return { blad: 'Nieprawidłowy NIP kontrahenta — 10 cyfr z poprawną cyfrą kontrolną.' };
+      var r = sprawdzRachunek(p.konto);
+      if (!r.ok) return { blad: r.blad };
+      return { action: 'wl_check', nip: cyfry(p.nip), konto: r.nrb, date: p.date };
+    }
+    if (p.by === 'nip') { if (!nipOk(String(p.value || '').replace(/^\s*PL/i, ''))) return { blad: 'Nieprawidłowy NIP — 10 cyfr z poprawną cyfrą kontrolną.' }; return { action: 'wl_search', by: 'nip', value: cyfry(p.value), date: p.date }; }
+    if (p.by === 'regon') { if (!regonOk(p.value)) return { blad: 'Nieprawidłowy REGON — 9 albo 14 cyfr z poprawną cyfrą kontrolną.' }; return { action: 'wl_search', by: 'regon', value: cyfry(p.value), date: p.date }; }
+    if (p.by === 'konto') { var k = sprawdzRachunek(p.value); if (!k.ok) return { blad: k.blad }; return { action: 'wl_search', by: 'konto', value: k.nrb, date: p.date }; }
+    return { blad: 'Wybierz, po czym szukać.' };
+  }
+  function zapytanieVies(p) {
+    var kraj = String(p.kraj || '').toUpperCase();
+    if (!KRAJE_VIES.some(function (k) { return k[0] === kraj; })) return { blad: 'Wybierz państwo kontrahenta.' };
+    var t = String(p.numer || '').toUpperCase().replace(/[\s .\-]/g, '');
+    if ((t.indexOf(kraj) === 0 || (kraj === 'EL' && t.indexOf('GR') === 0)) && !(kraj === 'FR' && t.length === 11)) t = t.slice(2);
+    if (!/^[0-9A-Z+*]{2,12}$/.test(t)) return { blad: 'Numer VAT może zawierać tylko litery i cyfry (2–12 znaków po kodzie kraju).' };
+    if (kraj === 'PL' && !nipOk(t)) return { blad: 'Polski numer VAT UE to PL + prawidłowy NIP (10 cyfr).' };
+    var z = { action: 'vies', kraj: kraj, numer: t }, w = String(p.wlasny || '').toUpperCase().replace(/[\s .\-]/g, '');
+    if (w) {
+      if (!/^([A-Z]{2})?[0-9A-Z+*]{2,12}$/.test(w)) return { blad: 'Twój numer VAT UE wpisz z kodem kraju, np. PL 1234567890 (sam NIP = Polska).' };
+      if ((/^PL/.test(w) || /^\d/.test(w)) && !nipOk(w.replace(/^PL/, ''))) return { blad: 'Twój numer VAT UE: po PL musi stać prawidłowy NIP (10 cyfr).' };
+      z.wlasny = w;
+    }
+    return z;
+  }
+
   var API = {
+    KRAJE_VIES: KRAJE_VIES, regonOk: regonOk, grupujKonto: grupujKonto, czasWl: czasWl, czasVies: czasVies, statusVat: statusVat,
+    potwierdzenieWl: potwierdzenieWl, potwierdzeniePary: potwierdzeniePary, potwierdzenieVies: potwierdzenieVies, zapytanieWl: zapytanieWl, zapytanieVies: zapytanieVies,
     ZWERYFIKOWANO: ZWERYFIKOWANO, ODSETKI_PODATKOWE: ODSETKI_PODATKOWE, ODSETKI_USTAWOWE: ODSETKI_USTAWOWE, ODSETKI_HANDLOWE: ODSETKI_HANDLOWE,
     HANDLOWE_DO: HANDLOWE_DO, PROG_ODSETEK_GR: PROG_ODSETEK_GR, STAWKI_VAT: STAWKI_VAT,
     esc: esc, grosze: grosze, zl: zl, dzien: dzien, iso: iso, nipOk: nipOk, peselOk: peselOk, mod97: mod97, nrbOk: nrbOk, grupuj: grupuj,
@@ -463,6 +552,101 @@
     html('vtOut', '<div class="res">' + wiersz('Netto', r.nettoGr, k === 'brutto') + wiersz('VAT ' + r.stawka + '%', r.vatGr, false) + wiersz('Brutto', r.bruttoGr, k !== 'brutto') + '</div>');
   }
 
+  // 6–7. registers — the only tools that call the backend (function `vat`)
+  var FN_VAT = 'https://dpfxwkxpzqqjtmgqwozw.supabase.co/functions/v1/vat';
+  var LS_WLASNY = 'nk.vies.wlasny';
+  function dzisiaj() { return iso(Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000)); }
+  async function zapytaj(body) {
+    try {
+      var s = await root.sb.auth.getSession();
+      var tok = s && s.data && s.data.session ? s.data.session.access_token : '';
+      var res = await fetch(FN_VAT, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: root.sb.supabaseKey || '', Authorization: 'Bearer ' + tok }, body: JSON.stringify(body) });
+      var out = await res.json().catch(function () { return null; });
+      if (out && (out.error || res.ok)) return out;
+      return { error: res.status === 404 ? 'Usługa sprawdzania nie jest jeszcze uruchomiona na serwerze portalu.' : 'Serwer portalu nie odpowiedział poprawnie (HTTP ' + res.status + '). Spróbuj ponownie.' };
+    } catch (e) { return { error: 'Brak połączenia z serwerem portalu — sprawdzenie nie zostało wykonane.' }; }
+  }
+  // runs one check: locks the button, shows progress, hands the answer to `rys`
+  async function sprawdz(btn, outId, zap, czekaj, rys) {
+    if (btn.disabled) return;
+    if (zap.blad) { html(outId, blad(zap.blad)); return; }
+    btn.disabled = true; html(outId, '<p class="hint" style="margin:12px 0 0">' + esc(czekaj) + '</p>');
+    var d = await zapytaj(zap);
+    btn.disabled = false;
+    html(outId, d.error ? blad(d.error) : rys(d, zap));
+  }
+  function dowod(etykieta, id, kiedy, potw) {
+    return '<div class="lab" style="margin-top:10px">' + esc(etykieta) + '</div><div class="big mono">' + esc(id) + '</div>'
+      + '<p style="margin:4px 0 0">' + kiedy + '</p>'
+      + '<div class="acts"><button type="button" class="mini" data-copy="' + esc(id) + '">Kopiuj identyfikator</button>'
+      + '<button type="button" class="mini" data-copy="' + esc(potw) + '">Kopiuj potwierdzenie</button></div>';
+  }
+  function wiersz(n, v) { return v ? '<p><span class="lab">' + esc(n) + '</span><br>' + v + '</p>' : ''; }
+  function zdarzenie(n, data, podstawa) { return data || podstawa ? wiersz(n, esc(data ? dataIso(data) : '—') + (podstawa ? ' · podstawa: ' + esc(podstawa) : '')) : ''; }
+  function rysPodmiot(p) {
+    var st = statusVat(p.status);
+    var h = '<div class="res"><div class="big">' + esc(p.nazwa || 'Podmiot bez nazwy w wykazie') + '</div>'
+      + '<p><span class="pill ' + st[1] + '">' + esc(st[0]) + '</span></p>'
+      + '<p>' + [p.nip && 'NIP: <b class="mono">' + esc(p.nip) + '</b>', p.regon && 'REGON: <span class="mono">' + esc(p.regon) + '</span>', p.krs && 'KRS: <span class="mono">' + esc(p.krs) + '</span>'].filter(Boolean).join(' · ') + '</p>'
+      + wiersz('Adres rejestracyjny (siedziba; u osoby fizycznej — adres zamieszkania)', p.adresRejestracyjny && esc(p.adresRejestracyjny))
+      + wiersz('Adres prowadzenia działalności (osoba fizyczna)', p.adresDzialalnosci && esc(p.adresDzialalnosci))
+      + zdarzenie('Rejestracja jako podatnika VAT', p.dataRejestracji, '')
+      + zdarzenie('Odmowa rejestracji', p.odmowaData, p.odmowaPodstawa)
+      + zdarzenie('Wykreślenie z rejestru', p.wykreslenieData, p.wykresleniePodstawa)
+      + zdarzenie('Przywrócenie rejestracji', p.przywrocenieData, p.przywroceniePodstawa);
+    if (p.konta && p.konta.length) {
+      h += '<div class="lab" style="margin-top:10px">Rachunki w wykazie (' + esc(p.konta.length) + ')</div><div class="scroll"><table class="tbl"><tbody>'
+        + p.konta.map(function (k) { return '<tr><td class="mono">' + esc(grupujKonto(k)) + '</td><td><button type="button" class="mini" data-copy="' + esc(k) + '">Kopiuj</button></td></tr>'; }).join('')
+        + '</tbody></table></div>';
+    } else h += '<p class="warn">W wykazie nie ma żadnego rachunku tego podmiotu.</p>';
+    if (p.wirtualne) h += '<p class="hint" style="margin:8px 0 0">Podmiot używa rachunków wirtualnych — wykaz podaje ich maski (wzorce) zamiast pojedynczych numerów. Konkretny rachunek wirtualny sprawdź w trybie „Para NIP + rachunek”.</p>';
+    return h + '</div>';
+  }
+  function rysWl(d, zap) {
+    var n = (d.podmioty || []).length, co = SZUKANE[zap.by] + ' ' + (zap.by === 'konto' ? grupujKonto(zap.value) : zap.value);
+    return '<div class="res"><span class="pill ' + (n ? 'p-navy' : 'p-red') + '">' + (n ? 'Znaleziono w wykazie: ' + esc(n) : 'Nie ma takiego podmiotu w wykazie') + '</span>'
+      + dowod('Identyfikator wyszukiwania — dowód sprawdzenia', d.requestId, 'Zapytanie: ' + esc(czasWl(d.requestDateTime)) + ' · ' + esc(co) + ' · stan na dzień ' + esc(dataIso(d.date)), potwierdzenieWl(d, zap))
+      + (d.date !== dzisiaj() ? '<p class="warn">Nazwa, NIP, status i REGON są podawane według stanu na dzień sprawdzenia; rachunki, adresy i daty — według stanu na ' + esc(dataIso(d.date)) + ' (art. 96b ust. 2 ustawy o VAT).</p>' : '')
+      + (n ? '' : '<p class="hint" style="margin:8px 0 0">W wykazie są podmioty zarejestrowane jako podatnicy VAT oraz te, którym odmówiono rejestracji albo które wykreślono (przez 5 lat). Brak wyniku nie musi oznaczać błędu — np. przedsiębiorca nigdy nie rejestrował się do VAT.</p>')
+      + '</div>' + (d.podmioty || []).map(rysPodmiot).join('');
+  }
+  function rysPara(d) {
+    var tak = d.przypisany === 'TAK';
+    return '<div class="res"><span class="pill ' + (tak ? 'p-ok' : 'p-red') + '">' + (tak ? 'TAK — rachunek jest w wykazie przy tym NIP' : 'NIE — rachunku nie ma w wykazie przy tym NIP') + '</span>'
+      + '<div class="big mono" style="margin-top:8px">' + esc(grupujKonto(d.konto)) + '</div>'
+      + '<p style="margin:4px 0 0">NIP: <b class="mono">' + esc(d.nip) + '</b> · stan na dzień ' + esc(dataIso(d.date)) + '</p>'
+      + (tak ? '' : '<p class="warn">Wykaz odpowiada TAK tylko wtedy, gdy rachunek jest przypisany do podmiotu będącego czynnym podatnikiem VAT. NIE pojawi się też, gdy kontrahent jest zwolniony, wykreślony albo nie ma go w wykazie — sprawdź go w trybie „Podmiot”. Przy płatności ponad 15 000 zł na taki rachunek rozważ podzieloną płatność albo zawiadomienie urzędu skarbowego w 7 dni od zlecenia przelewu.</p>')
+      + dowod('Identyfikator wyszukiwania — dowód sprawdzenia', d.requestId, 'Zapytanie: ' + esc(czasWl(d.requestDateTime)), potwierdzeniePary(d)) + '</div>';
+  }
+  function rysVies(d) {
+    var h = '<div class="res"><span class="pill ' + (d.wazny ? 'p-ok' : 'p-red') + '">' + (d.wazny ? 'Numer VAT UE aktywny' : 'Numer VAT UE nieaktywny') + '</span>'
+      + '<div class="big mono" style="margin-top:8px">' + esc(d.kraj) + ' ' + esc(d.numer) + '</div>'
+      + wiersz('Nazwa', d.nazwa && esc(d.nazwa)) + wiersz('Adres', d.adres && esc(d.adres).replace(/\n/g, '<br>'))
+      + (d.wazny && !d.nazwa ? '<p class="hint" style="margin:8px 0 0">To państwo nie udostępnia w VIES nazwy ani adresu podatnika.</p>' : '')
+      + (d.wazny ? '' : '<p class="warn">VIES nie potwierdza tego numeru jako ważnego dla transakcji wewnątrzwspólnotowych — bez ważnego numeru nabywcy nie ma stawki 0% dla WDT (art. 42 ust. 1 pkt 1 ustawy o VAT). Sprawdź, czy numer i państwo są wpisane poprawnie; kontrahent może wyjaśnić sprawę w swoim urzędzie skarbowym.</p>');
+    if (d.identyfikator) h += dowod('Numer potwierdzenia (consultation number) — dowód weryfikacji', d.identyfikator, 'Zapytanie: ' + esc(czasVies(d.dataZapytania)) + ' · pytający: ' + esc(d.zWlasnym), potwierdzenieVies(d));
+    else h += '<p style="margin:8px 0 0">Zapytanie: ' + esc(czasVies(d.dataZapytania)) + '</p>'
+      + '<p class="warn">' + (d.zWlasnym ? 'VIES nie nadał numeru potwierdzenia, mimo że podano własny numer VAT UE.' : 'Bez numeru potwierdzenia — wpisz własny numer VAT UE i sprawdź ponownie, aby mieć dowód weryfikacji.') + '</p>'
+      + '<div class="acts"><button type="button" class="mini" data-copy="' + esc(potwierdzenieVies(d)) + '">Kopiuj potwierdzenie</button></div>';
+    return h + '</div>';
+  }
+  function rysWlPola() {
+    var para = $('wlTryb').value === 'para', by = $('wlBy').value;
+    $('wlSzukaj').hidden = para; $('wlPara').hidden = !para;
+    $('wlValLab').textContent = by === 'nip' ? 'NIP' : by === 'regon' ? 'REGON' : 'Numer rachunku';
+    $('wlVal').placeholder = by === 'nip' ? '10 cyfr' : by === 'regon' ? '9 albo 14 cyfr' : '26 cyfr';
+    $('wlVal').classList.toggle('mono', by === 'konto');
+  }
+  function idzWl() {
+    var zap = zapytanieWl({ tryb: $('wlTryb').value, by: $('wlBy').value, value: $('wlVal').value, nip: $('wlNip').value, konto: $('wlKonto').value, date: $('wlData').value, dzis: dzisiaj() });
+    sprawdz($('wlGo'), 'wlOut', zap, 'Pytam Wykaz podatników VAT…', zap.action === 'wl_check' ? rysPara : rysWl);
+  }
+  function idzVies() {
+    var zap = zapytanieVies({ kraj: $('vsKraj').value, numer: $('vsNumer').value, wlasny: $('vsWlasny').value });
+    if (!zap.blad) { try { if (zap.wlasny) localStorage.setItem(LS_WLASNY, zap.wlasny); else localStorage.removeItem(LS_WLASNY); } catch (e) { /* private mode */ } }
+    sprawdz($('vsGo'), 'vsOut', zap, 'Pytam system VIES — odpowiedź państwa członkowskiego może potrwać kilkanaście sekund…', rysVies);
+  }
+
   function start() {
     // tabs
     var tabs = $('tabs');
@@ -496,6 +680,18 @@
     $('opOd').textContent = dataPl(dzien(ODSETKI_PODATKOWE[0].od));
     $('opOdWar').textContent = dataPl(dzien(PODATKOWE_WARIANTY_OD));
     rysCyw(); rysVat(); rysMikro();
+
+    // registers: asked only on the button (or Enter) — every question counts against the Ministry's daily limit
+    $('wlData').value = dzis; $('wlData').max = dzis;
+    $('vsKraj').innerHTML = KRAJE_VIES.map(function (k) { return '<option value="' + esc(k[0]) + '">' + esc(k[1]) + ' (' + esc(k[0]) + ')</option>'; }).join('');
+    $('vsKraj').value = 'DE';
+    try { $('vsWlasny').value = localStorage.getItem(LS_WLASNY) || ''; } catch (e) { /* private mode */ }
+    ['wlTryb', 'wlBy'].forEach(function (id) { $(id).addEventListener('change', function () { rysWlPola(); html('wlOut', ''); }); });
+    rysWlPola();
+    $('wlGo').addEventListener('click', idzWl); $('vsGo').addEventListener('click', idzVies);
+    [['wlVal', idzWl], ['wlNip', idzWl], ['wlKonto', idzWl], ['vsNumer', idzVies], ['vsWlasny', idzVies]].forEach(function (x) {
+      $(x[0]).addEventListener('keydown', function (e) { if (e.key === 'Enter') x[1](); });
+    });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })(typeof window !== 'undefined' ? window : globalThis);
