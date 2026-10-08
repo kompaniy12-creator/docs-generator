@@ -81,6 +81,11 @@
     ':root{--ps-w:256px;--ps-navy:#1B3F7F;--ps-tint:#EEF3F9}',
     'body.ps{padding-left:var(--ps-w);background:#f6f8fb}',
     '#psSide{position:fixed;left:0;top:0;bottom:0;width:var(--ps-w);z-index:900;background:var(--ps-tint);border-right:1px solid #e1e7f0;display:flex;flex-direction:column;padding:18px 14px;overflow-y:auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}',
+    // the menu's own scrollbar: thin and see-through, no white track beside the menu
+    '#psSide{scrollbar-width:thin;scrollbar-color:rgba(127,140,160,.45) transparent}',
+    '#psSide::-webkit-scrollbar{width:8px;background:transparent}',
+    '#psSide::-webkit-scrollbar-track{background:transparent}',
+    '#psSide::-webkit-scrollbar-thumb{background:rgba(127,140,160,.45);border-radius:8px;border:2px solid transparent;background-clip:padding-box}',
     '#psSide .ps-brand{display:block;text-align:center;padding:4px 8px 14px}',
     // the logo in its own colours on a transparent background (logo-kolor.png)
     '.ps-logo{display:inline-block;width:96px;height:68px;background:url(logo-kolor.png) center/contain no-repeat}',
