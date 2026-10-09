@@ -127,11 +127,11 @@ Deno.test("run: the whole group in order, every step persisted", async () => {
   const f = falszywy(), zapisy: string[] = [];
   const w = await zbudujGrupe(f.tg, PLAN, (_k, opis) => { zapisy.push(opis); return Promise.resolve(); }, bezPauzy);
   assertEquals(f.nazwy(), ["CreateChannel", "CreateForumTopic", "CreateForumTopic", "SendMessage", "UpdatePinnedMessage", "SendMessage", "SendMessage", "UpdatePinnedMessage", "SendMessage", "UpdatePinnedMessage",
-    "EditChatDefaultBannedRights", "ExportChatInvite", "ResolveUsername", "InviteToChannel", "EditAdmin", "ResolveUsername", "InviteToChannel", "ResolveUsername", "InviteToChannel"]);
+    "EditChatDefaultBannedRights", "ExportChatInvite", "ResolveUsername", "InviteToChannel", "EditAdmin", "ResolveUsername", "InviteToChannel", "EditAdmin", "ResolveUsername", "InviteToChannel", "EditAdmin"]);
   assertEquals([w.chat_id, w.link, w.braki, w.ostrzezenia], ["-1005550001", "https://t.me/+PrzykladowyLinkTestowy", [], []]);
   assertEquals(w.kroki.tematy, { general: 1, ksiegowosc: 11, kadry: 12 });
   assertEquals(w.kroki.boty, { twojksiegowy_bot: "admin" });
-  assertEquals(w.kroki.osoby, { anna_testowa: "dodana", beata_przyk: "dodana" });
+  assertEquals(w.kroki.osoby, { anna_testowa: "admin", beata_przyk: "admin" });
   const cr = f.log[0];
   assertEquals([cr.title, cr.megagroup, cr.forum], [PLAN.tytul, true, true]);
   // General: no reply header; a topic: reply to the topic's first message; text parsed from HTML; pin is silent

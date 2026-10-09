@@ -31,7 +31,7 @@ export type Kroki = {
   prawa?: boolean;                                  // member permissions set like in the existing client groups
   link?: string;
   boty?: Record<string, string>;                     // username -> "admin" | "dodany" | "blad: CODE"
-  osoby?: Record<string, string>;                    // username -> "dodana" | "pominieta: CODE"
+  osoby?: Record<string, string>;                    // username -> "admin" | "dodana" | "pominieta: CODE"
   ostrzezenia?: string[];
   koniec?: boolean;                                  // group, topics, messages and link are done
 };
@@ -52,6 +52,8 @@ export class Odmowa extends Error { constructor(public kod: string, public krok:
 const MAX_CZEKANIE = 20;
 // rights the office's bot has in the existing groups: topics, deleting, pinning, inviting — nothing more
 const PRAWA_BOTA = { deleteMessages: true, inviteUsers: true, pinMessages: true, manageTopics: true };
+// the client's accountant and HR person administer the group: they accept join requests, pin, tidy up and manage topics
+const PRAWA_OSOBY = { changeInfo: true, deleteMessages: true, inviteUsers: true, pinMessages: true, manageTopics: true };
 const POMIN: Record<string, string> = {
   USER_PRIVACY_RESTRICTED: "ustawienia prywatności tej osoby nie pozwalają dodawać jej do grup", USER_NOT_MUTUAL_CONTACT: "konto biura nie ma tej osoby we wzajemnych kontaktach",
   USER_CHANNELS_TOO_MUCH: "ta osoba jest już w zbyt wielu grupach", USERNAME_NOT_OCCUPIED: "nie ma takiej nazwy w Telegramie", USERNAME_INVALID: "nieprawidłowa nazwa w Telegramie",
@@ -95,7 +97,7 @@ export function postep(plan: Plan, k: Kroki = {}): Array<{ krok: string; stan: "
   }
   out.push({ krok: "Link z zaproszeniem", stan: k.link ? "ok" : "czeka" });
   for (const b of plan.boty) { const s = k.boty?.[b.username]; out.push({ krok: "Bot @" + b.username + (b.admin ? " — administrator" : ""), stan: !s ? "czeka" : s.startsWith("blad") ? "uwaga" : "ok" }); }
-  for (const o of plan.osoby) { const s = k.osoby?.[o.username]; out.push({ krok: "Zaproszenie: " + o.imie + " (@" + o.username + ")", stan: !s ? "czeka" : s === "dodana" ? "ok" : "uwaga" }); }
+  for (const o of plan.osoby) { const s = k.osoby?.[o.username]; out.push({ krok: "Zaproszenie: " + o.imie + " (@" + o.username + ")", stan: !s ? "czeka" : s === "admin" || s === "dodana" ? "ok" : "uwaga" }); }
   return out;
 }
 
@@ -263,7 +265,17 @@ export async function zbudujGrupe(tg: Tg, plan: Plan, zapiszKrok: ZapiszKrok, op
     try {
       const u = await znajdz(o.username);
       if (u.ja) k.osoby[o.username] = "dodana"; // the office account itself is already there
-      else { await zapros(u.wej, u.id, o.imie); k.osoby[o.username] = "dodana"; }
+      else {
+        await zapros(u.wej, u.id, o.imie); k.osoby[o.username] = "dodana"; await zapisz("zaproszenie " + o.imie);
+        try {
+          await wyslij("uprawnienia " + o.imie, () => new Api.channels.EditAdmin({ channel: kanal(), userId: u.wej, adminRights: new Api.ChatAdminRights(PRAWA_OSOBY), rank: "" }));
+          k.osoby[o.username] = "admin";
+        } catch (e) {
+          if (e instanceof Przerwa) throw e;
+          const kod = e instanceof Odmowa ? e.kod : kodBledu(e);
+          uwaga(o.imie + " (@" + o.username + ") jest w grupie, ale nie udało się nadać uprawnień administratora (" + (POMIN[kod] ?? kod) + ") — nadaj je ręcznie w Telegramie.");
+        }
+      }
     } catch (e) {
       if (e instanceof Przerwa) throw e;
       const kod = e instanceof Odmowa ? e.kod : kodBledu(e);
