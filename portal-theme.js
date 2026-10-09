@@ -89,6 +89,8 @@
     'html.pt-dark .ps-label{color:rgba(255,255,255,.9)}',
     'html.pt-dark #psSide,html.pt-dark #psBar{text-shadow:0 1px 6px rgba(0,0,0,.45)}',
     'html.pt-dark #psSide .ps-badge,html.pt-dark #psBar .ps-badge,html.pt-dark .ps-out{text-shadow:none}',
+    // light panels opened from the dark bar (settings menu, pickers) keep crisp text
+    'html.pt-dark #psDrop,html.pt-dark #psDrop *,html.pt-dark #ptPanel,html.pt-dark #ptPanel *,html.pt-dark .modal .sheet,html.pt-dark .modal .sheet *{text-shadow:none!important}',
     'html.pt-dark .ps-group.open{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14)}',
     'html.pt-dark .ps-group.open>.ps-label{color:rgba(255,255,255,.58)}',
     'html.pt-dark .ps-group.has-on:not(.open){background:rgba(255,255,255,.14)}',
