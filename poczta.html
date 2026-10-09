@@ -205,6 +205,8 @@
     </div>
     <label class="chk" style="white-space:normal;margin:0 0 6px"><input type="checkbox" id="lKlienci" /> W trybie automatycznym twórz zadania tylko dla nadawców rozpoznanych w bazie klientów (pozostałe czekają na decyzję pracownika)</label>
     <p class="sub" style="margin:0 0 10px">Każda analiza to płatne zapytanie. Wiadomości ponad limit są na liście, ale bez opisu. Automatyczne odpowiedzi, zwrotki, newslettery i wiadomości z adresów biura nie są analizowane.</p>
+    <h3>Czego portal nie ustawia</h3>
+    <p class="sub" style="margin:0 0 10px">Automatyczna odpowiedź na czas nieobecności i filtry / reguły antyspamowe działają na serwerze poczty, nie w portalu: panel hostingu (DirectAdmin) → Zarządzanie pocztą e-mail → „Wiadomości urlopowe”, „Autorespondery”, „Filtry SPAMu”.</p>
     <h3>Wysłane z portalu</h3>
     <p class="sub" style="margin:0 0 8px">Każda wysyłka: kto, z której skrzynki, do kogo, temat i wynik (treść i załączniki nie są zapisywane). Limity: 100 wiadomości dziennie na osobę, 300 na skrzynkę, 5 na minutę, 20 odbiorców w wiadomości.</p>
     <div class="acts" style="margin:0 0 10px"><button type="button" class="mini" id="sentShow">Pokaż ostatnie wysyłki</button></div>
@@ -216,6 +218,6 @@
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px"><button type="button" class="btn" id="setSave">Zapisz ustawienia</button><button type="button" class="mini" id="setCheck">Sprawdź połączenie</button><span class="sub" id="setMsg"></span></div>
   </div>
 </main>
-<script src="poczta.js?v=3"></script>
+<script src="poczta.js?v=4"></script>
 </body>
 </html>

@@ -282,6 +282,14 @@ export class Imap {
     for (const u of r.untagged) { const m = u.text.match(/^\* SEARCH(.*)$/i); if (m) for (const x of m[1].trim().split(/\s+/)) if (/^\d+$/.test(x)) out.push(Number(x)); }
     return out.sort((a, b) => a - b);
   }
+  // messages of the open folder that are, or refer to, the given first message of a conversation
+  async wWatku(id: string): Promise<number[]> {
+    const q = quote(id);
+    const r = await this.cmd(`UID SEARCH OR HEADER Message-ID ${q} HEADER References ${q}`);
+    const out: number[] = [];
+    for (const u of r.untagged) { const m = u.text.match(/^\* SEARCH(.*)$/i); if (m) for (const x of m[1].trim().split(/\s+/)) if (/^\d+$/.test(x)) out.push(Number(x)); }
+    return out.sort((a, b) => a - b);
+  }
   // Flags, size, date, structure and (optionally) chosen headers of many messages; `set` is a list of numbers or a range.
   async meta(set: number[] | { od: number; do: number }, uidMode: boolean, naglowki: boolean, struktura = true): Promise<Meta[]> {
     const ids = Array.isArray(set) ? set.map((x) => Math.floor(x)).filter((x) => x > 0).join(",") : `${Math.max(1, Math.floor(set.od))}:${Math.max(1, Math.floor(set.do))}`;

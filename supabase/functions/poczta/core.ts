@@ -30,7 +30,7 @@ export type Row = {
   assignee: string | null; status: string; powod: string | null; zadanie_id: string | null; sprawdzil: string | null; sprawdzono_at: string | null;
 };
 export type StanRow = { skrzynka: string; uidvalidity: number | null; last_uid: number | null; last_run: string | null; last_ok: string | null; last_error: string | null; info: Any };
-export type Zadanie = { id: string; status: string; assignee: string; tytul: string };
+export type Zadanie = { id: string; status: string; assignee: string; tytul: string; komentarze?: { at: string; by: string; text: string }[] };
 export interface Store {
   ustawienia(): Promise<Any>;
   zapiszUstawienia(v: Any): Promise<void>;
@@ -51,7 +51,9 @@ export interface Store {
   watek(s: Skrzynka, ids: string[], watek: string): Promise<{ zadanie_id: string | null; created_at: string }[]>;
   zadania(ids: string[]): Promise<Zadanie[]>;
   zadanieInsert(spec: Any): Promise<Zadanie>;           // an existing task with the same key is returned instead
-  zadanieKomentarz(id: string, text: string, at: string): Promise<void>;
+  zadanieKomentarz(id: string, text: string, at: string, by?: string): Promise<void>;
+  // open tasks of messages (by Message-ID): who looks after which — for the badge in the mailbox list
+  przypisania(s: Skrzynka, messageIds: string[]): Promise<Record<string, string>>;
   lista(skrzynki: Skrzynka[], f: { status?: string; kategoria?: string; limit: number }): Promise<Row[]>;
   niedokonczone(s: Skrzynka, starsze: string, mlodsze: string): Promise<Row[]>;
   statystyki(s: Skrzynka): Promise<Record<string, number>>;
@@ -87,6 +89,7 @@ export interface ImapLike {
   szukaj(f: Szukaj): Promise<number[]>;
   meta(set: number[] | { od: number; do: number }, uidMode: boolean, naglowki: boolean, struktura?: boolean): Promise<Meta[]>;
   part(uid: number, id: string, max?: number): Promise<Uint8Array | null>;
+  wWatku(id: string): Promise<number[]>;
 }
 export interface ImapZapisLike extends ImapLike {
   wybierz(f: Folder): Promise<void>;
@@ -125,7 +128,7 @@ const err = (e: unknown) => String((e as Error)?.message ?? e).replace(/[^\x20-\
 
 // ---------------------------------------------------------------- a message enters
 type Przyjeta = { wynik: "duplikat" | "pominieta" | "bez_analizy" | "do_analizy"; row?: Row; mail?: Mail; klient?: Dopasowanie };
-export async function przyjmij(d: Deps, ctx: Ctx, s: Skrzynka, raw: Uint8Array, src: { droga: "push" | "poll" | "test" | "reczna"; uid?: number; uidvalidity?: number; obciete?: boolean; rozmiar?: number; wymus?: boolean }): Promise<Przyjeta> {
+export async function przyjmij(d: Deps, ctx: Ctx, s: Skrzynka, raw: Uint8Array, src: { droga: "push" | "poll" | "test" | "reczna"; uid?: number; uidvalidity?: number; obciete?: boolean; rozmiar?: number; wymus?: boolean; bezAnalizy?: boolean }): Promise<Przyjeta> {
   const mail = await parseMail(raw);
   if (src.obciete) mail.flagi.obciete = true;
   const jest = await d.store.znajdz(s, mail.messageId);
@@ -143,6 +146,7 @@ export async function przyjmij(d: Deps, ctx: Ctx, s: Skrzynka, raw: Uint8Array, 
   let status = "nowa", powod: string | null = null, kategoria: string | null = null, analiza = false;
   if (pre) { status = "pominieta"; powod = pre.powod; kategoria = pre.kategoria; }
   else if (!src.wymus && mail.odAdres && await d.store.licz(s, { od: dzien, odAdres: mail.odAdres }) >= ctx.ust.limity.nadawca) { status = "pominieta"; powod = "limit wiadomości od jednego nadawcy na dzień"; }
+  else if (src.bezAnalizy) powod = "przyjęta bez analizy";
   else if (!d.modelReady) powod = "analiza nie jest skonfigurowana";
   else if (await d.store.licz(s, { od: dzien, analizowane: true }) >= ctx.ust.limity.dziennie) powod = "dzienny limit analiz wyczerpany";
   else analiza = true;

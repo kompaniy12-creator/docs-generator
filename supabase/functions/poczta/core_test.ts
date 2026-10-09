@@ -51,7 +51,8 @@ export function swiat(o: { ust?: Any; box?: FakeMsg[]; uidvalidity?: number; odp
     watek: (s, ids, wt) => Promise.resolve(rows.filter((r) => r.skrzynka === s && r.zadanie_id && (r.watek === wt || ids.includes(r.message_id) || ids.includes(r.watek ?? ""))).map((r) => ({ zadanie_id: r.zadanie_id, created_at: r.created_at }))),
     zadania: (ids) => Promise.resolve(tasks.filter((t) => ids.includes(t.id))),
     zadanieInsert: (spec) => { const old = tasks.find((t) => t.klucz === spec.klucz); if (old) return Promise.resolve(old); const t = { id: id(), status: "nowe", komentarze: [], ...spec }; tasks.push(t); return Promise.resolve(t); },
-    zadanieKomentarz: (i, text, at) => { tasks.find((t) => t.id === i)?.komentarze.push({ at, by: "system", text }); return Promise.resolve(); },
+    zadanieKomentarz: (i, text, at, by = "system") => { tasks.find((t) => t.id === i)?.komentarze.push({ at, by, text }); return Promise.resolve(); },
+    przypisania: (s, ids) => Promise.resolve(Object.fromEntries(rows.filter((r) => r.skrzynka === s && r.zadanie_id && ids.includes(r.message_id) && tasks.some((t) => t.id === r.zadanie_id && ["nowe", "w_toku"].includes(t.status))).map((r) => [r.message_id, tasks.find((t) => t.id === r.zadanie_id).assignee]))),
     lista: (sk, f) => Promise.resolve(rows.filter((r) => sk.includes(r.skrzynka) && (!f.status || r.status === f.status) && (!f.kategoria || r.kategoria === f.kategoria)).slice().reverse().slice(0, f.limit)),
     niedokonczone: (s, starsze, mlodsze) => Promise.resolve(rows.filter((r) => r.skrzynka === s && r.status === "nowa" && !r.ai_at && r.analiza_start && r.analiza_start < starsze && r.created_at > mlodsze)),
     statystyki: () => Promise.resolve({}),
@@ -463,6 +464,7 @@ function skrzynkaStub(folders: Record<string, BMsg[]>, extra: Folder[] = []) {
     flagi: (uids: number[], dodaj: boolean, fl: string[]) => { im.zmiany.push(`STORE ${im.wybrany} ${uids.join(",")} ${dodaj ? "+" : "-"}${fl.join(" ")}`); return Promise.resolve(); },
     przenies: (uids: number[], cel: Folder) => { im.zmiany.push(`MOVE ${im.wybrany} ${uids.join(",")} -> ${cel.raw}`); return Promise.resolve(); },
     usunSzkic: (uid: number) => { im.zmiany.push(`USUN-SZKIC ${im.wybrany} ${uid}`); return Promise.resolve(); },
+    wWatku: (id: string) => { calls.push("WATEK " + id); return Promise.resolve(box().filter((m) => m.head.includes(id)).map((m) => m.uid)); },
     uidsAfter: () => Promise.resolve([]), uidsUnseen: () => Promise.resolve([]), uidsByMessageId: () => Promise.resolve([]), newestUids: () => Promise.resolve([]),
   };
   return im;
@@ -476,7 +478,8 @@ Deno.test("browser: folders with counters; access by section; the mailbox only f
   const im = skrzynkaStub({ INBOX: [bmsg(1), bmsg(2, { flagi: ["\\Seen"] })], "INBOX.Sent": [bmsg(5)], "INBOX.Za&AUE-atwione": [] }, [{ raw: "Archiwum", nazwa: "Archiwum", delim: ".", flagi: ["\\Noselect"] }]);
   d.imap = () => Promise.resolve(im as unknown as ImapLike);
   const f = await post({ action: "foldery", skrzynka: "kadry" });
-  assertEquals(f.body.foldery.map((x: Any) => [x.id, x.nazwa, x.typ, x.wiadomosci, x.nieprzeczytane, x.wybieralny]), [["INBOX", "INBOX", "inbox", 2, 1, true], ["Archiwum", "Archiwum", "archive", null, null, false], ["INBOX.Sent", "Sent", "sent", 1, 1, true], ["INBOX.Za&AUE-atwione", "Załatwione", "", 0, 0, true]]);
+  assertEquals(f.body.foldery.map((x: Any) => [x.id, x.nazwa, x.typ, x.wiadomosci, x.nieprzeczytane, x.wybieralny]), [["INBOX", "INBOX", "inbox", 2, 1, true], ["INBOX.Sent", "Sent", "sent", 1, 1, true], ["Archiwum", "Archiwum", "archive", null, null, false], ["INBOX.Za&AUE-atwione", "Załatwione", "", 0, 0, true]]);
+  assertEquals(f.body.foldery.map((x: Any) => [x.etykieta, x.portal]), [["Odebrane", false], ["Wysłane", true], ["Archiwum", false], ["Załatwione", false]]);
   assertEquals(im.closed, 1); // one connection per request, always closed
   // the other section's mailbox, an arbitrary address, a missing one
   for (const skrzynka of ["ksiegowosc", "zarzad", "szef@td-group.pl", "", null, "INBOX"]) {
@@ -541,7 +544,7 @@ Deno.test("browser: opening a message — text, cleaned HTML in a CSP document, 
   assertEquals(r.status, 200);
   const b = r.body;
   assertEquals([b.temat, b.od_adres, b.zdalne, b.przeczytana], ["Sprawa 9", "n9@firma-alfa.example", 1, false]);
-  assertEquals(b.tekst, ""); // an HTML-only message is shown formatted — never as a text conversion that looks like markup source
+  assertEquals(b.tekst, "Dzień dobry, PESEL 44051401359\nklik"); // "Tylko tekst" = our clean rendering of the cleaned HTML
   assert(b.srcdoc.includes("PESEL 44051401359")); // an authorised reader sees the mail as it is — masking is only for the model
   assertEquals([b.odp.do, b.odp.re, b.odp.fwd, b.szkic, b.kto.map((x: Any) => x.kto + ":" + x.akcja)], [["n9@firma-alfa.example"], "Re: Sprawa 9", "Fwd: Sprawa 9", null, ["hr@td.example:otwarcie"]]);
   assert(!/<script|onload|javascript:|fetch\(|url\(|<style/i.test(b.srcdoc.replace(/<style>html\{[^<]*<\/style>/, "")), b.srcdoc);
@@ -815,4 +818,72 @@ Deno.test("signature, suggestions, sender name and footer settings", async () =>
   assertEquals((await post({ action: "podpowiedzi", skrzynka: "kadry", q: "a" })).body.adresy, []);
   const u = (await import("./logic.ts")).ustawienia({ nadawca: { kadry: 'Zły" <zly@zly.example>\r\nBcc: x' }, stopka: { kadry: "x".repeat(5000) }, limity: { odbiorcy: 999 } });
   assertEquals([u.nadawca.kadry, u.nadawca.ksiegowosc, u.stopka.kadry.length, u.limity.odbiorcy, u.limity.wysMinuta], ["Zły zly zly.example Bcc: x", "TD Consulting Group — Księgowość", 1500, 50, 5]);
+});
+
+// ================================================================ live findings + step 4
+import { zapomnij } from "./foldery.ts";
+Deno.test("several folders of one kind: the portal writes to the chosen one, else to the one with the newest message — and says which", async () => {
+  zapomnij();
+  const stary = bmsg(1), nowy = bmsg(2);
+  const folders = { INBOX: [bmsg(9)], "INBOX.Sent": [stary], "INBOX.SENT": [], "INBOX.Sent Messages": [nowy], "INBOX.Trash": [], "INBOX.Deleted Messages": [bmsg(3)], "INBOX.Drafts": [] };
+  const { post, im, w } = pisz({}, folders);
+  // the newest message decides: make "Sent Messages" and "Deleted Messages" the live ones
+  const meta0 = im.meta;
+  // deno-lint-ignore no-explicit-any
+  im.meta = ((set: any, u: boolean, h: boolean) => meta0(set, u, h).then((l) => l.map((x) => ({ ...x, internaldate: x.uid === 2 || x.uid === 3 ? "09-Oct-2026 10:00:00 +0200" : "01-Sep-2026 10:00:00 +0200" })))) as typeof im.meta;
+  w.me = { email: "szef@td.example", admin: true, sekcje: null };
+  const f = await post({ action: "foldery", skrzynka: "kadry", szczegoly: true });
+  assertEquals(f.body.uzywane, { sent: "INBOX.Sent Messages", drafts: "INBOX.Drafts", trash: "INBOX.Deleted Messages" });
+  assertEquals(f.body.foldery.filter((x: Any) => x.typ === "sent").map((x: Any) => [x.etykieta, x.portal, x.duplikat, !!x.ostatnia]), [["Wysłane (Sent Messages)", true, true, true], ["Wysłane (Sent)", false, true, true], ["Wysłane (SENT)", false, true, false]]);
+  assertEquals(f.body.foldery.filter((x: Any) => x.typ === "drafts").map((x: Any) => [x.etykieta, x.duplikat]), [["Robocze", false]]);
+  await post({ action: "wyslij", skrzynka: "kadry", klucz: KL(50), ...LIST });
+  await post({ action: "akcja_imap", skrzynka: "kadry", folder: "INBOX", uids: [9], co: "kosz" });
+  assertEquals(im.zmiany, ["APPEND INBOX.Sent Messages", "MOVE INBOX 9 -> INBOX.Deleted Messages"]);
+  // the administrator's choice wins; a choice that is not a folder of that kind (or is gone) is ignored
+  await post({ action: "ustawienia", ustawienia: { foldery: { kadry: { sent: "INBOX.Sent", trash: "INBOX" , junk: "x\r\ny" } } } });
+  assertEquals([w.ust.foldery.kadry.sent, w.ust.foldery.kadry.trash, w.ust.foldery.kadry.junk], ["INBOX.Sent", "INBOX", ""]);
+  await post({ action: "wyslij", skrzynka: "kadry", klucz: KL(51), ...LIST });
+  await post({ action: "akcja_imap", skrzynka: "kadry", folder: "INBOX", uids: [9], co: "kosz" });
+  assertEquals(im.zmiany.slice(2), ["APPEND INBOX.Sent", "MOVE INBOX 9 -> INBOX.Deleted Messages"]);
+  assertEquals((await post({ action: "foldery", skrzynka: "kadry" })).body.uzywane.sent, "INBOX.Sent");
+});
+
+Deno.test("'Tylko tekst' of an HTML message is a clean rendering — never the sender's markup-like text alternative", async () => {
+  const alt = "| | **PROMOCJA** | |\n### Nagłówek\n[Kliknij tutaj](https://sledz.example/x?utm=1)\n| --- | --- |";
+  const html = "<table><tr><td><h3>Nagłówek</h3></td><td><b>PROMOCJA</b></td></tr></table><p><a href=\"https://sledz.example/x?utm=1\">Kliknij tutaj</a></p>";
+  const bs: Node = [txt(), ["TEXT", "HTML", ["CHARSET", "utf-8"], null, null, "8BIT", String(html.length), "3", null, null, null], "ALTERNATIVE"];
+  const { post, d } = swiat({ me: HR });
+  d.imap = () => Promise.resolve(skrzynkaStub({ INBOX: [bmsg(1, { bs, parts: { "1": te.encode(alt), "2": te.encode(html) } }), bmsg(2, { parts: { "1": te.encode(alt) } })] }) as unknown as ImapLike);
+  const r = await post({ action: "wiadomosc_imap", skrzynka: "kadry", folder: "INBOX", uid: 1 });
+  assert(r.body.srcdoc.includes("<b>PROMOCJA</b>"));
+  assertEquals(r.body.tekst, "Nagłówek\nPROMOCJA\n\nKliknij tutaj");
+  assert(!/[|*#\[\]]|\]\(|https?:/.test(r.body.tekst));
+  // a message that is plain text only is shown as its author wrote it
+  assertEquals((await post({ action: "wiadomosc_imap", skrzynka: "kadry", folder: "INBOX", uid: 2 })).body.tekst, alt);
+});
+
+Deno.test("conversation, 'zajmuję się tym' and internal notes: one task per message, shared with the triage", async () => {
+  const a = bmsg(1, { head: "From: Zaneta <zaneta@firma-alfa.example>\nTo: kadry@td-group.pl\nSubject: Urlop PESEL 44051401359 https://zly.example\nDate: Thu, 08 Oct 2026 10:00:00 +0200\nMessage-ID: <w1@firma-alfa.example>" });
+  const c = bmsg(3, { head: "From: Zaneta <zaneta@firma-alfa.example>\nTo: kadry@td-group.pl\nSubject: Re: Urlop\nDate: Fri, 09 Oct 2026 12:00:00 +0200\nMessage-ID: <w3@firma-alfa.example>\nReferences: <w1@firma-alfa.example> <w2@td-group.pl>" });
+  const b = bmsg(7, { head: "From: Kadry <kadry@td-group.pl>\nTo: zaneta@firma-alfa.example\nSubject: Re: Urlop\nDate: Fri, 09 Oct 2026 09:00:00 +0200\nMessage-ID: <w2@td-group.pl>\nReferences: <w1@firma-alfa.example>" });
+  const { post, w, im } = pisz({}, { ...FOLDERY, INBOX: [a, c, bmsg(5)], "INBOX.Sent": [b] });
+  const t = await post({ action: "watek_imap", skrzynka: "kadry", folder: "INBOX", uid: 3 });
+  assertEquals(t.body.watek.map((x: Any) => [x.folder, x.uid, x.wyslana, x.ta]), [["INBOX", 1, false, false], ["INBOX.Sent", 7, true, false], ["INBOX", 3, false, true]]);
+  assertEquals((await post({ action: "watek_imap", skrzynka: "kadry", folder: "INBOX", uid: 5 })).body.watek, []); // a single message is not a conversation
+  // a note needs somebody looking after the message
+  assert(/Zajmuję się tym/.test((await post({ action: "notatka_imap", skrzynka: "kadry", folder: "INBOX", uid: 1, tekst: "Dzwoniłam" })).body.error));
+  const z = await post({ action: "biore_imap", skrzynka: "kadry", folder: "INBOX", uid: 1 });
+  assertEquals([z.body.ok, w.tasks.length, w.asks.length, w.rows.length], [true, 1, 0, 1]); // no model call for this
+  assertEquals([w.tasks[0].assignee, w.tasks[0].created_by, w.tasks[0].tytul, w.tasks[0].zrodlo, w.rows[0].status, w.rows[0].droga], ["hr@td.example", "hr@td.example", "✉ Urlop PESEL [PESEL] [link]", "reczne", "zadanie", "reczna"]);
+  assertEquals((await post({ action: "biore_imap", skrzynka: "kadry", folder: "INBOX", uid: 1 })).body.zadanie_id, z.body.zadanie_id); // again: the same task
+  await post({ action: "notatka_imap", skrzynka: "kadry", folder: "INBOX", uid: 1, tekst: "Dzwoniłam do klientki\r\n— oddzwoni jutro" });
+  const m = await post({ action: "wiadomosc_imap", skrzynka: "kadry", folder: "INBOX", uid: 1 });
+  assertEquals([m.body.analiza.zadanie.assignee, m.body.analiza.zadanie.notatki.map((n: Any) => [n.by, n.text])], ["hr@td.example", [["hr@td.example", "Dzwoniłam do klientki — oddzwoni jutro"]]]);
+  // the badge in the list; somebody else cannot take it over silently
+  const l = await post({ action: "lista_imap", skrzynka: "kadry", folder: "INBOX" });
+  assertEquals(l.body.wiadomosci.map((r: Any) => [r.uid, r.przypisany]), [[5, null], [3, null], [1, "hr@td.example"]]);
+  assert(!("mid" in l.body.wiadomosci[0]));
+  w.me = { email: "szef@td.example", admin: true, sekcje: null };
+  assert(/zajmuje się już hr/.test((await post({ action: "biore_imap", skrzynka: "kadry", folder: "INBOX", uid: 1 })).body.error));
+  assertEquals([w.tasks.length, w.smtp.length, im.zmiany.length], [1, 0, 0]); // nothing was sent, nothing changed in the mailbox
 });

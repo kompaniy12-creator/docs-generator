@@ -137,7 +137,7 @@ const store: Store = {
     if (ids.length) or.push(`message_id.in.(${ids.map(q).join(",")})`, `watek.in.(${ids.map(q).join(",")})`);
     return await rows(`${T}?skrzynka=eq.${s}&zadanie_id=not.is.null&select=zadanie_id,created_at&or=${e("(" + or.join(",") + ")")}&limit=50`);
   },
-  async zadania(ids) { return ids.length ? await rows(`portal_zadania?id=in.(${ids.map(e).join(",")})&select=id,status,assignee,tytul`) : []; },
+  async zadania(ids) { return ids.length ? await rows(`portal_zadania?id=in.(${ids.map(e).join(",")})&select=id,status,assignee,tytul,komentarze`) : []; },
   async zadanieInsert(spec) {
     const ins = await rows("portal_zadania?on_conflict=klucz", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" }, body: JSON.stringify(spec) });
     if (ins[0]) return ins[0];
@@ -145,10 +145,19 @@ const store: Store = {
     if (!old) throw new Error("zadanie: nie zapisano");
     return old;
   },
-  async zadanieKomentarz(id, text, at) {
+  async przypisania(s, ids) {
+    const a = ids.filter((x) => x.length <= 320).slice(0, 60);
+    if (!a.length) return {};
+    const r = await rows(`${T}?select=message_id,zadanie_id&skrzynka=eq.${s}&zadanie_id=not.is.null&message_id=in.(${e(a.map(q).join(","))})`);
+    if (!r.length) return {};
+    const z = await rows(`portal_zadania?id=in.(${r.map((x: Any) => x.zadanie_id).join(",")})&status=in.(nowe,w_toku)&select=id,assignee`);
+    const kto = new Map(z.map((x: Any) => [x.id, x.assignee]));
+    return Object.fromEntries(r.filter((x: Any) => kto.has(x.zadanie_id)).map((x: Any) => [x.message_id, kto.get(x.zadanie_id)]));
+  },
+  async zadanieKomentarz(id, text, at, by = "system") {
     const cur = (await rows(`portal_zadania?id=eq.${e(id)}&select=komentarze`))[0];
     if (!cur) return;
-    const list = [...(Array.isArray(cur.komentarze) ? cur.komentarze : []), { at, by: "system", text }].slice(-200);
+    const list = [...(Array.isArray(cur.komentarze) ? cur.komentarze : []), { at, by, text }].slice(-200);
     await rows(`portal_zadania?id=eq.${e(id)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ komentarze: list }) });
   },
   async lista(skrzynki, f) {

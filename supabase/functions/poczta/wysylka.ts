@@ -17,7 +17,8 @@
 
 import { type Ctx, type Deps, type Me } from "./core.ts";
 import { DARMOWE, isSkrzynka, parseMail, plData, poczatekDnia, sha256hex, SKRZYNKI, type Skrzynka } from "./logic.ts";
-import { type Folder, folderTypu, type Meta, nieWybieralny, typFolderu, withTimeout } from "./imap.ts";
+import { type Folder, type Meta, nieWybieralny, withTimeout } from "./imap.ts";
+import { folderPortalu, type Typ } from "./foldery.ts";
 import { type Flaga } from "./imapw.ts";
 import { czesci, naTekst, odkoduj, oczyscHtml, rozmiarPo, tekstCzesc, zalaczniki as zalCzesci, base64Bytes } from "./widok.ts";
 import { adresy, adresyZNaglowka, bezCtl, budujMime, cytat, idOk, MAX_INLINE, MAX_INLINE_N, MAX_ZAL_RAZEM, nazwaPlikuWych, nowyId, oczyscWychodzacy, sprawdzZalacznik, tekstNaHtml, tekstZHtml, tematOdp, type Zal } from "./mime.ts";
@@ -68,6 +69,8 @@ export async function pisanie(d: Deps, me: Me, ctx: Ctx, body: Any): Promise<Out
   if (await d.store.dziennikLicz(me.email, new Date(d.now() - 60000).toISOString()) >= 60) return { status: 429, body: { error: "Za dużo operacji na skrzynce — odczekaj minutę." } };
 
   let im: Awaited<ReturnType<Deps["imapw"]>> | null = null;
+  // the folder of a kind the portal uses in this mailbox (settings, else the one with the newest message)
+  const wybrany = (c: NonNullable<typeof im>, list: Folder[], typ: Typ) => folderPortalu(c, list, s, typ, ctx.ust.foldery[s][typ], d.now());
   const praca = async (): Promise<Out> => {
     // ------------------------------------------------------------ changes in the mailbox
     if (body.action === "akcja_imap") {
@@ -80,9 +83,9 @@ export async function pisanie(d: Deps, me: Me, ctx: Ctx, body: Any): Promise<Out
       if (!src) return { status: 400, body: { error: "Nie ma takiego folderu w tej skrzynce." } };
       const flagi: Record<string, [boolean, Flaga]> = { przeczytane: [true, "\\Seen"], nieprzeczytane: [false, "\\Seen"], flaga: [true, "\\Flagged"], bez_flagi: [false, "\\Flagged"] };
       let cel: Folder | null = null;
-      if (co === "kosz") cel = folderTypu(list, "trash");
-      else if (co === "archiwum") cel = folderTypu(list, "archive");
-      else if (co === "spam") cel = folderTypu(list, "junk");
+      if (co === "kosz") cel = await wybrany(im, list, "trash");
+      else if (co === "archiwum") cel = await wybrany(im, list, "archive");
+      else if (co === "spam") cel = await wybrany(im, list, "junk");
       else if (co === "przenies") cel = typeof body.cel === "string" ? list.find((f) => f.raw === body.cel && !nieWybieralny(f)) ?? null : null;
       else if (!flagi[co]) return { status: 400, body: { error: "Nieznana operacja." } };
       if (!flagi[co] && !cel) return { status: 200, body: { error: co === "przenies" ? "Nie ma takiego folderu docelowego." : "W tej skrzynce nie ma folderu na tę operację (Kosz / Archiwum / Spam)." } };
@@ -102,7 +105,7 @@ export async function pisanie(d: Deps, me: Me, ctx: Ctx, body: Any): Promise<Out
     if (body.action === "szkic_usun" || body.action === "szkic_zapisz") {
       if (!UUID.test(String(body.szkic_id ?? ""))) return { status: 400, body: { error: "Nieprawidłowy szkic." } };
       im = await d.imapw(s);
-      const drafts = folderTypu(await im.list(), "drafts");
+      const drafts = await wybrany(im, await im.list(), "drafts");
       if (!drafts) return { status: 200, body: { error: "W tej skrzynce nie ma folderu wersji roboczych." } };
       // the previous copy is removed only when it really is THIS draft (its X-Portal-Szkic header says so)
       const stary = Math.floor(Number(body.action === "szkic_usun" ? body.uid : body.poprzedni_uid));
@@ -224,7 +227,7 @@ export async function pisanie(d: Deps, me: Me, ctx: Ctx, body: Any): Promise<Out
 
     // after the send: the copy in "Sent", the mark on the original, the draft goes — none of these can undo the send
     const ostrzezenia: string[] = [];
-    try { const sent = folderTypu(list, "sent"); if (!sent) throw new Error("brak folderu"); await im.dopisz(sent, ["\\Seen"], kopia); }
+    try { const sent = await wybrany(im, list, "sent"); if (!sent) throw new Error("brak folderu"); await im.dopisz(sent, ["\\Seen"], kopia); }
     catch (e) { console.error("poczta sent", blad(e)); ostrzezenia.push("Wiadomość wysłana, ale nie udało się zapisać kopii w folderze Wysłane."); }
     if (zrodlo) {
       try { await im.wybierz(zrodlo.folder); await im.flagi([zrodlo.uid], true, [zrodlo.tryb === "forward" ? "$Forwarded" : "\\Answered"]); }
@@ -233,7 +236,7 @@ export async function pisanie(d: Deps, me: Me, ctx: Ctx, body: Any): Promise<Out
     const su = Math.floor(Number(body.szkic_uid));
     if (su > 0 && UUID.test(String(body.szkic_id ?? ""))) {
       try {
-        const drafts = folderTypu(list, "drafts");
+        const drafts = await wybrany(im, list, "drafts");
         if (drafts) { await im.wybierz(drafts); const m = (await im.meta([su], true, true, false))[0]; if (m && (await parseMail(naglowek(m))).naglowki["x-portal-szkic"]?.trim() === body.szkic_id) await im.usunSzkic(su); }
       } catch (e) { console.error("poczta szkic", blad(e)); }
     }

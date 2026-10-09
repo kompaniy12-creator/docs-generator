@@ -158,9 +158,9 @@
   function renderFolders() {
     $('mbBox').innerHTML = skrzynki.map(function (s) { return '<option value="' + esc(s.klucz) + '"' + (s.klucz === mb.box ? ' selected' : '') + '>' + esc(s.adres) + '</option>'; }).join('');
     $('mbTree').innerHTML = mb.folders.length ? mb.folders.map(function (f) {
-      var name = f.typ === 'inbox' ? FOLD.inbox : (FOLD[f.typ] ? FOLD[f.typ].split(' ')[0] + ' ' : '') + f.nazwa;
-      return '<div class="frow' + (f.id === mb.folder ? ' on' : '') + (f.wybieralny ? '' : ' off') + '"' + (f.wybieralny ? ' role="button" tabindex="0" data-f="' + esc(f.id) + '"' : '') + ' style="margin-left:' + Math.min(4, f.poziom) * 12 + 'px" title="' + esc(f.sciezka) + '">' +
-        '<span>' + esc(name) + '</span>' + (f.wybieralny ? '<span class="sub">' + (f.nieprzeczytane ? '<b>' + f.nieprzeczytane + '</b> / ' : '') + (f.wiadomosci == null ? '' : f.wiadomosci) + '</span>' : '') + '</div>';
+      var name = (FOLD[f.typ] ? FOLD[f.typ].split(' ')[0] + ' ' : '') + (f.etykieta || f.nazwa);
+      return '<div class="frow' + (f.id === mb.folder ? ' on' : '') + (f.wybieralny ? '' : ' off') + '"' + (f.wybieralny ? ' role="button" tabindex="0" data-f="' + esc(f.id) + '"' : '') + ' style="margin-left:' + (f.typ ? 0 : Math.min(4, f.poziom) * 12) + 'px" title="' + esc(f.sciezka) + (f.portal ? ' — tego folderu używa portal' : '') + '">' +
+        '<span>' + esc(name) + (f.portal && f.duplikat ? ' <span class="sub">· portal</span>' : '') + '</span>' + (f.wybieralny ? '<span class="sub">' + (f.nieprzeczytane ? '<b>' + f.nieprzeczytane + '</b> / ' : '') + (f.wiadomosci == null ? '' : f.wiadomosci) + '</span>' : '') + '</div>';
     }).join('') : '<div class="sub">Brak folderów.</div>';
   }
   async function loadFolders(box, keep) {
@@ -189,7 +189,7 @@
     var sent = f.typ === 'sent' || f.typ === 'drafts';
     $('mbRows').innerHTML = mb.rows.length ? mb.rows.map(function (r) {
       var kto = sent ? 'Do: ' + (r.do || []).join(', ') : (r.od_nazwa || r.od_adres || '(nieznany nadawca)');
-      return '<div class="row' + (r.przeczytana ? '' : ' new') + '" role="button" tabindex="0" data-u="' + r.uid + '"><span class="who"><input type="checkbox" data-sel="' + r.uid + '"' + (mb.sel[r.uid] ? ' checked' : '') + ' aria-label="Zaznacz wiadomość" /> ' + esc(kto) + '</span><span class="d">' + (r.oflagowana ? '⚑ ' : '') + (r.zalaczniki ? '📎 ' : '') + (r.odpowiedziano ? '↩ ' : '') + esc(when(r.data)) + '</span>' +
+      return '<div class="row' + (r.przeczytana ? '' : ' new') + '" role="button" tabindex="0" data-u="' + r.uid + '"><span class="who"><input type="checkbox" data-sel="' + r.uid + '"' + (mb.sel[r.uid] ? ' checked' : '') + ' aria-label="Zaznacz wiadomość" /> ' + esc(kto) + '</span><span class="d">' + (r.przypisany ? '<span class="pill p-navy">' + esc(who(r.przypisany)) + '</span> ' : '') + (r.oflagowana ? '⚑ ' : '') + (r.zalaczniki ? '📎 ' : '') + (r.odpowiedziano ? '↩ ' : '') + esc(when(r.data)) + '</span>' +
         '<span class="subj">' + esc(r.temat || '(bez tematu)') + '</span></div>';
     }).join('') : '<div class="empty">Brak wiadomości w tym widoku.</div>';
     var pages = Math.max(1, Math.ceil(mb.total / 30));
@@ -285,11 +285,16 @@
         (html ? '<button type="button" class="mini" data-m="tall">' + (mb.tall ? 'Zwiń' : 'Rozwiń') + '</button>' : '') +
         (html && m.zdalne && !mb.images ? '<button type="button" class="mini" data-m="img">Pokaż obrazy z internetu (' + m.zdalne + ')</button><button type="button" class="mini" data-m="imgalways">Zawsze od tego nadawcy</button>' : '') +
         (html && m.zdalne && always ? '<button type="button" class="mini" data-m="imgnever">Nie pokazuj automatycznie od tego nadawcy</button>' : '') + '</div>' +
-      '<div id="mbBody"></div>' +
+      '<div id="mbWatek"></div><div id="mbBody"></div>' +
+      (a && a.zadanie && /^(nowe|w_toku)$/.test(a.zadanie.status) ? '<div class="cm" style="margin-top:12px;white-space:normal"><b>Zajmuje się: ' + esc(who(a.zadanie.assignee)) + '</b> <span class="sub">— notatki wewnętrzne (nie są wysyłane, widoczne w zadaniu)</span>' +
+          (a.zadanie.notatki || []).map(function (n) { return '<p style="margin:6px 0 0"><small>' + esc(who(n.by)) + ' · ' + esc(when(n.at)) + '</small><br>' + esc(n.text) + '</p>'; }).join('') +
+          '<div class="acts"><input type="text" maxlength="1000" placeholder="Notatka wewnętrzna…" data-note style="flex:1;min-width:180px" /><button type="button" class="mini" data-m="note">Dodaj notatkę</button></div></div>' : '') +
       '<div class="acts" style="margin-top:12px">' +
+        (!(a && a.zadanie && /^(nowe|w_toku)$/.test(a.zadanie.status)) && !m.szkic ? '<button type="button" class="mini ok" data-m="take">✋ Zajmuję się tym</button>' : '') +
         (a && a.zadanie ? '<a href="zadania.html?w=wszystkie">Zadanie: ' + esc(a.zadanie.tytul) + ' →</a>' : '') +
         (a ? '<button type="button" class="mini" data-m="triage">Pokaż w „Do decyzji”</button>' : '<button type="button" class="mini" data-m="analiza">Utwórz zadanie z tej wiadomości</button>') +
         '<span class="sub" data-mmsg></span></div>';
+    renderThread();
     var body = $('mbBody');
     if (html) body.appendChild(frame(mb.images ? m.srcdoc.replace('img-src data:;', 'img-src data: https:;').replace(/ data-zdalne="/g, ' src="') : m.srcdoc));
     else if (m.tekst) body.appendChild(plainView(m.tekst));
@@ -308,7 +313,22 @@
       // a shared mailbox worked from the portal: opening marks the message read (a personal setting, on by default)
       if (!out.przeczytana && pref('czytaj', true) && out.typ_folderu !== 'drafts') akcja('przeczytane', [uid]).then(function (ok) { if (ok && mb.msg && mb.msg.uid === uid) mb.msg.przeczytana = true; });
       var back = el.querySelector('[data-m="back"]'); if (back) back.focus();
+      loadThread(uid);
     } catch (e) { el.innerHTML = '<div class="acts" style="margin:0 0 10px"><button type="button" class="mini" data-m="back">← Lista</button></div><div class="empty">' + esc(e.message) + '</div>'; }
+  }
+  // other messages of the same conversation (this folder and the portal's Sent folder)
+  async function loadThread(uid) {
+    try {
+      var out = await call('poczta', { action: 'watek_imap', skrzynka: mb.box, folder: mb.folder, uid: uid });
+      if (!mb.msg || mb.msg.uid !== uid) return;
+      mb.msg.watek = out.watek || []; renderThread();
+    } catch (e) {}
+  }
+  function renderThread() {
+    var el = $('mbWatek'), w = mb.msg && mb.msg.watek; if (!el || !w || !w.length) return;
+    el.innerHTML = '<details class="fold" style="margin:0 0 10px"' + (w.length <= 6 ? ' open' : '') + '><summary>Rozmowa: ' + w.length + ' wiadomości</summary>' + w.map(function (x) {
+      return '<div class="frow' + (x.ta ? ' on' : '') + '"' + (x.ta ? '' : ' role="button" tabindex="0" data-wf="' + esc(x.folder) + '" data-wu="' + x.uid + '"') + '><span>' + (x.wyslana ? '↗ ' : '↘ ') + esc(x.wyslana ? 'biuro' : (x.od_nazwa || x.od_adres)) + ' — ' + esc(x.temat || '') + '</span><span class="sub">' + esc(when(x.data)) + '</span></div>';
+    }).join('') + '</details>';
   }
   function backToList() { $('mbMsg').hidden = true; $('mbList').hidden = false; ekran('lista'); var r = mb.msg && document.querySelector('.row[data-u="' + mb.msg.uid + '"]'); if (r) r.focus(); mb.msg = null; }
   async function msgAct(act) {
@@ -321,6 +341,13 @@
     else if (act === 'flag' || act === 'unflag') { m.oflagowana = act === 'flag'; renderMsg(); }
     else backToList();
   }
+  function threadGo(e) {
+    var r = e.target.closest('[data-wu]'); if (!r || (e.type === 'keydown' && e.key !== 'Enter')) return;
+    var f = r.getAttribute('data-wf'), u = Number(r.getAttribute('data-wu'));
+    if (f !== mb.folder) { mb.folder = f; mb.page = 1; mb.sel = {}; renderFolders(); openFolder(f, true, true); }
+    openMsg(u);
+  }
+  $('mbMsg').addEventListener('click', threadGo); $('mbMsg').addEventListener('keydown', threadGo);
   $('mbMsg').addEventListener('change', async function (e) { var s = e.target.closest('[data-mmove]'); if (s && s.value && mb.msg) { if (await akcja('przenies', [mb.msg.uid], s.value)) backToList(); } });
   $('mbMsg').addEventListener('click', async function (e) {
     var part = e.target.closest('[data-part]'), b = e.target.closest('[data-m]'), msg = $('mbMsg').querySelector('[data-mmsg]');
@@ -347,6 +374,17 @@
     if (act === 'edit') return compose('draft');
     if (/^(read|unread|flag|unflag|archive|spam|trash)$/.test(act)) return msgAct(act);
     if (act === 'triage') return toTriage(m.analiza.id);
+    if (act === 'take' || act === 'note') {
+      var note = $('mbMsg').querySelector('[data-note]');
+      b.disabled = true;
+      try {
+        var o2 = await call('poczta', act === 'take' ? { action: 'biore_imap', skrzynka: mb.box, folder: mb.folder, uid: m.uid } : { action: 'notatka_imap', skrzynka: mb.box, folder: mb.folder, uid: m.uid, tekst: note ? note.value : '' });
+        if (o2.error) { msg.textContent = o2.error; b.disabled = false; return; }
+        if (window.PortalShell && window.PortalShell.refreshTasks) window.PortalShell.refreshTasks();
+        return openMsg(m.uid);
+      } catch (err) { msg.textContent = err.message; b.disabled = false; }
+      return;
+    }
     if (act === 'analiza') {
       b.disabled = true; msg.textContent = 'Analizuję wiadomość (płatne zapytanie)…';
       try {
@@ -661,6 +699,7 @@
         '<div style="display:flex;gap:8px;align-items:end"><div style="width:84px"><label>Ile na start</label><input type="number" min="0" max="20" value="0" data-ile="' + k + '" /></div><button type="button" class="mini" data-pobierz="' + k + '"' + (s.skonfigurowana ? '' : ' disabled') + '>Pobierz teraz (podgląd)</button></div></div>' +
         '<div class="set" style="grid-template-columns:1fr 2fr"><div><label>Nazwa nadawcy (pole „Od”)</label><input type="text" maxlength="80" data-nad="' + k + '" value="' + esc((u.nadawca || {})[k] || '') + '" /></div>' +
         '<div><label>Obowiązkowa stopka każdej wysyłanej wiadomości (np. klauzula poufności / RODO, telefon, adres)</label><textarea maxlength="1500" data-stopka="' + k + '" style="min-height:44px">' + esc((u.stopka || {})[k] || '') + '</textarea></div></div>' +
+        '<div class="acts" style="margin:0 0 8px"><b style="font-size:13px">Foldery używane przez portal</b><button type="button" class="mini" data-fload="' + k + '">Wczytaj foldery skrzynki</button><span class="sub">bez wyboru portal używa folderu z najnowszą wiadomością</span></div><div class="set4" data-fsel="' + k + '" style="grid-template-columns:repeat(5,1fr)"></div>' +
         '<p class="sub" style="margin:0 0 4px">Ostatnie ' + esc(String(d.godziny || 6)) + ' godz.: przekazane z serwera — <b>' + (d.push || 0) + '</b>, znalezione przy sprawdzaniu awaryjnym — <b>' + (d.poll || 0) + '</b>. ' +
           'Sprawdzanie awaryjne: ' + (s.ostatnie_udane ? esc(when(s.ostatnie_udane)) : 'jeszcze nie działało') + (s.blad ? ' · <b>błąd:</b> ' + esc(s.blad) : '') + '. Dziś analiz: ' + (s.dzis_analiz || 0) + '.' +
           (con ? ' Połączenie: ' + (con.ok ? 'OK, wiadomości w skrzynce: ' + con.wiadomosci : '<b>nieudane</b> — ' + esc(con.error)) + '.' : '') + '</p>' +
@@ -682,6 +721,8 @@
     u.nadawca = u.nadawca || {}; u.stopka = u.stopka || {};
     document.querySelectorAll('[data-nad]').forEach(function (i) { u.nadawca[i.getAttribute('data-nad')] = i.value; });
     document.querySelectorAll('[data-stopka]').forEach(function (i) { u.stopka[i.getAttribute('data-stopka')] = i.value; });
+    u.foldery = u.foldery || {};
+    document.querySelectorAll('[data-fol]').forEach(function (x) { var p = x.getAttribute('data-fol').split(':'); u.foldery[p[0]] = u.foldery[p[0]] || {}; u.foldery[p[0]][p[1]] = x.value; });
     u.mapa = {};
     document.querySelectorAll('[data-map]').forEach(function (s) { if (s.value) u.mapa[s.getAttribute('data-map')] = s.value; });
     u.limity.naRaz = $('lNaRaz').value; u.limity.dziennie = $('lDzien').value; u.limity.nadawca = $('lNadawca').value; u.limity.autoDziennie = $('lAuto').value; u.autoTylkoKlienci = $('lKlienci').checked;
@@ -700,6 +741,22 @@
     this.disabled = false;
   });
   $('settings').addEventListener('click', async function (e) {
+    var fl = e.target.closest('[data-fload]');
+    if (fl) {
+      var kk = fl.getAttribute('data-fload'), box = document.querySelector('[data-fsel="' + kk + '"]');
+      fl.disabled = true; box.innerHTML = '<span class="sub">Ładowanie…</span>';
+      try {
+        var fo = await call('poczta', { action: 'foldery', skrzynka: kk, szczegoly: true }), cur = (st.ustawienia.foldery || {})[kk] || {};
+        var NAZ = { sent: 'Wysłane', drafts: 'Robocze', trash: 'Kosz', junk: 'Spam', archive: 'Archiwum' };
+        box.innerHTML = Object.keys(NAZ).map(function (t) {
+          var c = fo.foldery.filter(function (f) { return f.typ === t && f.wybieralny; });
+          return '<div><label>' + NAZ[t] + '</label><select data-fol="' + kk + ':' + t + '"><option value="">' + (c.length ? 'automatycznie' + (fo.uzywane[t] && !cur[t] ? ' (' + esc((c.filter(function (f) { return f.id === fo.uzywane[t]; })[0] || {}).nazwa || '') + ')' : '') : '— brak takiego folderu —') + '</option>' +
+            c.map(function (f) { return '<option value="' + esc(f.id) + '"' + (cur[t] === f.id ? ' selected' : '') + '>' + esc(f.nazwa) + ' · ' + (f.wiadomosci == null ? '?' : f.wiadomosci) + ' wiad.' + (f.ostatnia ? ' · ostatnia ' + esc(new Date(f.ostatnia).toLocaleDateString('pl-PL')) : '') + '</option>'; }).join('') + '</select></div>';
+        }).join('');
+      } catch (er) { box.innerHTML = '<span class="sub">' + esc(er.message) + '</span>'; }
+      fl.disabled = false;
+      return;
+    }
     var b = e.target.closest('[data-pobierz]'); if (!b) return;
     var k = b.getAttribute('data-pobierz'), ile = Number(document.querySelector('[data-ile="' + k + '"]').value) || 0;
     b.disabled = true; $('setMsg').textContent = 'Pobieram…';
