@@ -218,7 +218,7 @@ export async function zbudujGrupe(tg: Tg, plan: Plan, zapiszKrok: ZapiszKrok, op
 
   // ---- 4. the invitation link
   if (!k.link) {
-    const r = await wyslij("link z zaproszeniem", () => new Api.messages.ExportChatInvite({ peer: peer() }));
+    const r = await wyslij("link z zaproszeniem", () => new Api.messages.ExportChatInvite({ peer: peer(), requestNeeded: true, title: "Zaproszenie dla klienta" }));
     k.link = String(r?.link ?? "");
     if (!/^https:\/\/t\.me\//.test(k.link)) throw new Odmowa("BRAK_LINKU", "link z zaproszeniem");
   }

@@ -201,7 +201,7 @@
     if (r.ok) {
       k.tryb = 'wynik';
       $('tggMsg').textContent = '';
-      $('tggWynik').innerHTML = '<h4>Grupa gotowa</h4>' + link + '<div class="note"><b>Teraz dodaj osoby po stronie klienta</b> — wyślij im link albo pokaż kod QR. Id czatu zostało zapisane w danych klienta.</div>' + uw;
+      $('tggWynik').innerHTML = '<h4>Grupa gotowa</h4>' + link + '<div class="note"><b>Teraz dodaj osoby po stronie klienta</b> — wyślij im link albo pokaż kod QR. Link wymaga zatwierdzenia: każda osoba, która z niego skorzysta, wysyła prośbę o dołączenie, a administrator grupy (konto biura) akceptuje ją w Telegramie. Id czatu zostało zapisane w danych klienta.</div>' + uw;
       $('tggGo').textContent = 'Gotowe'; $('tggGo').disabled = false;
     } else {
       k.tryb = 'przerwa'; k.czekaj = r.czekaj || 0;
