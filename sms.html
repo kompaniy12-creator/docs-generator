@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>SMS — TD Consulting Group</title>
+<style>
+  :root{--brand-navy:#1B3F7F;--brand-navy-dark:#15315F;--brand-green:#1FA84B;--brand-tint:#EEF3F9;}
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f6f8fb;color:#111;line-height:1.5}
+  main{max-width:1400px;margin:0 auto;padding:36px 20px 96px}
+  .back{display:inline-block;margin-bottom:14px;font-size:14px;color:#666;text-decoration:none}
+  .brand{text-align:center;margin:0 0 14px}.brand img{height:60px}
+  h1{font-size:23px;font-weight:700;margin:0 0 4px;color:var(--brand-navy);text-align:center}
+  .lead{color:#666;margin:0 auto 18px;font-size:14px;text-align:center;max-width:860px}
+  .box{background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:14px 16px;margin:0 0 16px}
+  .box h2{font-size:15px;margin:0 0 4px;color:var(--brand-navy)}
+  .hint{color:#7a8699;font-size:12.5px;margin:0 0 10px}
+  .sub{color:#7a8699;font-size:12.5px}
+  .warn{color:#92400e}
+  .law{border-top:1px solid #eef1f6;margin:12px 0 0;padding-top:10px;color:#5a6577;font-size:12.5px}
+  label{display:block;font-size:12px;font-weight:600;color:#5a6577;margin-bottom:4px}
+  select,input[type=text],input[type=search],input[type=date],input[type=number],input[type=time],input[type=tel],textarea{width:100%;padding:9px 11px;border:1px solid #d4dbe6;border-radius:9px;font:inherit;font-size:14px;background:#fff;color:#111;min-height:40px}
+  textarea{min-height:120px;resize:vertical}
+  .mini{font:inherit;font-size:12.5px;font-weight:600;padding:5px 10px;border-radius:8px;border:1px solid #d4dbe6;background:#fff;color:var(--brand-navy);cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block}
+  .mini:hover{border-color:var(--brand-navy)}.mini.ok{background:var(--brand-green);border-color:var(--brand-green);color:#fff}.mini:disabled{opacity:.5;cursor:default}
+  .mini.big{font-size:14px;padding:9px 16px;border-radius:9px}
+  .pill{display:inline-block;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .p-red{background:#fee2e2;color:#991b1b}.p-amber{background:#fef3c7;color:#92400e}.p-ok{background:#dcfce7;color:#166534}.p-grey{background:#eef1f6;color:#5a6577}.p-navy{background:var(--brand-tint);color:var(--brand-navy)}
+  .empty{text-align:center;color:#888;padding:26px}
+  .acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin:0 0 16px}
+  .tile{background:#fff;border:1.5px solid #e5e9ef;border-radius:12px;padding:14px 16px;text-align:left;font:inherit;color:inherit}
+  .tile b{display:block;font-size:22px;line-height:1.2;color:var(--brand-navy);overflow-wrap:break-word}
+  .tile span{display:block;font-size:13px;color:#5a6577;margin-top:4px}
+  .tile.red b{color:#b91c1c}.tile.amber b{color:#b45309}.tile.green b{color:#166534}.tile.zero b{color:#9aa6b8}
+
+  .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+  .tabs button{font:inherit;font-size:13.5px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid #d4dbe6;background:#fff;color:#3a4759;cursor:pointer}
+  .tabs button.on{background:var(--brand-navy);border-color:var(--brand-navy);color:#fff}
+  section[hidden]{display:none}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+  .three{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 14px}
+  .cols{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,4fr);gap:16px;align-items:start}
+  @media(max-width:900px){.cols{grid-template-columns:1fr}}
+  @media(max-width:640px){.two,.three{grid-template-columns:1fr}main{padding:24px 14px 96px}}
+  .row{margin-top:12px}
+  .filters{display:grid;grid-template-columns:minmax(180px,2fr) repeat(4,minmax(120px,1fr));gap:10px;align-items:end}
+  @media(max-width:1000px){.filters{grid-template-columns:1fr 1fr}.filters .wide{grid-column:1/-1}}
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;margin-top:10px}
+  .checks{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .checks label{display:flex;align-items:flex-start;gap:8px;margin:0;font-size:13.5px;font-weight:500;color:inherit}
+  .checks input{width:auto;min-height:0;margin-top:3px;flex:0 0 auto}
+  .licznik{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+  .wynik{margin-top:12px;font-size:13.5px;overflow-wrap:anywhere}
+  .tresc{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font:inherit;font-size:13.5px}
+
+  .tablewrap{overflow:auto}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th,td{padding:8px 8px;border-bottom:1px solid #eef1f6;text-align:left;vertical-align:top}
+  th{color:#5a6577;font-weight:600;font-size:12px;white-space:nowrap}
+  td small{display:block;color:#7a8699;font-size:12px}
+  td.t{min-width:260px;max-width:520px;white-space:pre-wrap;overflow-wrap:anywhere}
+  #htbl{min-width:820px}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>SMS</h1>
+  <p class="lead">Krótkie powiadomienia dla klientów biura: przypomnienia o terminach, informacja o dokumentach do podpisu, prośba o kontakt. Każda wiadomość jest zapisywana w historii.</p>
+
+  <div class="tiles" id="tiles"></div>
+  <div class="tabs" id="tabs"></div>
+
+  <section id="t-wyslij">
+    <div class="cols">
+      <div class="box">
+        <h2>Wyślij SMS</h2>
+        <p class="hint" id="trybHint"></p>
+        <div class="two">
+          <div><label for="klQ">Klient — szukaj po nazwie albo NIP</label><input type="search" id="klQ" placeholder="np. Przykładowa albo 9990000019" autocomplete="off" /></div>
+          <div><label for="kl">Klient z bazy klientów</label><select id="kl"><option value="">Ładowanie…</option></select></div>
+        </div>
+        <div class="licznik" id="klInfo"></div>
+        <div class="row" id="numerBox" hidden>
+          <label for="numer">Albo numer wpisany ręcznie (tylko administrator)</label>
+          <input type="tel" id="numer" maxlength="24" placeholder="np. 600 100 200" autocomplete="off" />
+        </div>
+        <div class="row two">
+          <div><label for="szablon">Szablon</label><select id="szablon"></select></div>
+          <div id="pola"></div>
+        </div>
+        <div class="row">
+          <label for="tresc">Treść</label>
+          <textarea id="tresc" maxlength="1000" placeholder="Wpisz treść albo wybierz szablon. Nazwa biura zostanie dopisana na początku, jeśli jej nie ma."></textarea>
+        </div>
+        <div class="licznik" id="licznik"></div>
+        <p class="hint warn" id="uwagi" style="margin:8px 0 0"></p>
+        <div class="row acts">
+          <button type="button" class="mini ok big" id="wyslij" disabled>Wyślij SMS</button>
+          <button type="button" class="mini big" id="test" disabled>Wyślij test</button>
+          <span class="sub">„Wyślij test” używa trybu testowego dostawcy — nic nie zostanie doręczone ani policzone.</span>
+        </div>
+        <div class="wynik" id="wynik"></div>
+      </div>
+      <div class="box">
+        <h2>Tak będzie wyglądać wiadomość</h2>
+        <p class="hint" id="podNadawca"></p>
+        <pre class="tresc" id="podTresc">—</pre>
+        <p class="law">W SMS-ie podawaj tylko to, co konieczne: inicjały pracownika, rodzaj dokumentu i datę — nigdy pełnego imienia i nazwiska z numerem PESEL, numerem dokumentu, kwotą wynagrodzenia czy linkiem z dostępem do danych. SMS jest widoczny na zablokowanym ekranie telefonu i nie jest szyfrowany (art. 5 ust. 1 lit. c i f RODO). Szczegóły wysyłaj e-mailem.</p>
+        <p class="law">Wiadomości wolno wysyłać klientom wyłącznie w sprawach obsługi (terminy, dokumenty, kontakt). Oferty, promocje i inne informacje handlowe wymagają uprzedniej zgody odbiorcy — art. 398 ust. 1 ustawy z 12.07.2024 r. Prawo komunikacji elektronicznej (Dz.U. 2024 poz. 1221).</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="t-historia" hidden>
+    <div class="box">
+      <div class="filters">
+        <div class="wide"><label for="hQ">Szukaj</label><input type="search" id="hQ" placeholder="Klient, NIP, numer, kto wysłał…" /></div>
+        <div><label for="hStatus">Status</label><select id="hStatus"></select></div>
+        <div><label for="hCel">Rodzaj</label><select id="hCel"></select></div>
+        <div><label for="hOd">Od dnia</label><input type="date" id="hOd" /></div>
+        <div><label for="hDo">Do dnia</label><input type="date" id="hDo" /></div>
+      </div>
+      <div class="toolbar"><span class="sub" id="hInfo"></span><span class="acts"><button type="button" class="mini" id="hPrev">← Nowsze</button><button type="button" class="mini" id="hNext">Starsze →</button></span></div>
+    </div>
+    <div class="box"><div class="tablewrap"><table id="htbl"><thead></thead><tbody><tr><td class="empty">Ładowanie…</td></tr></tbody></table></div></div>
+  </section>
+
+  <section id="t-ustawienia" hidden>
+    <div class="box">
+      <h2>Ustawienia wysyłki</h2>
+      <p class="hint" id="uInfo"></p>
+      <div class="checks">
+        <label><input type="checkbox" id="uWl" /> <span><b>Wysyłka SMS włączona.</b> Dopóki jest wyłączona, każda wiadomość idzie w trybie testowym dostawcy — nic nie jest doręczane ani policzone.</span></label>
+        <label><input type="checkbox" id="uTerminy" /> <span><b>Przypomnienia o terminach SMS-em.</b> Do klienta, który dostał e-mail z przypomnieniem o kończącym się dokumencie lub umowie pracownika, pójdzie także krótki SMS. Działa tylko, gdy przypomnienia e-mail są w trybie automatycznym (Kontrola → Przypomnienia).</span></label>
+      </div>
+      <div class="row three">
+        <div><label for="uNadawca">Nazwa nadawcy (zweryfikowana w SMSAPI)</label><select id="uNadawca"></select></div>
+        <div><label for="uLimit">Limit wiadomości na dzień</label><input type="number" id="uLimit" min="1" max="2000" step="1" /></div>
+        <div><label for="uLimitNr">Limit na jeden numer na dzień</label><input type="number" id="uLimitNr" min="1" max="20" step="1" /></div>
+      </div>
+      <div class="row three">
+        <div><label for="uOd">Wysyłka od godziny</label><input type="time" id="uOd" min="06:00" max="22:00" /></div>
+        <div><label for="uDo">Wysyłka do godziny</label><input type="time" id="uDo" min="06:00" max="22:00" /></div>
+        <div></div>
+      </div>
+      <div class="checks row">
+        <label><input type="checkbox" id="uNorm" /> <span>Zamieniaj polskie znaki na zwykłe litery (ą → a). SMS z polskimi znakami mieści 70 znaków zamiast 160 i częściej kosztuje jak dwa.</span></label>
+        <label><input type="checkbox" id="uZagr" /> <span>Zezwól na numery zagraniczne (tylko rozpoznawalne numery komórkowe: UA, DE, CZ, SK, LT). Wysyłka za granicę jest droższa.</span></label>
+        <label><input type="checkbox" id="uRap" /> <span>Raporty doręczeń: proś dostawcę o powiadomienie, czy SMS dotarł. Wymaga zgody na adresy callback po stronie konta SMSAPI; bez tego wiadomość pozostaje ze statusem „wysłany”.</span></label>
+      </div>
+      <div class="row acts"><button type="button" class="mini ok big" id="uZapisz">Zapisz ustawienia</button><span class="sub" id="uMsg"></span></div>
+      <p class="law">Poza ustawionymi godzinami automaty nie wysyłają nic, a osoba wysyłająca ręcznie musi to wyraźnie potwierdzić. Taka sama treść na ten sam numer jest blokowana przez 10 minut. Zwykły użytkownik może wysłać wiadomość najwyżej z 3 części, administrator — z 6.</p>
+    </div>
+  </section>
+</main>
+<script src="sms.js?v=1"></script>
+</body>
+</html>
