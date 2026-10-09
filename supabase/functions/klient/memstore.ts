@@ -1,6 +1,6 @@
 // A Store in memory with fictional data — for the tests (portal_test.ts) and the local harness
 // (harness.ts). Never imported by index.ts. Every person, firm and number here is made up.
-import { type Flaga, type Store, WIDOCZNE } from "./portal.ts";
+import { type Flaga, type Store, type Ustawienia, WIDOCZNE } from "./portal.ts";
 
 // deno-lint-ignore no-explicit-any
 type Any = any;
@@ -64,7 +64,8 @@ export function memStore(now: () => number = () => Date.now()) {
       { id: ID.umowaAukryta, klient: NIP_A, status: "przypisany", path: `${ID.umowaAukryta}/aneks.pdf`, nazwa: "aneks.pdf", rodzaj: "aneks" },
       { id: ID.umowaB, klient: NIP_B, status: "przypisany", path: `${ID.umowaB}/umowa.pdf`, nazwa: "umowa.pdf", rodzaj: "kadry" },
     ] as Any[],
-    flagi: { akta: new Set([ID.aktaA, ID.aktaB]), umowa: new Set([ID.umowaA, ID.umowaB]) } as Record<Flaga, Set<string>>,
+    flagi: { akta: new Set([ID.aktaA, ID.aktaB]), umowa: new Set([ID.umowaA, ID.umowaB]), historia: new Set<string>() } as Record<Flaga, Set<string>>,
+    ust: { historia: "auto" } as Ustawienia,
     historia: [
       { id: ID.histA, created_at: new Date(t - 5 * 86400000).toISOString(), doc_type: "umowa-zlecenie", title: "Umowa zlecenie — komplet", subject: "Oksana Testowa", filename: "komplet.pdf", pdf_path: "umowa-zlecenie/2026-01-01/a1.pdf", nip: null, znip: NIP_A },
       { id: ID.histAstara, created_at: new Date(t - 9 * 86400000).toISOString(), doc_type: "umowa-zlecenie", title: "Umowa zlecenie — komplet", subject: "Oksana Testowa", filename: "komplet-stary.pdf", pdf_path: "umowa-zlecenie/2025-12-01/a0.pdf", nip: null, znip: NIP_A },
@@ -128,7 +129,9 @@ export function memStore(now: () => number = () => Date.now()) {
     flagSet: (zr, id, on) => { if (on) db.flagi[zr].add(id); else db.flagi[zr].delete(id); return Promise.resolve(true); },
     flags: (zr, ids) => Promise.resolve(ids.filter((i) => db.flagi[zr].has(i))),
     telegramLink: (kid, kto, utworz) => { db.tg.push({ kid, kto, utworz }); return Promise.resolve(db.tgLink); },
-    obiektFlagi: (zr, id) => Promise.resolve((zr === "akta" ? db.akta : db.umowy).some((x) => x.id === id)),
+    obiektFlagi: (zr, id) => Promise.resolve((zr === "akta" ? db.akta : zr === "umowa" ? db.umowy : db.historia).some((x) => x.id === id)),
+    ustawienia: () => Promise.resolve({ ...db.ust }),
+    ustawieniaZapisz: (u) => { db.ust = { ...u }; return Promise.resolve(true); },
   };
   return { store: s, db };
 }

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>Zgłoszenia klientów — TD Consulting Group</title>
+<style>
+  :root{--brand-navy:#1B3F7F;--brand-navy-dark:#15315F;--brand-green:#1FA84B;--brand-tint:#EEF3F9;}
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f6f8fb;color:#111;line-height:1.5}
+  main{max-width:1000px;margin:0 auto;padding:36px 20px 96px}
+  .back{display:inline-block;margin-bottom:14px;font-size:14px;color:#666;text-decoration:none}
+  .brand{text-align:center;margin:0 0 14px}.brand img{height:60px}
+  h1{font-size:23px;font-weight:700;margin:0 0 6px;color:var(--brand-navy);text-align:center}
+  .lead{color:#666;margin:0 auto 18px;font-size:14px;text-align:center;max-width:760px}
+  .box{background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:16px;margin:0 0 16px}
+  .box h2{font-size:15px;margin:0 0 10px;color:var(--brand-navy)}
+  .grid{display:grid;grid-template-columns:2fr 1.2fr 1fr auto;gap:10px;align-items:end}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
+  label{display:block;font-size:12px;font-weight:600;color:#5a6577;margin-bottom:4px}
+  input[type=text],input[type=date],select,textarea{width:100%;padding:10px 12px;border:1px solid #d4dbe6;border-radius:9px;font:inherit;font-size:14px;background:#fff}
+  textarea{min-height:64px;resize:vertical;margin-top:10px}
+  .chk{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#b45309;margin:0;padding-bottom:10px;white-space:nowrap}
+  .chk input{width:auto}
+  .btn{font:inherit;font-size:14px;font-weight:600;padding:10px 16px;border-radius:9px;border:1px solid var(--brand-navy);background:var(--brand-navy);color:#fff;cursor:pointer}
+  .btn:disabled{opacity:.6}
+  .mini{font:inherit;font-size:12.5px;font-weight:600;padding:6px 11px;border-radius:8px;border:1px solid #d4dbe6;background:#fff;color:var(--brand-navy);cursor:pointer;white-space:nowrap}
+  .mini:hover{border-color:var(--brand-navy)}.mini.ok{background:var(--brand-green);border-color:var(--brand-green);color:#fff}.mini.del{color:#b91c1c;border-color:#e5c2c2}
+  .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+  .tabs button{font:inherit;font-size:13.5px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid #d4dbe6;background:#fff;color:#3a4759;cursor:pointer}
+  .tabs button.on{background:var(--brand-navy);border-color:var(--brand-navy);color:#fff}
+  .tabs b{font-weight:700;opacity:.85;margin-left:4px}
+  .task{background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:12px 14px;margin:0 0 8px}
+  .task.late{border-left:4px solid #dc2626}.task.urgent{border-left:4px solid #f59e0b}.task.done{opacity:.7}
+  .thead{display:flex;gap:12px;align-items:flex-start;cursor:pointer}
+  .ttl{flex:1;min-width:0}.ttl strong{display:block;font-size:14.5px}.ttl small{color:#7a8699;font-size:12.5px}
+  .pill{display:inline-block;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .p-red{background:#fee2e2;color:#991b1b}.p-amber{background:#fef3c7;color:#92400e}.p-ok{background:#dcfce7;color:#166534}.p-grey{background:#eef1f6;color:#5a6577}.p-navy{background:var(--brand-tint);color:var(--brand-navy)}
+  .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .tbody{display:none;border-top:1px solid #eef1f6;margin-top:10px;padding-top:10px;font-size:13.5px}
+  .task.open .tbody{display:block}
+  .tbody p{margin:0 0 8px;white-space:pre-wrap}
+  .cm{background:#f6f8fb;border-radius:8px;padding:7px 10px;margin:0 0 6px}.cm small{color:#7a8699}
+  .cmadd{display:flex;gap:8px;margin-top:8px}.cmadd input{flex:1}
+  .empty{text-align:center;color:#888;padding:28px}
+  .sub{color:#7a8699;font-size:12.5px}
+  .set{display:grid;grid-template-columns:1fr 200px auto;gap:8px;align-items:center;margin:0 0 6px;font-size:13.5px}
+  @media(max-width:760px){.set{grid-template-columns:1fr}.thead{flex-wrap:wrap}}
+  .warnbox{background:#fef3c7;color:#92400e;border-radius:9px;padding:9px 12px;font-size:13px;margin:0 0 12px}
+  /* this page: only layout — blocks, tabs, pills and buttons are the standard ones above */
+  .filters{display:grid;grid-template-columns:2fr 1.4fr 1fr 1fr;gap:10px;margin:0 0 12px}
+  @media(max-width:760px){.filters{grid-template-columns:1fr}}
+  .field{margin:0 0 10px}.field textarea{margin-top:0;min-height:76px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:760px){.two{grid-template-columns:1fr}}
+  .files{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+  .files .mini{white-space:normal;text-align:left;overflow-wrap:anywhere}
+  .task.new{border-left:4px solid #f59e0b}
+  .doc{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid #eef1f6;flex-wrap:wrap;font-weight:400;margin:0;cursor:pointer}
+  .doc .ttl{flex:1 1 220px;min-width:0;overflow-wrap:anywhere}.doc .pill{white-space:normal}
+  @media(max-width:760px){.thead .ttl{flex:1 1 100%}.acts{justify-content:flex-start}}
+  .filters.box{padding:14px 16px}
+  .doc:first-child{border-top:none}
+  .doc input{width:20px;height:20px;flex:none;margin-top:2px}
+  .doc .ttl small{display:block}
+  .optrow{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;font-weight:400;color:inherit;margin:0 0 6px;cursor:pointer}
+  .optrow input{width:18px;height:18px;flex:none;margin-top:2px}
+  .okbox{background:#f0fdf4;color:#166534;border-radius:9px;padding:9px 12px;font-size:13px;margin:0 0 12px}
+  .errbox{background:#fef2f2;color:#991b1b;border-radius:9px;padding:9px 12px;font-size:13px;margin:0 0 12px}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Zgłoszenia klientów</h1>
+  <p class="lead">To, co klienci wysyłają z profilu klienta: pytania, zmiany dotyczące pracowników, dokumenty księgowe. Tutaj odpowiada się klientowi i decyduje, które dokumenty widzi w swoim profilu.</p>
+
+  <div id="warn"></div>
+  <div class="tabs" id="mainTabs">
+    <button type="button" data-main="zgl" class="on">Zgłoszenia</button>
+    <button type="button" data-main="udo">Udostępnione klientowi</button>
+  </div>
+
+  <section id="secZgl">
+    <div class="tabs" id="tabs"></div>
+    <div class="filters box">
+      <div><label for="fq">Szukaj</label><input type="text" id="fq" placeholder="temat, treść, pracownik, e-mail…" /></div>
+      <div><label for="fk">Klient</label><select id="fk"><option value="">wszyscy klienci</option></select></div>
+      <div><label for="fc">Kategoria</label><select id="fc"><option value="">wszystkie</option><option value="kadry">kadry</option><option value="ksiegowosc">księgowość</option><option value="inne">inne</option></select></div>
+      <div><label for="fd">Od dnia</label><input type="date" id="fd" /></div>
+    </div>
+    <div id="list"><div class="empty">Ładowanie…</div></div>
+  </section>
+
+  <section id="secUdo" hidden>
+    <div class="box" id="setBox">
+      <h2>Dokumenty z historii w profilu klienta</h2>
+      <p class="sub" style="margin:0 0 10px">Dotyczy dokumentów wygenerowanych w portalu dla firmy klienta (komplet do umowy, uchwała o wynagrodzeniu, załącznik nr 1 do wniosku o pobyt, NIP-8). Pełnomocnictwa i dokumenty e-Urzędu nie są klientowi pokazywane nigdy.</p>
+      <label class="optrow"><input type="radio" name="hist" value="auto" /><span><b>Pokazuj automatycznie</b> — klient widzi najnowszą wersję każdego takiego dokumentu swojej firmy.</span></label>
+      <label class="optrow"><input type="radio" name="hist" value="zaznaczone" /><span><b>Tylko zaznaczone</b> — klient widzi dokument dopiero po zaznaczeniu go poniżej (źródło „Dokumenty z historii”).</span></label>
+      <div style="margin-top:8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" id="setSave" hidden>Zapisz ustawienie</button><span class="sub" id="setMsg"></span></div>
+    </div>
+    <div class="box">
+      <h2>Co klient widzi w swoim profilu</h2>
+      <p class="sub" style="margin:0 0 10px">Zaznaczony dokument klient może pobrać w profilu (zakładka „Dokumenty”, a skany z akt także w karcie pracownika). Niezaznaczony — nie istnieje dla klienta. Każde zaznaczenie i odznaczenie jest zapisywane.</p>
+      <div class="filters">
+        <div><label for="uq">Szukaj</label><input type="text" id="uq" placeholder="firma, NIP, pracownik, rodzaj dokumentu…" /></div>
+        <div><label for="us">Źródło</label><select id="us"></select></div>
+        <div><label for="uo">Pokaż</label><select id="uo"><option value="">wszystkie</option><option value="1">tylko udostępnione</option><option value="0">tylko nieudostępnione</option></select></div>
+        <div></div>
+      </div>
+      <div id="udoMsg"></div>
+      <div id="docs"><div class="empty">Ładowanie…</div></div>
+    </div>
+  </section>
+</main>
+<script src="zgloszenia-klientow.js?v=1"></script>
+</body>
+</html>

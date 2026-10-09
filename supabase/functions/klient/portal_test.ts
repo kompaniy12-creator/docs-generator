@@ -225,7 +225,7 @@ Deno.test("zgloszenie_nowe: zapis, załączniki, zadanie dla właściwej osoby, 
   assertEquals(z.zalaczniki.map((a: Any) => [a.path, a.mime, a.nazwa]), [[`${z.id}/1.pdf`, "application/pdf", "wypowiedzenie skan.pdf"], [`${z.id}/2.png`, "image/png", ".._.._zdjecie_1_.png"]]);
   assert(e.db.pliki.has(`klient-zgloszenia/${z.id}/1.pdf`) && e.db.pliki.has(`klient-zgloszenia/${z.id}/2.png`));
   const t = e.db.zadania[0];
-  assertEquals([t.created_by, t.assignee, t.zrodlo, t.klucz, t.link, t.id], ["system", "kadrowa@biuro.test", "reczne", `klient:${z.id}`, `klienci.html?zgloszenie=${z.id}`, z.zadanie_id]);
+  assertEquals([t.created_by, t.assignee, t.zrodlo, t.klucz, t.link, t.id], ["system", "kadrowa@biuro.test", "reczne", `klient:${z.id}`, `zgloszenia-klientow.html?id=${z.id}`, z.zadanie_id]);
   assert(/^[a-z0-9-]+\.html/.test(t.link) && t.opis.includes("Ostatni dzień pracy") && t.opis.includes("Oksana Testowa") && t.opis.includes(NIP_A) && t.opis.includes("wypowiedzenie skan.pdf") && t.opis.length <= 4000 && t.tytul.length <= 300);
   assertEquals([e.db.log.at(-1).akcja, e.db.log.at(-1).info.zalaczniki], ["zgloszenie", 2]);
   // the client's list: status and attachments, never the path, the task or who handles it
@@ -408,4 +408,55 @@ Deno.test("biuro_podglad: każda akcja zapisu, odsłonięcia i pobrania odmówio
   assertEquals((await p(admin, { action: "firma" })).status, 200);
   assertEquals(e.db.tg.at(-1), { kid: NIP_A, kto: admin.email, utworz: false });
   assertEquals(e.db.log.map((l) => [l.akcja, l.info.by]), [["podglad_biura", admin.email]]);
+});
+
+Deno.test("biuro: notatka wewnętrzna nigdy nie trafia do klienta; pojedyncze zgłoszenie po id według sekcji", async () => {
+  const e = env();
+  const n = await A(e, { action: "zgloszenie_nowe", nip: NIP_A, kategoria: "ksiegowosc", temat: "Faktury", tresc: "Treść" });
+  const id = n.body.id;
+  assertEquals((await biuroAkcja(e.d, kadrowa, { action: "biuro_zgloszenie", id, notatka: "x" })).status, 404);
+  assertEquals((await biuroAkcja(e.d, ksiegowa, { action: "biuro_zgloszenie", id, notatka: "TAJNA NOTATKA: klient zalega z płatnością" })).status, 200);
+  const b = (await biuroAkcja(e.d, ksiegowa, { action: "biuro_zgloszenia", id })).body;
+  assertEquals([b.zgloszenia.length, b.zgloszenia[0].notatka_wewnetrzna, b.zgloszenia[0].status, b.zgloszenia[0].status_reczny], [1, "TAJNA NOTATKA: klient zalega z płatnością", "przyjete", false]);
+  // the note alone changes neither the status nor the reply
+  for (const o of [await A(e, { action: "zgloszenia", nip: NIP_A }), await A(e, { action: "start", nip: NIP_A }), await A(e, { action: "firma", nip: NIP_A }), await A(e, { action: "dokumenty", nip: NIP_A })]) assert(!JSON.stringify(o.body).includes("TAJNA") && !JSON.stringify(o.body).includes("notatka"));
+  assertEquals((await A(e, { action: "zgloszenia", nip: NIP_A })).body.zgloszenia[0].odpowiedz, null);
+  assertEquals((await biuroAkcja(e.d, ksiegowa, { action: "biuro_zgloszenie", id, notatka: "" })).status, 200);
+  assertEquals((await biuroAkcja(e.d, ksiegowa, { action: "biuro_zgloszenia", id })).body.zgloszenia[0].notatka_wewnetrzna, null);
+  // by id: outside the caller's sections, unknown and malformed ids are all "not found"
+  for (const [s, i] of [[kadrowa, id], [ksiegowa, ID.zglB], [admin, "11111111-0000-4000-8000-999999999999"], [admin, "x"], [admin, 5]] as [Staff, unknown][]) assertEquals((await biuroAkcja(e.d, s, { action: "biuro_zgloszenia", id: i })).status, 404);
+  assertEquals((await biuroAkcja(e.d, bezSekcji, { action: "biuro_zgloszenia", id })).status, 403);
+});
+
+Deno.test("ustawienie „dokumenty z historii”: domyślnie automatycznie; „tylko zaznaczone” — dopiero po zaznaczeniu; tylko administrator zmienia", async () => {
+  const e = env();
+  const biezaca: Staff = { email: "biezaca@biuro.test", admin: false, sekcje: ["biezaca", "onboarding"] };
+  assertEquals((await biuroAkcja(e.d, kadrowa, { action: "biuro_ustawienia" })).body.ustawienia, { historia: "auto" });
+  assertEquals((await biuroAkcja(e.d, bezSekcji, { action: "biuro_ustawienia" })).status, 403);
+  assertEquals((await biuroAkcja(e.d, kadrowa, { action: "biuro_ustawienia", historia: "zaznaczone" })).status, 403);
+  assertEquals((await biuroAkcja(e.d, admin, { action: "biuro_ustawienia", historia: "wszystko" })).status, 400);
+  assertEquals((await A(e, { action: "dokumenty", nip: NIP_A })).body.firmowe.map((x: Any) => x.id), [ID.histA]);
+  assertEquals((await biuroAkcja(e.d, admin, { action: "biuro_ustawienia", historia: "zaznaczone" })).body.ustawienia, { historia: "zaznaczone" });
+  // nothing ticked: nothing listed, nothing downloadable
+  assertEquals((await A(e, { action: "dokumenty", nip: NIP_A })).body.firmowe, []);
+  assertEquals((await A(e, { action: "pobierz", nip: NIP_A, zrodlo: "historia", id: ID.histA })).status, 404);
+  const u = (s: Staff, id: unknown, on: boolean) => biuroAkcja(e.d, s, { action: "biuro_udostepnij", zrodlo: "historia", id, udostepnij: on });
+  // umowa-zlecenie belongs to Kadry; wynagrodzenie to the "bieżąca" section; pełnomocnictwo can never be shared
+  assertEquals((await u(biezaca, ID.histAstara, true)).status, 403);
+  assertEquals((await u(kadrowa, ID.histB, true)).status, 403);
+  assertEquals((await u(ksiegowa, ID.histAstara, true)).status, 403);
+  assertEquals((await u(admin, ID.histApeln, true)).status, 404);
+  assertEquals((await u(admin, "11111111-0000-4000-8000-999999999999", true)).status, 404);
+  // the office ticks the OLDER version: that is the one the client gets
+  assertEquals((await u(kadrowa, ID.histAstara, true)).status, 200);
+  assertEquals((await A(e, { action: "dokumenty", nip: NIP_A })).body.firmowe.map((x: Any) => x.id), [ID.histAstara]);
+  assertEquals((await A(e, { action: "pobierz", nip: NIP_A, zrodlo: "historia", id: ID.histAstara })).status, 200);
+  assertEquals((await A(e, { action: "pobierz", nip: NIP_A, zrodlo: "historia", id: ID.histA })).status, 404);
+  // a tick never crosses firms
+  assertEquals((await A(e, { action: "pobierz", nip: NIP_B, zrodlo: "historia", id: ID.histAstara }, KONTO_B)).status, 404);
+  assertEquals((await biuroAkcja(e.d, kadrowa, { action: "biuro_udostepnione", zrodlo: "historia", ids: [ID.histA, ID.histAstara] })).body, { udostepnione: [ID.histAstara] });
+  assertEquals((await biuroAkcja(e.d, ksiegowa, { action: "biuro_udostepnione", zrodlo: "historia", ids: [ID.histA] })).status, 403);
+  assertEquals((await biuroAkcja(e.d, admin, { action: "biuro_ustawienia", historia: "auto" })).status, 200);
+  assertEquals((await A(e, { action: "dokumenty", nip: NIP_A })).body.firmowe.map((x: Any) => x.id), [ID.histA]);
+  assertEquals(e.db.log.filter((l) => l.akcja === "biuro_ustawienia").length, 2);
 });

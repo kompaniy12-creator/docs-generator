@@ -33,7 +33,7 @@
     'umowa-zlecenie.html': 'kadry', 'rejestr.html': 'kadry', 'zatrudnienie.html': 'kadry', 'import.html': 'kadry', 'kontrola.html': 'kadry', 'wiedza.html': 'kadry', 'akta.html': 'kadry', 'dokumenty.html': 'kadry', 'podpisy.html': 'kadry',
     'onboarding.html': 'onboarding', 'ksiegowosc.html': 'onboarding', 'terminy-ksiegowe.html': 'onboarding', 'narzedzia-ksiegowe.html': 'onboarding',
     // a list = any of these sections is enough; '@admin' = administrators only
-    'sms.html': ['kadry', 'onboarding'], 'rozsylka.html': ['kadry', 'onboarding'], 'poczta.html': ['kadry', 'onboarding'],
+    'sms.html': ['kadry', 'onboarding'], 'rozsylka.html': ['kadry', 'onboarding'], 'poczta.html': ['kadry', 'onboarding'], 'zgloszenia-klientow.html': ['kadry', 'onboarding'],
     'pulpit.html': '@admin', 'zespol.html': '@admin', 'dostep.html': '@admin',
   };
   function hasSection(user, section) {

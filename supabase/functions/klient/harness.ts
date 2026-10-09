@@ -3,7 +3,7 @@
 //   deno run --allow-net=127.0.0.1 --allow-read=. supabase/functions/klient/harness.ts [port]
 // then open http://127.0.0.1:<port>/klient/ and put a harness token into localStorage
 // (tdcg_klient_sesja = "harness-A-0000000000000000" or "harness-B-0000000000000000").
-import { biuroAkcja, klientAkcja, type Plik } from "./portal.ts";
+import { biuroAkcja, klientAkcja, type Plik, type Staff } from "./portal.ts";
 import { ID, KONTO_A, KONTO_B, memStore, NIP_A } from "./memstore.ts";
 
 const port = Number(Deno.args[0] ?? "8831");
@@ -24,8 +24,32 @@ const PAKIETY = [{
   ],
 }];
 
+// made-up staff of the harness: the token is the whole "session"
+const STAFF: Record<string, Staff> = {
+  "Bearer harness-admin": { email: "admin@biuro.test", admin: true, sekcje: null },
+  "Bearer harness-kadry": { email: "kadrowa@biuro.test", admin: false, sekcje: ["kadry"] },
+};
+// stands in for supabase-js + supabase-config.js + auth-guard.js on staff pages: a fake session
+// (?jako=kadry for a member of the HR section) and table reads answered from the in-memory store
+const STUB = `(function () {
+  var kadry = /[?&]jako=kadry/.test(location.search);
+  document.addEventListener('DOMContentLoaded', function () { document.body.classList.add('ps'); }); // what portal-shell.js does: the theme keys on it
+  function q(table) {
+    var o = { then: function (ok, bad) { return fetch('/__rows?table=' + table).then(function (r) { return r.json(); }).then(function (d) { return { data: d, error: null }; }).then(ok, bad); } };
+    ['select', 'eq', 'in', 'order', 'limit', 'not', 'neq'].forEach(function (m) { o[m] = function () { return o; }; });
+    return o;
+  }
+  window.sb = { supabaseKey: 'harness', from: q, auth: { getSession: function () { return Promise.resolve({ data: { session: { access_token: kadry ? 'harness-kadry' : 'harness-admin',
+    user: { email: kadry ? 'kadrowa@biuro.test' : 'admin@biuro.test', app_metadata: kadry ? { portal: true, portal_sections: ['kadry'] } : { portal: true, portal_admin: true } } } } }); } } };
+})();`;
+
 Deno.serve({ port, hostname: "127.0.0.1" }, async (req) => {
   const url = new URL(req.url);
+  if (url.pathname === "/__stub.js") return new Response(STUB, { headers: { "Content-Type": TYPES.js } });
+  if (url.pathname === "/__rows") {
+    const t = url.searchParams.get("table");
+    return json(t === "akta_dokumenty" ? m.db.akta.map((a) => ({ ...a, firma: m.db.klienci[a.nip]?.dane?.nazwa ?? "" })) : t === "klienci_umowy" ? m.db.umowy.map((u) => ({ ...u, kontrahent: m.db.klienci[u.klient]?.dane?.nazwa ?? "" })) : t === "portal_doc_history" ? m.db.historia : []);
+  }
   if (req.method === "POST" && url.pathname === "/fn/klient") {
     const k = konto(req);
     let body: Record<string, unknown> = {};
@@ -36,9 +60,10 @@ Deno.serve({ port, hostname: "127.0.0.1" }, async (req) => {
       }
     } else body = await req.json();
     // the office's preview: a made-up administrator token of the harness
-    if (body.action === "biuro_podglad") {
-      if (req.headers.get("authorization") !== "Bearer harness-admin") return json({ error: "Tylko pracownik biura (portal)." }, 403);
-      const o = await biuroAkcja(deps, { email: "admin@biuro.test", admin: true, sekcje: null }, body);
+    if (String(body.action ?? "").startsWith("biuro_")) {
+      const s = STAFF[req.headers.get("authorization") ?? ""];
+      if (!s) return json({ error: "Tylko pracownik biura (portal)." }, 403);
+      const o = await biuroAkcja(deps, s, body);
       return json(o.body, o.status);
     }
     if (!k) return json({ error: "Sesja wygasła — zaloguj się ponownie.", wyloguj: true }, 401);
@@ -59,7 +84,10 @@ Deno.serve({ port, hostname: "127.0.0.1" }, async (req) => {
   if (path.includes("..")) return new Response("nie", { status: 400 });
   try {
     let data = await Deno.readFile("." + path);
-    if (path === "/klient/klient.js") {
+    if (path === "/zgloszenia-klientow.html") {
+      data = new TextEncoder().encode(new TextDecoder().decode(data).replace(/<script src="https:\/\/cdn\.jsdelivr\.net[^>]*><\/script>\s*<script src="supabase-config\.js"><\/script>\s*<script src="auth-guard\.js"><\/script>/, '<script src="/__stub.js"></script><script src="portal-theme.js"></script>'));
+    }
+    if (path === "/klient/klient.js" || path === "/zgloszenia-klientow.js") {
       data = new TextEncoder().encode(new TextDecoder().decode(data)
         .replace("https://dpfxwkxpzqqjtmgqwozw.supabase.co/functions/v1/klient", "/fn/klient").replace("https://dpfxwkxpzqqjtmgqwozw.supabase.co/functions/v1/podpisy", "/fn/podpisy"));
     }

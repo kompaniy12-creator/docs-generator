@@ -29,6 +29,7 @@ const sciezka = (p: string) => p.split("/").map(e).join("/");
 const FLAGI: Record<Flaga, { tab: string; kol: string; zrodlo: string }> = {
   akta: { tab: "akta_udostepnienia", kol: "dokument_id", zrodlo: "akta_dokumenty" },
   umowa: { tab: "klienci_umowy_udostepnienia", kol: "umowa_id", zrodlo: "klienci_umowy" },
+  historia: { tab: "historia_udostepnienia", kol: "dokument_id", zrodlo: "portal_doc_history" },
 };
 async function flags(zrodlo: Flaga, ids: string[]): Promise<string[]> {
   const f = FLAGI[zrodlo], out: string[] = [];
@@ -56,7 +57,7 @@ async function portalUsers(): Promise<{ email: string; admin: boolean }[]> {
   }
   return out.sort((a, b) => a.email.localeCompare(b.email));
 }
-const ZGL = "id,created_at,konto_id,email,nip,firma,kategoria,rodzaj,worker_id,worker_name,temat,tresc,zalaczniki,status,status_reczny,odpowiedz,odpowiedzial,odpowiedz_at,zadanie_id,assignee";
+const ZGL = "id,created_at,konto_id,email,nip,firma,kategoria,rodzaj,worker_id,worker_name,temat,tresc,zalaczniki,status,status_reczny,odpowiedz,odpowiedzial,odpowiedz_at,zadanie_id,assignee,notatka_wewnetrzna";
 
 export const store: Store = {
   async klient(nip) {
@@ -184,6 +185,16 @@ export const store: Store = {
     return r.ok;
   },
   flags,
+  // how the client portal behaves — one key of the settings table (service role only)
+  async ustawienia() {
+    const v = (await miekko("portal_ustawienia?key=eq.klient_portal&select=value"))[0]?.value ?? {};
+    return { historia: v.historia === "zaznaczone" ? "zaznaczone" : "auto" };
+  },
+  async ustawieniaZapisz(u, kto) {
+    const r = await db("portal_ustawienia", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ key: "klient_portal", value: { ...u, by: kto }, updated_at: new Date().toISOString() }) });
+    await r.body?.cancel();
+    return r.ok;
+  },
   // the same link the office would hand to the client (module komunikacja builds and keeps it);
   // a bot that is not configured, or a slow Telegram, is simply "no link"
   async telegramLink(klientId, kto, utworz) {

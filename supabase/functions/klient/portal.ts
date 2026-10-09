@@ -18,8 +18,9 @@
 //   zgloszenie_nowe   { kategoria, rodzaj?, temat, tresc, worker_id? } + files (multipart `plik`)
 //   firma             the firm's data as the office has it, register data, accounts with access
 // Office (portal JWT):
-//   biuro_zgloszenia  { nip?, status? }             requests of clients (by the caller's sections)
-//   biuro_zgloszenie  { id, status?, odpowiedz? }   set the status / the short reply shown to the client
+//   biuro_zgloszenia  { nip?, status?, id? }        requests of clients (by the caller's sections)
+//   biuro_zgloszenie  { id, status?, odpowiedz?, notatka? }   status / reply shown to the client / internal note
+//   biuro_ustawienia  { historia?: auto|zaznaczone }   read (staff) or set (administrator) how history documents are shown
 //   biuro_zalacznik   { id, n }                     download link to an attachment
 //   biuro_udostepnij  { zrodlo: akta|umowa, id, udostepnij }   share / unshare a document with the client
 //   biuro_udostepnione { zrodlo, ids[] }            which of these documents are shared
@@ -32,7 +33,8 @@ export type Staff = { email: string; admin: boolean; sekcje: string[] | null }; 
 export type Odp = { status: number; body: Any };
 export type Plik = { nazwa: string; typ: string; bytes: Uint8Array };
 export type Zalacznik = { n: number; nazwa: string; mime: string; rozmiar: number; path: string; sha256: string };
-export type Flaga = "akta" | "umowa";
+export type Flaga = "akta" | "umowa" | "historia";
+export type Ustawienia = { historia: "auto" | "zaznaczone" };
 
 export interface Store {
   klient(nip: string): Promise<{ dane: Any | null; baza: Any | null }>;
@@ -72,6 +74,8 @@ export interface Store {
   obiektFlagi(zrodlo: Flaga, id: string): Promise<boolean>; // does the document exist
   // the client's own link to the office's Telegram bot (module komunikacja); utworz=false only reads an existing one
   telegramLink(klientId: string, kto: string, utworz: boolean): Promise<string | null>;
+  ustawienia(): Promise<Ustawienia>;
+  ustawieniaZapisz(u: Ustawienia, kto: string): Promise<boolean>;
 }
 export type Deps = { store: Store; now: () => number };
 
@@ -256,11 +260,11 @@ async function noweZgloszenie(d: Deps, k: Konto, nip: string, kl: { dane: Any | 
         `Zgłoszenie z profilu klienta (${KAT_NAZWA[kategoria]}).`, `Firma: ${firma}, NIP ${nip}`, `Od: ${k.email}`,
         worker ? `Pracownik: ${worker.worker_name ?? ""}` : "", "", tresc, "",
         zal.length ? "Załączniki: " + zal.map((a) => `${a.nazwa} (${mb(a.rozmiar)})`).join("; ") : "Bez załączników.",
-        "Status i odpowiedź dla klienta: funkcja klient, akcja biuro_zgloszenie; zamknięcie zadania pokazuje klientowi „załatwione”.",
+        "Załączniki, status i odpowiedź dla klienta: strona „Zgłoszenia klientów” (link w zadaniu). Zamknięcie zadania pokazuje klientowi „załatwione”.",
       ].filter((x, i) => x !== "" || i === 4 || i === 6).join("\n").slice(0, 4000);
       zadanie = await d.store.zadanieInsert({
         created_by: "system", assignee, tytul: `Klient: ${temat} — ${firma}`.slice(0, 200), opis, termin: null, pilne: false,
-        zrodlo: "reczne", klucz: `klient:${id}`, link: `klienci.html?zgloszenie=${id}`,
+        zrodlo: "reczne", klucz: `klient:${id}`, link: `zgloszenia-klientow.html?id=${id}`,
       });
       if (zadanie) await d.store.zgloszeniePatch(id, { zadanie_id: zadanie.id, assignee });
     }
@@ -399,8 +403,14 @@ export async function klientAkcja(d: Deps, k: Konto, body: Any, pliki: Plik[] = 
 
   if (akcja === "dokumenty") {
     const seen = new Set<string>();
+    // the office decides: every generated document of the allowed kinds, or only the ticked ones
+    let hist = await d.store.historia(nip, Object.keys(HIST_TYPY));
+    if ((await d.store.ustawienia()).historia === "zaznaczone") {
+      const on = new Set(hist.length ? await d.store.flags("historia", hist.map((h) => h.id)) : []);
+      hist = hist.filter((h) => on.has(h.id));
+    }
     // the newest version of each generated document (the office may have produced it more than once)
-    const firmowe = (await d.store.historia(nip, Object.keys(HIST_TYPY))).filter((h) => {
+    const firmowe = hist.filter((h) => {
       const key = `${h.doc_type}|${String(h.subject ?? "").toLowerCase()}`;
       if (!HIST_TYPY[h.doc_type] || seen.has(key)) return false;
       seen.add(key); return true;
@@ -429,6 +439,7 @@ export async function klientAkcja(d: Deps, k: Konto, body: Any, pliki: Plik[] = 
     } else if (zrodlo === "historia") {
       const h = await d.store.historiaDoc(body.id);
       if (!h || !HIST_TYPY[h.doc_type] || !okSciezka(h.pdf_path) || (h.nip !== nip && h.znip !== nip)) return brak();
+      if ((await d.store.ustawienia()).historia === "zaznaczone" && (await d.store.flags("historia", [h.id])).length !== 1) return brak();
       bucket = "portal-documents"; path = h.pdf_path; nazwa = nazwaPliku(h.filename ?? "dokument.pdf");
     } else if (zrodlo === "akta") {
       const a = await d.store.aktaDoc(body.id);
@@ -495,7 +506,14 @@ function kategorieStaff(s: Staff): string[] {
   if (out.length) out.push("inne");
   return out;
 }
-export const BIURO_AKCJE = ["biuro_zgloszenia", "biuro_zgloszenie", "biuro_zalacznik", "biuro_udostepnij", "biuro_udostepnione", "biuro_podglad"];
+export const BIURO_AKCJE = ["biuro_zgloszenia", "biuro_zgloszenie", "biuro_zalacznik", "biuro_udostepnij", "biuro_udostepnione", "biuro_podglad", "biuro_ustawienia"];
+// the section of the portal a generated document belongs to (as portal_doc_section() in the database)
+const sekcjaHistorii = (docType: string) => docType === "umowa-zlecenie" ? "kadry" : "biezaca";
+// what the office sees of a request: everything the client sees + what stays inside
+function zglDlaBiura(z: Any, zad: Record<string, string>) {
+  return { ...zglDlaKlienta(z, zad), nip: z.nip, firma: z.firma, worker_id: z.worker_id ?? null, zadanie_id: z.zadanie_id ?? null, zadanie_status: z.zadanie_id ? zad[z.zadanie_id] ?? null : null,
+    assignee: z.assignee ?? null, odpowiedzial: z.odpowiedzial ?? null, status_reczny: z.status_reczny === true, notatka_wewnetrzna: z.notatka_wewnetrzna ?? null };
+}
 
 export async function biuroAkcja(d: Deps, s: Staff, body: Any): Promise<Odp> {
   const akcja = String(body?.action ?? "");
@@ -503,9 +521,14 @@ export async function biuroAkcja(d: Deps, s: Staff, body: Any): Promise<Odp> {
   if (akcja === "biuro_zgloszenia") {
     if (!kat.length) return odp(403, { error: "Brak uprawnień do zgłoszeń klientów." });
     const nip = digits(body.nip), status = String(body.status ?? "");
-    const zg = await d.store.zgloszeniaBiuro({ nip: nip.length === 10 ? nip : undefined, status: STATUSY.includes(status) ? status : undefined, kategorie: kat });
+    let zg: Any[];
+    if (body.id != null) {
+      const jedno = uuid(body.id) ? await d.store.zgloszenie(body.id) : null;
+      if (!jedno || !kat.includes(jedno.kategoria)) return brak("Nie znaleziono zgłoszenia.");
+      zg = [jedno];
+    } else zg = await d.store.zgloszeniaBiuro({ nip: nip.length === 10 ? nip : undefined, status: STATUSY.includes(status) ? status : undefined, kategorie: kat });
     const zad = await d.store.zadaniaStatus(zg.map((z) => z.zadanie_id).filter(Boolean));
-    return odp(200, { zgloszenia: zg.map((z) => ({ ...zglDlaKlienta(z, zad), nip: z.nip, firma: z.firma, zadanie_id: z.zadanie_id ?? null, assignee: z.assignee ?? null, odpowiedzial: z.odpowiedzial ?? null })) });
+    return odp(200, { zgloszenia: zg.map((z) => zglDlaBiura(z, zad)), kategorie: kat, admin: s.admin });
   }
   if (akcja === "biuro_zgloszenie" || akcja === "biuro_zalacznik") {
     if (!uuid(body.id)) return brak("Nie znaleziono zgłoszenia.");
@@ -529,16 +552,25 @@ export async function biuroAkcja(d: Deps, s: Staff, body: Any): Promise<Odp> {
       patch.odpowiedz = txt(body.odpowiedz, 2000) || null;
       patch.odpowiedzial = s.email; patch.odpowiedz_at = new Date(d.now()).toISOString();
     }
-    if (!Object.keys(patch).length) return odp(400, { error: "Podaj status albo odpowiedź." });
+    // the internal note: for the office only — zglDlaKlienta() never carries it
+    if (body.notatka != null) patch.notatka_wewnetrzna = txt(body.notatka, 4000) || null;
+    if (!Object.keys(patch).length) return odp(400, { error: "Podaj status, odpowiedź albo notatkę." });
     await d.store.zgloszeniePatch(z.id, patch);
-    await d.store.log(null, "biuro_zgloszenie", { by: s.email, zgloszenie: z.id, status: patch.status ?? null, odpowiedz: patch.odpowiedz != null });
+    await d.store.log(null, "biuro_zgloszenie", { by: s.email, zgloszenie: z.id, status: patch.status ?? null, odpowiedz: patch.odpowiedz != null, notatka: body.notatka != null });
     return odp(200, { ok: true });
   }
   if (akcja === "biuro_udostepnij" || akcja === "biuro_udostepnione") {
     const zrodlo = String(body.zrodlo ?? "") as Flaga;
-    if (zrodlo !== "akta" && zrodlo !== "umowa") return odp(400, { error: "Nieznane źródło dokumentu." });
-    // personnel files: the HR section; contracts with clients: administrators (as the contracts themselves)
-    if (zrodlo === "akta" ? !maSekcje(s, "kadry") : !s.admin) return odp(403, { error: "Brak uprawnień do tych dokumentów." });
+    if (zrodlo !== "akta" && zrodlo !== "umowa" && zrodlo !== "historia") return odp(400, { error: "Nieznane źródło dokumentu." });
+    // personnel files: the HR section; contracts with clients: administrators (as the contracts themselves);
+    // generated documents: the section the kind of document belongs to (checked per document below)
+    const nie = () => odp(403, { error: "Brak uprawnień do tych dokumentów." });
+    if (zrodlo === "akta" ? !maSekcje(s, "kadry") : zrodlo === "umowa" ? !s.admin : !(maSekcje(s, "kadry") || maSekcje(s, "biezaca"))) return nie();
+    if (zrodlo === "historia" && akcja === "biuro_udostepnij") {
+      const h = uuid(body.id) ? await d.store.historiaDoc(body.id) : null;
+      if (!h || !HIST_TYPY[h.doc_type]) return brak(); // only the kinds a client may ever see
+      if (!maSekcje(s, sekcjaHistorii(h.doc_type))) return nie();
+    }
     if (akcja === "biuro_udostepnione") {
       const ids = (Array.isArray(body.ids) ? body.ids : []).filter(uuid).slice(0, 500);
       return odp(200, { udostepnione: ids.length ? await d.store.flags(zrodlo, ids) : [] });
@@ -548,6 +580,16 @@ export async function biuroAkcja(d: Deps, s: Staff, body: Any): Promise<Odp> {
     if (!await d.store.flagSet(zrodlo, body.id, on, s.email)) return odp(500, { error: "Nie udało się zapisać." });
     await d.store.log(null, "biuro_udostepnienie", { by: s.email, zrodlo, id: body.id, udostepniony: on });
     return odp(200, { ok: true, udostepniony: on });
+  }
+  if (akcja === "biuro_ustawienia") {
+    if (!kat.length) return odp(403, { error: "Brak uprawnień." });
+    if (body.historia != null) {
+      if (!s.admin) return odp(403, { error: "Tylko administrator portalu." });
+      if (body.historia !== "auto" && body.historia !== "zaznaczone") return odp(400, { error: "Nieznane ustawienie." });
+      if (!await d.store.ustawieniaZapisz({ historia: body.historia }, s.email)) return odp(500, { error: "Nie udało się zapisać." });
+      await d.store.log(null, "biuro_ustawienia", { by: s.email, historia: body.historia });
+    }
+    return odp(200, { ustawienia: await d.store.ustawienia(), admin: s.admin, typy_historii: HIST_TYPY });
   }
   if (akcja === "biuro_podglad") {
     // an administrator looks at the profile exactly as the client would — reading only, no unmasking, no files
