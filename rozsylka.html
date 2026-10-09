@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>Rozsyłki — TD Consulting Group</title>
+<style>
+  :root{--brand-navy:#1B3F7F;--brand-navy-dark:#15315F;--brand-green:#1FA84B;--brand-tint:#EEF3F9;}
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f6f8fb;color:#111;line-height:1.5}
+  main{max-width:1400px;margin:0 auto;padding:36px 20px 96px}
+  .back{display:inline-block;margin-bottom:14px;font-size:14px;color:#666;text-decoration:none}
+  .brand{text-align:center;margin:0 0 14px}.brand img{height:60px}
+  h1{font-size:23px;font-weight:700;margin:0 0 4px;color:var(--brand-navy);text-align:center}
+  .lead{color:#666;margin:0 auto 18px;font-size:14px;text-align:center;max-width:860px}
+  .box{background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:14px 16px;margin:0 0 16px}
+  .box h2{font-size:15px;margin:0 0 4px;color:var(--brand-navy)}
+  .box h3{font-size:13.5px;margin:14px 0 4px}
+  .hint{color:#7a8699;font-size:12.5px;margin:0 0 10px}
+  .sub{color:#7a8699;font-size:12.5px}
+  .warn{color:#92400e}
+  .law{border-top:1px solid #eef1f6;margin:12px 0 0;padding-top:10px;color:#5a6577;font-size:12.5px}
+  label{display:block;font-size:12px;font-weight:600;color:#5a6577;margin-bottom:4px}
+  select,input[type=text],input[type=search],input[type=date],input[type=number],input[type=time],input[type=tel],input[type=url],input[type=datetime-local],textarea{width:100%;padding:9px 11px;border:1px solid #d4dbe6;border-radius:9px;font:inherit;font-size:14px;background:#fff;color:#111;min-height:40px}
+  textarea{min-height:90px;resize:vertical}
+  select[multiple]{min-height:96px;padding:4px}
+  .mini{font:inherit;font-size:12.5px;font-weight:600;padding:5px 10px;border-radius:8px;border:1px solid #d4dbe6;background:#fff;color:var(--brand-navy);cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block}
+  .mini:hover{border-color:var(--brand-navy)}.mini.ok{background:var(--brand-green);border-color:var(--brand-green);color:#fff}.mini:disabled{opacity:.5;cursor:default}
+  .mini.big{font-size:14px;padding:9px 16px;border-radius:9px}.mini.red{background:#b91c1c;border-color:#b91c1c;color:#fff}.mini.on{background:var(--brand-navy);border-color:var(--brand-navy);color:#fff}
+  .pill{display:inline-block;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .p-red{background:#fee2e2;color:#991b1b}.p-amber{background:#fef3c7;color:#92400e}.p-ok{background:#dcfce7;color:#166534}.p-grey{background:#eef1f6;color:#5a6577}.p-navy{background:var(--brand-tint);color:var(--brand-navy)}
+  .empty{text-align:center;color:#888;padding:26px}
+  .acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin:0 0 16px}
+  .tile{background:#fff;border:1.5px solid #e5e9ef;border-radius:12px;padding:14px 16px;text-align:left;font:inherit;color:inherit}
+  .tile b{display:block;font-size:22px;line-height:1.2;color:var(--brand-navy);overflow-wrap:break-word}
+  .tile span{display:block;font-size:13px;color:#5a6577;margin-top:4px}
+  .tile.red b{color:#b91c1c}.tile.amber b{color:#b45309}.tile.green b{color:#166534}.tile.zero b{color:#9aa6b8}
+
+  .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+  .tabs button{font:inherit;font-size:13.5px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid #d4dbe6;background:#fff;color:#3a4759;cursor:pointer}
+  .tabs button.on{background:var(--brand-navy);border-color:var(--brand-navy);color:#fff}
+  [hidden]{display:none!important}
+
+  .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}
+  .three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px}
+  .four{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px 14px}
+  .cols{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,4fr);gap:16px;align-items:start}
+  .cols>*{min-width:0}
+  @media(max-width:1000px){.cols{grid-template-columns:minmax(0,1fr)}.four{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:640px){.two,.three,.four{grid-template-columns:minmax(0,1fr)}main{padding:24px 14px 96px}}
+  .row{margin-top:12px}
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;margin-top:10px}
+  .checks{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .checks.inline{flex-direction:row;flex-wrap:wrap;gap:8px 18px}
+  .checks label{display:flex;align-items:flex-start;gap:8px;margin:0;font-size:13.5px;font-weight:500;color:inherit}
+  .checks input{width:auto;min-height:0;margin-top:3px;flex:0 0 auto}
+  .licznik{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+  .wynik{margin-top:12px;font-size:13.5px;overflow-wrap:anywhere}
+
+  /* the message editor: a plain field with three formatting buttons. It is a <pre> on purpose: the theme
+     engine knows `pre` as an inner panel, so on dark themes the field becomes a veil with light text. */
+  .ed{margin:0;font:inherit;min-height:150px;max-height:420px;overflow:auto;padding:10px 12px;border:1px solid #d4dbe6;border-radius:9px;background:#fff;color:#111;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere;outline:none}
+  .ed:focus{border-color:var(--brand-navy)}
+  .ed a{color:#1d4ed8;text-decoration:underline}
+  /* preview: `pre` is one of the theme's inner panels (a faint veil on dark themes) */
+  pre.msg{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;padding:12px 14px;font:inherit;font-size:14px;background:#f6f8fb;border:1px solid #e5e9ef;border-radius:12px}
+  pre.msg u{text-decoration:underline}
+  .przyc{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+  .qr{display:inline-block;background:#fff;padding:6px;border-radius:10px;line-height:0}
+
+  .tablewrap{overflow:auto}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th,td{padding:8px 8px;border-bottom:1px solid #eef1f6;text-align:left;vertical-align:top}
+  th{color:#5a6577;font-weight:600;font-size:12px;white-space:nowrap}
+  td small{display:block;color:#7a8699;font-size:12px}
+  td .pill{margin:0 4px 3px 0}
+  tr.kl{cursor:pointer}
+  #ltbl{min-width:760px}#otbl{min-width:620px}#dtbl{min-width:720px}#stbl{min-width:760px}
+  .bar{display:flex;height:8px;border-radius:999px;overflow:hidden;background:rgba(127,140,160,.28);margin:10px 0 6px}
+  .bar i{display:block;height:100%;background:var(--brand-green)}
+  .lista{max-height:260px;overflow:auto;border:1px solid #e5e9ef;border-radius:9px;padding:6px 10px}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Rozsyłki do klientów</h1>
+  <p class="lead">Powiadomienia dla klientów w prywatnym czacie z botem Telegram — zamiast wiadomości w grupach, które budzą wszystkich uczestników. Tu przygotowuje się rozsyłkę, wybiera odbiorców i kanały, a po teście i potwierdzeniu wysyła.</p>
+
+  <div class="tiles" id="tiles"></div>
+  <div class="tabs" id="tabs"></div>
+
+  <!-- ============================================================ list -->
+  <section id="t-lista">
+    <div class="box">
+      <div class="toolbar" style="margin-top:0">
+        <h2 style="margin:0">Rozsyłki</h2>
+        <span class="acts"><button type="button" class="mini ok" id="nowa">Nowa rozsyłka</button><button type="button" class="mini" id="nowaKoniec">Z szablonu: koniec rozsyłek w grupach</button></span>
+      </div>
+      <div class="tablewrap row"><table id="ltbl"><thead><tr><th>Utworzona</th><th>Tytuł</th><th>Rodzaj</th><th>Kanały</th><th>Status</th><th>Postęp</th><th>Autor</th></tr></thead><tbody><tr><td colspan="7" class="empty">Ładowanie…</td></tr></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ composer -->
+  <section id="t-edytor" hidden>
+    <div class="box" id="eZamrozona" hidden></div>
+    <div class="cols">
+      <div>
+        <div class="box">
+          <h2>1. Treść</h2>
+          <div class="two">
+            <div><label for="eTytul">Tytuł (tylko dla biura)</label><input type="text" id="eTytul" maxlength="200" placeholder="np. Zmiana godzin pracy biura — listopad" /></div>
+            <div><label for="eTyp">Rodzaj wiadomości</label><select id="eTyp"><option value="serwisowa">serwisowa — dotyczy obsługi klienta</option><option value="marketingowa">marketingowa — oferta, promocja (tylko za zgodą)</option></select></div>
+          </div>
+          <p class="hint warn" id="eTypInfo" style="margin:8px 0 0"></p>
+          <div class="row two">
+            <div><label for="eSzablon">Szablon</label><select id="eSzablon"></select></div>
+            <div><label for="eData">Data w szablonie „koniec rozsyłek w grupach”</label><input type="date" id="eData" /></div>
+          </div>
+          <div class="row acts"><button type="button" class="mini" id="eWstaw">Wstaw szablon</button><button type="button" class="mini" id="eZapiszSzablon">Zapisz treść jako szablon</button><button type="button" class="mini" id="eUsunSzablon">Usuń wybrany szablon</button></div>
+
+          <div class="checks row"><label><input type="checkbox" id="eWspolna" /> <span><b>Jedna treść dla wszystkich</b> — bez wersji językowych (używana jest wersja polska).</span></label></div>
+          <div class="row two">
+            <div><label>Wersja językowa</label><div class="tabs" id="eJezyki" style="margin:0"></div></div>
+            <div><label for="eFallback">Gdy brak wersji w języku klienta, wyślij kolejno</label><select id="eFallback"><option value="pl,ru,uk">polską, potem rosyjską, potem ukraińską</option><option value="ru,pl,uk">rosyjską, potem polską, potem ukraińską</option><option value="ru,uk,pl">rosyjską, potem ukraińską, potem polską</option><option value="uk,ru,pl">ukraińską, potem rosyjską, potem polską</option><option value="pl,uk,ru">polską, potem ukraińską, potem rosyjską</option><option value="uk,pl,ru">ukraińską, potem polską, potem rosyjską</option></select></div>
+          </div>
+          <div class="row">
+            <label>Wiadomość w Telegramie</label>
+            <div class="acts" style="margin-bottom:6px">
+              <button type="button" class="mini" data-fmt="bold"><b>B</b> pogrubienie</button><button type="button" class="mini" data-fmt="italic"><i>I</i> kursywa</button>
+              <button type="button" class="mini" data-fmt="link">Link…</button><button type="button" class="mini" data-fmt="unlink">Usuń link</button><button type="button" class="mini" data-fmt="clear">Usuń formatowanie</button>
+              <span class="sub">Pola:</span>
+              <button type="button" class="mini" data-pole="{firma}">{firma}</button><button type="button" class="mini" data-pole="{kontakt}">{kontakt}</button><button type="button" class="mini" data-pole="{opiekun}">{opiekun}</button><button type="button" class="mini" data-pole="{link_subskrypcji}">{link_subskrypcji}</button>
+            </div>
+            <pre class="ed" id="ed" contenteditable="true" spellcheck="true"></pre>
+            <div class="licznik" id="eLicznik"></div>
+          </div>
+          <h3>Przyciski pod wiadomością (najwyżej 3)</h3>
+          <div id="ePrzyciski"></div>
+          <div class="acts row"><button type="button" class="mini" id="ePrzDodaj">Dodaj przycisk z linkiem</button><button type="button" class="mini" id="ePrzSub">Dodaj przycisk „Włącz powiadomienia” (link klienta)</button></div>
+
+          <div id="eSmsBox" hidden>
+            <h3>SMS — osobna, krótka treść</h3>
+            <textarea id="eSms" maxlength="600" placeholder="Krótko, bez polskich znaków jeśli się da. Nazwa biura zostanie dopisana na początku."></textarea>
+            <div class="licznik" id="eSmsLicznik"></div>
+          </div>
+          <div id="eMailBox" hidden>
+            <h3>E-mail</h3>
+            <label for="eTemat">Temat</label><input type="text" id="eTemat" maxlength="150" />
+            <label for="eMail" style="margin-top:8px">Treść (zwykły tekst)</label><textarea id="eMail" style="min-height:140px"></textarea>
+            <div class="acts row"><button type="button" class="mini" id="eMailZTg">Przepisz z wiadomości Telegram</button></div>
+          </div>
+          <p class="law">Załącznik (PDF lub obraz do 10 MB) jest zaplanowany jako drugi etap — na razie do wiadomości można dodać link do pliku.</p>
+        </div>
+
+        <div class="box">
+          <h2>2. Odbiorcy</h2>
+          <div class="checks inline">
+            <label><input type="radio" name="tryb" value="wszyscy" checked /> wszyscy obsługiwani klienci</label>
+            <label><input type="radio" name="tryb" value="filtry" /> według filtrów</label>
+            <label><input type="radio" name="tryb" value="recznie" /> wybrani ręcznie</label>
+          </div>
+          <div id="eFiltry" hidden>
+            <div class="row four">
+              <div><label for="fStatus">Status obsługi</label><select id="fStatus" multiple></select></div>
+              <div><label for="fJezyk">Język</label><select id="fJezyk" multiple></select></div>
+              <div><label for="fForma">Forma prawna</label><select id="fForma" multiple></select></div>
+              <div><label for="fOpod">Opodatkowanie</label><select id="fOpod" multiple></select></div>
+              <div><label for="fOpiekun">Opiekun (księgowość)</label><select id="fOpiekun" multiple></select></div>
+              <div><label for="fKadrowy">Kadrowy</label><select id="fKadrowy" multiple></select></div>
+              <div><label for="fMiasto">Miasto</label><select id="fMiasto" multiple></select></div>
+              <div><label for="fZakres">Zakres obsługi</label><select id="fZakres"><option value="">dowolny</option><option value="ksiegowosc">księgowość</option><option value="kadry">kadry i płace</option></select></div>
+              <div><label for="fSub">Subskrypcja bota</label><select id="fSub"><option value="">dowolnie</option><option value="tak">ma</option><option value="nie">nie ma</option></select></div>
+              <div><label for="fGrupa">Grupa Telegram</label><select id="fGrupa"><option value="">dowolnie</option><option value="tak">ma</option><option value="nie">nie ma</option></select></div>
+              <div><label for="fTelefon">Telefon komórkowy</label><select id="fTelefon"><option value="">dowolnie</option><option value="tak">ma</option><option value="nie">nie ma</option></select></div>
+              <div><label for="fEmail">E-mail</label><select id="fEmail"><option value="">dowolnie</option><option value="tak">ma</option><option value="nie">nie ma</option></select></div>
+            </div>
+            <p class="hint" style="margin:6px 0 0">W listach wielokrotnego wyboru przytrzymaj Ctrl / ⌘, aby zaznaczyć kilka pozycji. Nic niezaznaczone = bez ograniczenia.</p>
+          </div>
+          <div class="row two">
+            <div><label for="eKlQ">Dodaj albo wyklucz klienta — szukaj po nazwie lub NIP</label><input type="search" id="eKlQ" placeholder="np. Przykładowa albo 9990000019" autocomplete="off" /></div>
+            <div><label for="eSegment">Zapisane segmenty</label><select id="eSegment"></select></div>
+          </div>
+          <div class="lista row" id="eKlLista"></div>
+          <div class="licznik" id="eWybor"></div>
+          <div class="acts row"><button type="button" class="mini" id="eSegZapisz">Zapisz jako segment</button><button type="button" class="mini" id="eSegUsun">Usuń wybrany segment</button></div>
+        </div>
+
+        <div class="box">
+          <h2>3. Kanały</h2>
+          <label for="eStrategia">Jak dotrzeć do klienta</label>
+          <select id="eStrategia">
+            <option value="bot">tylko bot — prywatny czat subskrybentów</option>
+            <option value="bot_sms">bot, a gdy klient nie ma subskrypcji — SMS</option>
+            <option value="bot_mail">bot, a gdy klient nie ma subskrypcji — e-mail</option>
+            <option value="bot_grupa">bot, a gdy klient nie ma subskrypcji — grupa (tylko administrator)</option>
+            <option value="wszystkie">wszystkie zaznaczone kanały naraz</option>
+          </select>
+          <div class="checks inline row" id="eKanaly" hidden>
+            <label><input type="checkbox" data-kanal="bot" /> bot (prywatnie)</label>
+            <label><input type="checkbox" data-kanal="grupa" /> grupa klienta</label>
+            <label><input type="checkbox" data-kanal="sms" /> SMS</label>
+            <label><input type="checkbox" data-kanal="mail" /> e-mail</label>
+          </div>
+          <p class="hint warn row" id="eGrupaInfo" hidden><b>Uwaga: wiadomość w grupie dostaną i usłyszą wszyscy jej uczestnicy — klient i pracownicy biura.</b> Ten kanał jest tylko dla administratora i służy do ogłoszenia o przejściu na bota; każda taka rozsyłka wymaga akceptacji.</p>
+          <p class="hint row" id="eKanalInfo"></p>
+        </div>
+
+        <div class="box">
+          <h2>4. Wysyłka</h2>
+          <div class="acts"><button type="button" class="mini ok big" id="eZapisz">Zapisz szkic</button><button type="button" class="mini big" id="eOdbiorcy">Pokaż odbiorców</button><button type="button" class="mini big" id="eTest" disabled>Wyślij test do mnie</button></div>
+          <div class="row two" id="eTestTel" hidden><div><label for="eTel">Numer do testu SMS (tylko administrator; puste = numer z profilu)</label><input type="tel" id="eTel" maxlength="24" autocomplete="off" /></div><div></div></div>
+          <div class="wynik" id="eMsg"></div>
+          <div class="row two">
+            <div><label for="eKiedy">Termin wysyłki (puste = od razu po potwierdzeniu i akceptacji)</label><input type="datetime-local" id="eKiedy" /></div>
+            <div class="checks" id="eCiszaBox" hidden><label style="margin-top:22px"><input type="checkbox" id="eCisza" /> <span>wyślij także poza godzinami wysyłki (tylko administrator)</span></label></div>
+          </div>
+          <div class="row acts"><button type="button" class="mini ok big" id="eDalej" disabled>Przejdź do potwierdzenia</button><span class="sub" id="eDalejInfo"></span></div>
+        </div>
+
+        <div class="box" id="ePotw" hidden>
+          <h2>Potwierdzenie wysyłki</h2>
+          <div id="ePotwTresc"></div>
+          <div class="row" id="ePotwTytulBox" hidden><label for="ePotwTytul">Przepisz tytuł rozsyłki, aby potwierdzić</label><input type="text" id="ePotwTytul" autocomplete="off" /></div>
+          <div class="row acts"><button type="button" class="mini red big" id="ePotwTak">Potwierdzam</button><button type="button" class="mini big" id="ePotwNie">Wróć do edycji</button></div>
+          <div class="wynik" id="ePotwMsg"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="box">
+          <h2>Tak zobaczy to klient</h2>
+          <label for="pKlient">Klient do podglądu</label><select id="pKlient"></select>
+          <div class="licznik" id="pInfo"></div>
+          <pre class="msg" id="pTg">—</pre>
+          <div class="przyc" id="pPrzyciski"></div>
+          <div id="pSmsBox" hidden><h3>SMS</h3><pre class="msg" id="pSms">—</pre><div class="licznik" id="pSmsInfo"></div></div>
+          <div id="pMailBox" hidden><h3>E-mail</h3><pre class="msg" id="pMail">—</pre></div>
+          <p class="law">W wiadomości podawaj tylko to, co konieczne: bez numerów PESEL, numerów dokumentów, kwot wynagrodzeń i pełnych danych pracowników klienta. Treść przechodzi przez serwery Telegrama (art. 5 ust. 1 lit. c i f RODO). Szczegóły wysyłaj e-mailem albo w profilu klienta.</p>
+          <p class="law">Oferty, promocje i inne informacje handlowe wolno wysyłać wyłącznie odbiorcom, którzy uprzednio wyrazili zgodę — art. 398 ust. 1 ustawy z 12.07.2024 r. Prawo komunikacji elektronicznej (Dz.U. 2024 poz. 1221). Rozsyłka oznaczona jako marketingowa trafia tylko do osób z zapisaną zgodą.</p>
+        </div>
+        <div class="box" id="oBox" hidden>
+          <h2>Odbiorcy tej rozsyłki</h2>
+          <div class="licznik" id="oLiczby"></div>
+          <p class="hint" id="oInfo" style="margin:8px 0"></p>
+          <div class="checks inline"><label><input type="checkbox" id="oTylkoBrak" /> pokaż tylko klientów, do których rozsyłka nie dotrze</label></div>
+          <div class="tablewrap row"><table id="otbl"><thead><tr><th>Klient</th><th>Kanał</th><th>Uwagi</th></tr></thead><tbody></tbody></table></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ progress and log -->
+  <section id="t-postep" hidden>
+    <div class="box">
+      <div class="toolbar" style="margin-top:0"><h2 style="margin:0" id="dTytul">Postęp</h2><span class="acts" id="dAkcje"></span></div>
+      <p class="hint" id="dOpis" style="margin:6px 0 0"></p>
+      <div class="bar"><i id="dPasek" style="width:0"></i></div>
+      <div class="licznik" id="dLiczby"></div>
+      <div class="row" id="dAkceptBox" hidden>
+        <div id="dAkceptTresc"></div>
+        <div class="row two"><div><label for="dAkceptTytul">Przepisz tytuł rozsyłki, aby zaakceptować</label><input type="text" id="dAkceptTytul" autocomplete="off" /></div><div><label for="dPowod">Albo powód odrzucenia</label><input type="text" id="dPowod" maxlength="500" /></div></div>
+        <div class="row acts"><button type="button" class="mini red big" id="dAkceptuj">Akceptuję wysyłkę</button><button type="button" class="mini big" id="dOdrzuc">Odrzuć — do poprawy</button></div>
+      </div>
+      <div class="wynik" id="dMsg"></div>
+    </div>
+    <div class="box">
+      <div class="four">
+        <div><label for="dStatus">Status</label><select id="dStatus"><option value="">wszystkie</option><option value="kolejka">w kolejce</option><option value="wyslano">wysłano</option><option value="blad">błąd</option><option value="pominieto">pominięto</option><option value="niepewny">niepewne</option></select></div>
+        <div><label for="dKanal">Kanał</label><select id="dKanal"><option value="">wszystkie</option><option value="bot">bot</option><option value="grupa">grupa</option><option value="sms">SMS</option><option value="mail">e-mail</option><option value="brak">nieosiągalni</option></select></div>
+        <div class="acts" style="align-self:end"><button type="button" class="mini" id="dPrev">← Poprzednie</button><button type="button" class="mini" id="dNext">Następne →</button></div>
+        <div class="acts" style="align-self:end"><button type="button" class="mini" id="dOdswiez">Odśwież</button><button type="button" class="mini" id="dCsv">Pobierz CSV</button></div>
+      </div>
+      <div class="tablewrap row"><table id="dtbl"><thead><tr><th>Klient</th><th>Kanał</th><th>Status</th><th>Uwagi</th><th>Wysłano</th></tr></thead><tbody><tr><td colspan="5" class="empty">Wybierz rozsyłkę z listy.</td></tr></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ subscriptions -->
+  <section id="t-subskrypcje" hidden>
+    <div class="cols">
+      <div class="box">
+        <h2>Link zaproszenia klienta</h2>
+        <p class="hint">Klient otwiera link, naciska START i od tej chwili dostaje powiadomienia w prywatnym czacie z botem. Link jest indywidualny dla klienta — może z niego skorzystać kilka osób z jego firmy.</p>
+        <div class="two">
+          <div><label for="sQ">Klient — szukaj po nazwie albo NIP</label><input type="search" id="sQ" autocomplete="off" /></div>
+          <div><label for="sKl">Klient</label><select id="sKl"></select></div>
+        </div>
+        <div class="row acts"><button type="button" class="mini ok" id="sLink" disabled>Pokaż link</button><button type="button" class="mini" id="sRotuj" disabled>Unieważnij i wydaj nowy</button><button type="button" class="mini" id="sMoj">Mój link testowy</button></div>
+        <div class="wynik" id="sWynik"></div>
+      </div>
+      <div class="box">
+        <h2>Zgody i ustawienia klienta</h2>
+        <div id="sKlient"><p class="hint">Wybierz klienta.</p></div>
+      </div>
+    </div>
+    <div class="box">
+      <div class="toolbar" style="margin-top:0"><h2 style="margin:0">Subskrybenci</h2><span class="checks inline"><label><input type="checkbox" id="sWszyscy" /> wszyscy klienci</label></span></div>
+      <div class="tablewrap row"><table id="stbl"><thead><tr><th>Klient</th><th>Osoba w Telegramie</th><th>Język</th><th>Rola</th><th>Stan</th><th>Zgoda marketingowa</th><th></th></tr></thead><tbody><tr><td colspan="7" class="empty">Wybierz klienta albo zaznacz „wszyscy klienci”.</td></tr></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ bot and settings (administrator) -->
+  <section id="t-bot" hidden>
+    <div class="box">
+      <div class="toolbar" style="margin-top:0"><h2 style="margin:0">Bot Telegram</h2><span class="acts"><button type="button" class="mini ok" id="bSprawdz">Sprawdź bota (tylko odczyt)</button></span></div>
+      <div class="wynik" id="bStatus"><span class="sub">„Sprawdź bota” pyta Telegram o nazwę bota i o to, dokąd trafiają jego aktualizacje. Niczego nie zmienia.</span></div>
+      <div class="row acts"><button type="button" class="mini" id="bUstaw" disabled>Podłącz bota do portalu (webhook)…</button><button type="button" class="mini" id="bUsun" disabled>Odłącz…</button></div>
+      <div class="row" id="bPotwBox" hidden>
+        <div id="bOpis"></div>
+        <div class="row two"><div><label for="bPotw" id="bPotwLabel">Przepisz, aby wykonać</label><input type="text" id="bPotw" autocomplete="off" /></div><div class="acts" style="align-self:end"><button type="button" class="mini red big" id="bWykonaj">Wykonaj</button><button type="button" class="mini big" id="bAnuluj">Anuluj</button></div></div>
+      </div>
+      <div class="wynik" id="bMsg"></div>
+    </div>
+    <div class="box">
+      <h2>Ustawienia rozsyłek</h2>
+      <p class="hint" id="uInfo"></p>
+      <div class="four">
+        <div><label for="uProg">Akceptacja powyżej tylu odbiorców</label><input type="number" id="uProg" min="0" max="50" step="1" /></div>
+        <div><label for="uOd">Wysyłka od godziny</label><input type="time" id="uOd" /></div>
+        <div><label for="uDo">Wysyłka do godziny</label><input type="time" id="uDo" /></div>
+        <div><label for="uStop">Zatrzymaj po tylu błędach z rzędu</label><input type="number" id="uStop" min="2" max="20" step="1" /></div>
+        <div><label for="uNa">Wiadomości w jednym przebiegu (co minutę)</label><input type="number" id="uNa" min="1" max="30" step="1" /></div>
+        <div><label for="uOdstep">Odstęp między wiadomościami (ms)</label><input type="number" id="uOdstep" min="1100" max="10000" step="100" /></div>
+        <div><label for="uDni">Ważność linku zaproszenia (dni)</label><input type="number" id="uDni" min="7" max="365" step="1" /></div>
+        <div><label for="uMax">Ile osób może użyć jednego linku</label><input type="number" id="uMax" min="1" max="200" step="1" /></div>
+        <div><label for="uKoniec">Koniec rozsyłek w grupach od dnia</label><input type="date" id="uKoniec" /></div>
+        <div style="grid-column:span 2"><label for="uPolityka">Adres polityki prywatności (pokazuje go bot po /privacy)</label><input type="url" id="uPolityka" placeholder="https://…" /></div>
+      </div>
+      <div class="row acts"><button type="button" class="mini ok big" id="uZapisz">Zapisz ustawienia</button><span class="sub" id="uMsg"></span></div>
+      <p class="law">Tempo jest celowo niskie: jedna wiadomość co najmniej co 1,1 s i najwyżej 30 w jednym przebiegu — daleko poniżej limitów Telegrama (ok. 30 wiadomości na sekundę łącznie, 1 na sekundę do jednego czatu, 20 na minutę do jednej grupy). SMS-y podlegają limitom modułu SMS.</p>
+    </div>
+  </section>
+</main>
+<script src="qr-svg.js?v=1"></script>
+<script src="rozsylka.js?v=1"></script>
+</body>
+</html>

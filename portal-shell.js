@@ -48,6 +48,7 @@
     { label: 'Klienci', ico: '🗃️', items: [
       { href: 'klienci.html', ico: '🗃️', text: 'Baza klientów', short: 'Klienci', wide: true },
       { href: 'sms.html', ico: '💬', text: 'SMS do klientów', short: 'SMS', wide: true },
+      { href: 'rozsylka.html', ico: '📣', text: 'Rozsyłki do klientów', short: 'Rozsyłki', wide: true },
     ] },
     { label: 'Ogólne', ico: '⚙️', mobile: true, items: [
       { href: 'pulpit.html', ico: '📊', text: 'Pulpit', short: 'Pulpit', admin: true, wide: true },
@@ -221,6 +222,7 @@
     '📝': '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
     '💬': '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',
     '✉️': '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+    '📣': '<path d="M4 10v4h3l6 4V6l-6 4z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11"/>',
     '📇': '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5a3 3 0 0 1 0 6M21 20a6 6 0 0 0-4-5.6"/>',
     '⚙️': '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
     '🎨': '<path d="M12 3a9 9 0 0 0 0 18c1.5 0 2-1 2-2 0-1.5 1-2 2-2h2a3 3 0 0 0 3-3c0-6-4-11-9-11z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/>',
