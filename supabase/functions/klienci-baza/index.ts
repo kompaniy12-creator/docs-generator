@@ -22,9 +22,11 @@
 //   rejestr            { id, fresh? }      administrator — reads the register for one client (paid);
 //                                          once a day per client, and within the daily cap of requests
 //   rejestr_wszystkie  { dry, dni?, z_zakonczonymi? }   administrator
-//     dry: true  -> the plan: how many firms, requests and the estimated cost; nothing is fetched
+//     dry: true  -> the plan: how many firms, requests and the estimated cost; nothing is fetched.
+//                   `jdg`: which sources for sole traders are configured and MF's share of the day
 //     dry: false -> reads at most MAX_NA_RAZ firms of the plan and says how many are left; stops at once
 //                   when a provider refuses (inactive key, limit, outage) or the daily cap is reached
+//                   (`jutro: true` — MF's share of the day is used up: nothing is broken, go on tomorrow)
 //   status             { id, status, koniec_od?, obsluga_od?, powod? }   administrator
 //   rozpoznaj          { id, force? }      administrator — reads a contract scan and proposes the client.
 //                                          A document already filed or confirmed by a person is read again only
@@ -34,12 +36,14 @@
 //   braki_csv                              administrator -> { csv }
 //
 // Register data: KRS firms through _shared/firma.ts (rejestr.io, paid per request) plus rejestr.io's basic
-// record kept in full; sole traders are not in KRS — they are read from GUS (REGON) through DataPort.
+// record kept in full; sole traders are not in KRS — they are read through _shared/jdg.ts: CEIDG (official),
+// then GUS (REGON, DataPort), then MF's VAT register (basic data, marked zrodlo "mf" and replaced later).
 
 import { firmaConfigured, getFirma } from "../_shared/firma.ts";
+import { BladJdg, doZapisu, pobierzJdg, zrodlaJdg } from "../_shared/jdg.ts";
 import {
   audytKlienta, bezDanychOsobowych, CENA_REJESTR_IO, csvBraki, digits, dopasuj, formaTyp, FORMY_LISTA, isDate, JEZYKI_LISTA, klientId, nipOk, odcisk, ostrzezeniaRejestru, POLA_KLIENTA,
-  pewnyKlient, planOdswiezenia, roznice, type Wyciag, walidujKlienta, wyciagGus, wyciagKrs, zakres, zmianyKlienta,
+  MF_DZIENNIE, MF_DZIENNIE_POJEDYNCZE, MF_KLUCZ, pewnyKlient, planOdswiezenia, roznice, type Wyciag, walidujKlienta, wyciagJdg, wyciagKrs, zakres, zJdg, zmianyKlienta,
 } from "./logic.ts";
 import { Limit, type Metoda, METODY, pogorszenie, powtorzoneCzaty, PROBLEM, sprawdzCzat, type Status, trescZadania, tytulPasuje, type Wynik, wymaganeBoty } from "./telegram.ts";
 
@@ -48,7 +52,6 @@ const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 const REJESTR_IO_KEY = Deno.env.get("REJESTR_IO_KEY") ?? "";
-const DATAPORT_KEY = Deno.env.get("DATAPORT_API_KEY") ?? "";
 const BIURO_NIP = Deno.env.get("BIURO_NIP") ?? "7831916366";
 const TG_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
 const CRON_KEY = Deno.env.get("CRON_KEY") ?? "";
@@ -282,32 +285,30 @@ const wierszNaWyciag = (r: Any): Wyciag => ({
   znaleziono: r.znaleziono, krs: r.krs, regon: r.regon, nazwa: r.nazwa, forma: r.forma, data_rejestracji: r.data_rejestracji, kapital: r.kapital == null ? null : Number(r.kapital),
   adres: r.adres, organ: r.organ, reprezentacja: r.reprezentacja, zarzad: r.zarzad ?? [], wspolnicy: r.wspolnicy ?? [], prokurenci: r.prokurenci ?? [], pkd: r.pkd, stan: r.stan,
 });
-async function gus(nip: string): Promise<Any> {
-  if (!DATAPORT_KEY) throw new Dostawca("GUS (DataPort): brak konfiguracji");
-  const r = await fetch("https://dataport.pl/api/v1/company/" + nip, { headers: { "X-API-Key": DATAPORT_KEY, Accept: "application/json" } });
-  const d = await r.json().catch(() => ({}));
-  const msg = String(d?.message ?? d?.error ?? "").slice(0, 120);
-  // "not found" only when the provider clearly says so; an inactive key, a limit or anything unknown is an error
-  if (r.status === 404 || (d?.success === false && /nie znaleziono|nie odnaleziono|nie istnieje|brak podmiotu|not found/i.test(msg))) return { success: false };
-  if (!r.ok || d?.success === false || !(d?.nazwa || d?.regon)) throw new Dostawca("GUS (DataPort): " + (msg || "HTTP " + r.status));
-  return d;
-}
 // Reads the register for one client and stores the result: a new snapshot when something changed,
 // otherwise only the date of the check. `dni`: our own cache of rejestr.io younger than this is reused.
-async function odswiez(k: Any, fresh: boolean, dni: number): Promise<{ ok: boolean; zmiany: number; zrodlo?: string; blad?: string; dostawca?: boolean }> {
+// tryb.masowo: the bulk run (MF's smaller share of the day); tryb.ulepszenie: a recent MF-only snapshot is
+// to be replaced from a fuller source — MF itself is not asked, and a refusal leaves the snapshot as it is.
+type Tryb = { masowo?: boolean; ulepszenie?: boolean };
+type Odswiezone = { ok: boolean; zmiany: number; zrodlo?: string; podstawowe?: boolean; blad?: string; dostawca?: boolean; jutro?: boolean };
+async function odswiez(k: Any, fresh: boolean, dni: number, tryb: Tryb = {}): Promise<Odswiezone> {
   const nip = digits(k.nip), now = new Date().toISOString();
   const koniec = async (blad: string | null) => { await db(`klienci_baza?id=eq.${enc(k.id)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ rejestr_at: now, rejestr_blad: blad }) }); };
+  // the attempt is noted, the client is not marked as failed (what is stored about it still holds)
+  const proba = async () => { await db(`klienci_baza?id=eq.${enc(k.id)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ rejestr_at: now }) }); };
   try {
     if (!nipOk(nip)) throw new Error("brak poprawnego NIP");
-    let zrodlo: "krs" | "gus" = formaTyp(k.forma) === "krs" ? "krs" : "gus";
-    let w: Wyciag, dane: Any, surowe: Any = null;
-    // counted before asking: up to 3 requests for a KRS firm, 1 for GUS
+    let zrodlo: "krs" | "gus" | "ceidg" | "mf" = formaTyp(k.forma) === "krs" ? "krs" : "gus";
+    let w: Wyciag, dane: Any, surowe: Any = null, podstawowe = false;
+    // counted before asking: up to 3 requests for a KRS firm, 1 for a sole trader
     if (!(await limit("rejestr", MAX_REJESTR_DZIEN, zrodlo === "krs" ? 3 : 1))) return { ok: false, zmiany: 0, dostawca: true, blad: "Dzienny limit zapytań do rejestrów (" + MAX_REJESTR_DZIEN + ") jest wyczerpany — dokończ jutro." };
+    const p = await db(`klienci_rejestr?klient=eq.${enc(k.id)}&select=${REJ_KOL}&order=fetched_at.desc&limit=1`);
+    const prev = p.ok ? (await p.json())[0] : null;
     if (zrodlo === "krs") {
       if (!firmaConfigured()) throw new Dostawca("rejestr.io: brak konfiguracji");
       let f = await getFirma(nip, false);
       if (f.z_pamieci && (fresh || Date.now() - Date.parse(f.pobrano) > dni * 86400000)) f = await getFirma(nip, true);
-      if (f.found === false) zrodlo = "gus"; // the sheet says "spółka", KRS does not know the NIP: look in REGON
+      if (f.found === false) zrodlo = "gus"; // the sheet says "spółka", KRS does not know the NIP: look among the sole traders
       else {
         // rejestr.io's own basic record (dates of entries, main activity, struck off or not) — one more paid request
         const r = REJESTR_IO_KEY ? await fetch(`https://rejestr.io/api/v2/org/${digits(f.krs) || "nip" + nip}`, { headers: { Authorization: REJESTR_IO_KEY } }) : null;
@@ -315,10 +316,26 @@ async function odswiez(k: Any, fresh: boolean, dni: number): Promise<{ ok: boole
         dane = f; w = wyciagKrs(f, surowe);
       }
     }
-    if (zrodlo === "gus") { dane = await gus(nip); w = wyciagGus(dane); surowe = null; }
-    const p = await db(`klienci_rejestr?klient=eq.${enc(k.id)}&select=${REJ_KOL}&order=fetched_at.desc&limit=1`);
-    const prev = p.ok ? (await p.json())[0] : null;
-    const zm = prev ? roznice(wierszNaWyciag(prev), w!) : [];
+    if (zrodlo !== "krs") {
+      // what CEIDG / GUS once said is never overwritten with MF's basic record: then only they are asked
+      const pelnePrev = !!prev && prev.znaleziono === true && (prev.zrodlo === "ceidg" || prev.zrodlo === "gus");
+      let j;
+      try {
+        j = await pobierzJdg(nip, { bezMf: tryb.ulepszenie === true || pelnePrev, mfWolno: () => limit(MF_KLUCZ, tryb.masowo ? MF_DZIENNIE : MF_DZIENNIE_POJEDYNCZE) });
+      } catch (e) {
+        if (!(e instanceof BladJdg)) throw e;
+        const czemu = e.proby.filter((x) => x.wynik.startsWith("błąd")).map((x) => x.zrodlo === "ceidg" ? "CEIDG: " + x.wynik.slice(6) : "GUS (DataPort): " + x.wynik.slice(6)).join("; ").slice(0, 160);
+        // MF's share of the day is used up: nothing is wrong with the firm and nothing is broken
+        if (e.limit) return { ok: false, zmiany: 0, dostawca: true, jutro: true, blad: "Dzienny limit zapytań do Wykazu VAT (MF) — " + (tryb.masowo ? MF_DZIENNIE : MF_DZIENNIE_POJEDYNCZE) + " — jest wyczerpany; dokończ jutro." + (czemu ? " Pełniejsze źródło nie odpowiedziało (" + czemu + ")." : "") };
+        if (tryb.ulepszenie) { await proba(); return { ok: false, zmiany: 0, dostawca: true, blad: "Pełniejsze źródło danych nie odpowiada (" + (czemu || e.message) + ") — zostają dane podstawowe z Wykazu VAT." }; }
+        throw new Dostawca(e.message);
+      }
+      // the fuller source does not know the firm MF knows (not a sole trader after all): the MF record stays
+      if (tryb.ulepszenie && !j.znaleziono) { await proba(); return { ok: true, zmiany: 0, zrodlo: "mf", podstawowe: true }; }
+      zrodlo = j.zrodlo; podstawowe = j.podstawowe; dane = { ...doZapisu(j), proby: j.proby }; w = wyciagJdg(j); surowe = null;
+    }
+    // two sources name a firm differently (MF: the person, CEIDG: the firm): only the same source is compared
+    const zm = prev && prev.zrodlo === zrodlo ? roznice(wierszNaWyciag(prev), w!) : [];
     // kept without birth dates / PESEL numbers
     const kolumny = { ...w!, nip, zrodlo, odcisk: odcisk(w!), dane: bezDanychOsobowych(dane), surowe: bezDanychOsobowych(surowe), sprawdzono_at: now };
     // the same state as last time (or only fields we did not read before): confirm the existing snapshot
@@ -327,7 +344,7 @@ async function odswiez(k: Any, fresh: boolean, dni: number): Promise<{ ok: boole
       : await db("klienci_rejestr", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ ...kolumny, klient: k.id, fetched_at: now, zmiany: zm }) });
     if (!zapis.ok) throw new Error("zapis danych rejestru: " + zapis.status);
     await koniec(null);
-    return { ok: true, zmiany: zm.length, zrodlo };
+    return { ok: true, zmiany: zm.length, zrodlo, podstawowe: podstawowe || undefined };
   } catch (e) {
     const blad = String((e as Error)?.message ?? e).slice(0, 200);
     // rejestr.io answering 4xx / 5xx (a missing firm is not an error there) is the provider failing too
@@ -474,14 +491,24 @@ async function rozpoznaj(id: string, ja: Ja, force: boolean, origin: string | nu
 // ---------------------------------------------------------------- everything the page shows
 async function lista(ja: Ja) {
   const s = await sync(false);
-  const [klienci, rej, odpisy, pk, tgWyniki] = await Promise.all([
+  const [klienci, rej, jdgDane, odpisy, pk, tgWyniki] = await Promise.all([
     all("klienci_baza?select=*&order=nazwa"),
     all(`klienci_rejestr?select=${REJ_KOL}&order=fetched_at.desc`),
+    all("klienci_rejestr?zrodlo=neq.krs&select=id,dane"), // sole traders: the normalised record (no raw answers are kept for them)
     all("portal_odpisy_cache?select=krs,fetched_at"),
     listaKlientow(),
     all("klienci_telegram?select=*"),
   ]);
   const dane = new Map<string, Any>(pk.map((x) => [x.id, x.dane ?? {}]));
+  const jdgBy = new Map<string, Any>(jdgDane.map((x) => [x.id, x.dane ?? {}]));
+  // what the page shows of a sole trader beyond the common columns; the address for service — as the address itself
+  const jdgOpis = (r: Any) => {
+    const j = jdgBy.get(r.id);
+    if (!zJdg(r.zrodlo) || !j) return undefined;
+    return { wlasciciel: [j.imie, j.nazwisko].filter(Boolean).join(" ") || null, adres_doreczen: ja.kadry ? j.adres_doreczen ?? null : null, data_zawieszenia: j.data_zawieszenia ?? null, data_wznowienia: j.data_wznowienia ?? null,
+      data_zakonczenia: j.data_zakonczenia ?? null, data_wykreslenia: j.data_wykreslenia ?? null, pkd: Array.isArray(j.pkd) ? j.pkd.slice(0, 200) : [], status_vat: j.status_vat ?? null, vat_od: j.vat_od ?? null,
+      vat_wykreslenie: j.vat_wykreslenie ?? null, podstawowe: j.podstawowe === true || r.zrodlo === "mf", powod: j.powod ?? null };
+  };
   const tgBy = new Map<string, Any>(tgWyniki.map((w) => [w.klient, w]));
   const powt = powtorzoneCzaty(klienci.filter((k) => k.status !== "zakonczony").map((k) => ({ nazwa: k.nazwa, telegram: dane.get(k.id)?.telegram })));
   const rejBy = new Map<string, Any[]>();
@@ -505,7 +532,7 @@ async function lista(ja: Ja) {
     const zk = zakres(k);
     const o: Any = {
       // scope of service, from the caretakers in the sheet: does the office do this client's accounting / HR
-      ...baza, ksiegowosc: zk.ksiegowosc, kadry: zk.kadry, rej: r ? { ...r, odcisk: undefined, adres: (r.zrodlo === "gus" || jdg) && !ja.kadry ? null : r.adres } : null,
+      ...baza, ksiegowosc: zk.ksiegowosc, kadry: zk.kadry, rej: r ? { ...r, odcisk: undefined, adres: (zJdg(r.zrodlo) || jdg) && !ja.kadry ? null : r.adres, jdg: jdgOpis(r) } : null,
       rej_historia: rs.slice(1, 12).map((x) => ({ fetched_at: x.fetched_at, sprawdzono_at: x.sprawdzono_at, zmiany: x.zmiany, nazwa: x.nazwa })),
       ostrzezenia: ostrzezeniaRejestru(k, r, teraz, ja.admin),
       odpis: r?.krs && odpis.has(String(r.krs).padStart(10, "0")) ? odpis.get(String(r.krs).padStart(10, "0")) : null,
@@ -541,6 +568,7 @@ async function lista(ja: Ja) {
     for (const w of tgWyniki) for (const b of Array.isArray(w.boty) ? w.boty : []) { const x = widziane.get(b.id) ?? { ...b, grup: 0 }; x.grup++; widziane.set(b.id, x); }
     admin = {
       podpowiedzi: { opiekun: aliasy.length ? [...new Set(aliasy)].sort((a, b) => a.localeCompare(b, "pl")) : uniq("opiekun"), kadrowy: aliasy.length ? [...new Set(aliasy)].sort((a, b) => a.localeCompare(b, "pl")) : uniq("kadrowy"), opodatkowanie: uniq("opodatkowanie"), formy: FORMY_LISTA, jezyki: JEZYKI_LISTA, z_zespolu: aliasy.length > 0 },
+      jdg: zrodlaJdg(), // which fuller sources for sole traders are connected (MF needs no key)
       telegram: { skonfigurowany: !!botId(), bot_id: botId(), boty: wymaganeBoty(ust.boty), widziane: [...widziane.values()].sort((a, b) => b.grup - a.grup).slice(0, 30), przebieg: ust.przebieg ?? null },
     };
   }
@@ -584,22 +612,29 @@ Deno.serve(async (req) => {
     if (action === "rejestr_wszystkie") {
       if (!ja.admin) return tylkoAdmin();
       const dni = Math.max(1, Math.min(365, Math.round(Number(body.dni) || DNI_DOMYSLNIE)));
-      const [klienci, rej, cache] = await Promise.all([all("klienci_baza?select=*&order=nazwa"), all("klienci_rejestr?select=klient,sprawdzono_at&order=sprawdzono_at.desc"), all("portal_firmy_cache?select=nip,fetched_at")]);
-      const ost = new Map<string, string>();
-      for (const r of rej) if (!ost.has(r.klient)) ost.set(r.klient, r.sprawdzono_at);
-      const plan = planOdswiezenia(klienci.map((k) => ({ ...k, rej_at: ost.get(k.id) ?? null })), Object.fromEntries(cache.map((c) => [c.nip, c.fetched_at])), dni, Date.now(), body.z_zakonczonymi === true);
-      const podsumowanie = { firm: plan.pozycje.length, krs_firm: plan.krs_firm, gus_firm: plan.gus_firm, zapytan_rejestr_io: plan.zapytan_rejestr_io, zapytan_gus: plan.zapytan_gus, koszt_zl: plan.koszt_zl, cena: CENA_REJESTR_IO, pominiete: plan.pominiete, dni, na_raz: MAX_NA_RAZ };
+      const [klienci, rej, cache] = await Promise.all([all("klienci_baza?select=*&order=nazwa"), all("klienci_rejestr?select=klient,sprawdzono_at,zrodlo&order=sprawdzono_at.desc"), all("portal_firmy_cache?select=nip,fetched_at")]);
+      const ost = new Map<string, Any>();
+      for (const r of rej) if (!ost.has(r.klient)) ost.set(r.klient, r);
+      const zr = zrodlaJdg();
+      const plan = planOdswiezenia(klienci.map((k) => ({ ...k, rej_at: ost.get(k.id)?.sprawdzono_at ?? null, rej_zrodlo: ost.get(k.id)?.zrodlo ?? null })), Object.fromEntries(cache.map((c) => [c.nip, c.fetched_at])), dni, Date.now(), body.z_zakonczonymi === true, zr.ceidg || zr.gus);
+      // MF's share of the day already used (the counter's day is the database's)
+      let mfDzis = 0;
+      try { mfDzis = Number((await all(`klienci_limity?dzien=eq.${new Date().toISOString().slice(0, 10)}&klucz=eq.${MF_KLUCZ}&select=n`))[0]?.n) || 0; } catch { /* unknown: the counter itself still guards every request */ }
+      const nowych = plan.gus_firm - plan.ulepszen;
+      const podsumowanie = { firm: plan.pozycje.length, krs_firm: plan.krs_firm, gus_firm: plan.gus_firm, zapytan_rejestr_io: plan.zapytan_rejestr_io, zapytan_gus: plan.zapytan_gus, koszt_zl: plan.koszt_zl, cena: CENA_REJESTR_IO, pominiete: plan.pominiete, dni, na_raz: MAX_NA_RAZ,
+        // sole traders: the sources connected; with MF alone — how many a day and for how many days
+        jdg: { ...zr, tylko_mf: !zr.ceidg && !zr.gus, ulepszen: plan.ulepszen, mf_limit: MF_DZIENNIE, mf_zostalo_dzis: Math.max(0, MF_DZIENNIE - mfDzis), mf_dni: Math.ceil(nowych / MF_DZIENNIE) } };
       if (body.dry !== false) return json({ dry: true, ...podsumowanie }, 200, origin);
       const byId = new Map(klienci.map((k) => [k.id, k]));
       const zrobione: Any[] = [];
-      let przerwano = "";
+      let przerwano = "", jutro = false;
       for (const p of plan.pozycje.slice(0, MAX_NA_RAZ)) {
-        const w = await odswiez(byId.get(p.id), false, dni);
+        const w = await odswiez(byId.get(p.id), false, dni, { masowo: true, ulepszenie: p.ulepszenie === true });
         zrobione.push({ id: p.id, nazwa: p.nazwa, ...w });
         // the provider refused: the next firms would only repeat the error (and, with rejestr.io, the bill)
-        if (w.dostawca) { przerwano = w.blad ?? "błąd dostawcy danych"; break; }
+        if (w.dostawca) { przerwano = w.blad ?? "błąd dostawcy danych"; jutro = w.jutro === true; break; }
       }
-      return json({ dry: false, zrobione, przerwano: przerwano || undefined, pozostalo: Math.max(0, plan.pozycje.length - zrobione.filter((z) => z.ok).length), ...podsumowanie }, 200, origin);
+      return json({ dry: false, zrobione, przerwano: przerwano || undefined, jutro: jutro || undefined, pozostalo: Math.max(0, plan.pozycje.length - zrobione.filter((z) => z.ok).length), ...podsumowanie }, 200, origin);
     }
 
     if (action === "status") {

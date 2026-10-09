@@ -4,8 +4,10 @@
 //
 //   start                                    -> templates, numbering, price list, courts, register, clients with the state of their contract
 //   firma    { klient } | { nip } | { krs }  -> data for the form: clients base + register (rejestr.io through _shared/firma.ts).
+//            A sole trader (JDG): `gus` = { regon, nazwa, adres, wlasciciel, status, zrodlo: "ceidg" | "gus" | "mf", podstawowe,
+//            sprawdzono_at, skad } from CEIDG / GUS / MF's VAT register (_shared/jdg.ts), null when no source knew the NIP.
 //            A snapshot the clients module already keeps is reused (odswiez: true asks the register again — paid,
-//            within the daily caps). Sole traders are not in KRS: their data come from the clients base.
+//            within the daily caps). Sole traders are not in KRS: their register data come through _shared/jdg.ts.
 //   szukaj   { q }                           -> firms in KRS by name / NIP / KRS (paid search, capped per person a day)
 //   podglad  { formularz }                   -> the document filled as a DRAFT: text, what is missing, the forecast; no number is taken
 //   generuj  { formularz }                   -> FINAL: takes the number (one transaction with the register row), fills the DOCX,
@@ -21,6 +23,8 @@
 // The registry court: the register answer kept by the portal has no court; logic.ts/ustalSad says how it is proposed.
 
 import { firmaConfigured, getFirma, searchFirmy } from "../_shared/firma.ts";
+import { NAZWA_ZRODLA, zrodlaJdg, type ZrodloJdg } from "../_shared/jdg.ts";
+import { jdgFirma, nipOk } from "../gus-company/dane.ts";
 import { b64, generuj, otworz, sha256, sprawdzSzablon, type Szablon, zB64 } from "./docx.ts";
 import {
   adresSiedziby, cyfry, czyRodzaj, dzisPl, type Formularz, isDate, nazwaPliku, numerZNazwy, type Osoba, porownajPlaceholdery, type Pozycja, reprezentacja, type Reprezentacja,
@@ -162,6 +166,14 @@ async function zPamieci(nip: string, klient: string | null): Promise<Any | null>
   }
   return null;
 }
+// What the form of a sole trader's contract takes from a normalised record (_shared/jdg.ts).
+function jdgDoFormularza(j: Any, pobrano: string | null, skad: string): Any {
+  const zrodlo: ZrodloJdg = j?.zrodlo === "ceidg" || j?.zrodlo === "mf" ? j.zrodlo : "gus";
+  return {
+    regon: cyfry(j?.regon), nazwa: t(j?.nazwa), adres: t(j?.adres), wlasciciel: ladnie([t(j?.imie, 80), t(j?.nazwisko, 120)].filter(Boolean).join(" ")),
+    status: t(j?.status, 80), zrodlo, zrodlo_nazwa: NAZWA_ZRODLA[zrodlo], podstawowe: zrodlo === "mf", sprawdzono_at: pobrano, skad,
+  };
+}
 const LIMIT_OSOBY = "Dzienny limit płatnych zapytań do rejestru dla jednej osoby został wykorzystany — spróbuj jutro albo skorzystaj z danych już zapisanych.";
 const LIMIT_DNIA = "Dzienny limit płatnych zapytań do rejestru został wykorzystany — spróbuj jutro.";
 
@@ -282,7 +294,11 @@ Deno.serve(async (req) => {
         const wl = await all(`umowy_dokumenty?klient=eq.${enc(klient)}&numer=not.is.null&status=neq.anulowana&select=numer_pelny,data,status&order=created_at.desc`);
         if (um[0]) umowa = { numer: numerZNazwy(um[0].nazwa) || numerZNazwy(um[0].uwagi), data: um[0].data_zawarcia, potwierdzona: !!um[0].sprawdzil, skad: "Baza klientów — umowy" };
         else if (wl[0]) umowa = { numer: wl[0].numer_pelny, data: wl[0].data, potwierdzona: wl[0].status === "podpisana", skad: "rejestr generatora" };
-        if (typ === "jdg") gus = await jeden(`klienci_rejestr?klient=eq.${enc(klient)}&zrodlo=eq.gus&znaleziono=is.true&select=regon,nazwa,adres,sprawdzono_at&order=fetched_at.desc`);
+        if (typ === "jdg") {
+          // the sole trader's record the clients base already holds (CEIDG, GUS or — basic data only — MF)
+          const m = await jeden(`klienci_rejestr?klient=eq.${enc(klient)}&zrodlo=neq.krs&znaleziono=is.true&select=regon,nazwa,adres,zrodlo,sprawdzono_at,dane&order=fetched_at.desc`);
+          if (m) gus = jdgDoFormularza({ ...(m.dane ?? {}), regon: m.regon, nazwa: m.nazwa, adres: m.adres, zrodlo: m.zrodlo }, m.sprawdzono_at, "migawka z Bazy klientów");
+        }
       } else if (nip.length !== 10 && !(krs.length >= 1 && krs.length <= 10)) return zle("Podaj klienta z bazy, NIP albo numer KRS.");
       const sady: Sad[] = await all("umowy_sady?select=nazwa,kod,powiaty");
       let rej: Any = null, uwaga = "";
@@ -299,7 +315,24 @@ Deno.serve(async (req) => {
             else if (!rej) uwaga = "Rejestr nie zna firmy o tym numerze — sprawdź numer albo wpisz dane ręcznie.";
           }
         } else if (stary) uwaga = "Dane z rejestru mają " + rej.wiek_dni + " dni — przed podpisaniem umowy warto je odświeżyć (płatne zapytanie).";
-      } else uwaga = "JDG: dane z bazy klientów — rejestr.io nie obejmuje CEIDG. REGON oraz imię i nazwisko przedsiębiorcy sprawdź i uzupełnij ręcznie.";
+      } else {
+        // a sole trader: CEIDG -> GUS -> MF (see _shared/jdg.ts), through the lookups' cache; asked when the base holds
+        // nothing, on request, or when only MF's basic record is there and a fuller source has been connected since
+        const zr = zrodlaJdg();
+        if (nipOk(nip) && (!gus || body.odswiez === true || (gus.podstawowe && (zr.ceidg || zr.gus)))) {
+          if (!(await limit("umowy-firma:" + ja.email, MAX_FIRM_OSOBA))) uwaga = LIMIT_OSOBY;
+          else {
+            const w = await jdgFirma(nip, null, body.odswiez === true);
+            if (w.stan === "ok" && !(gus && !gus.podstawowe && w.dane.podstawowe)) gus = jdgDoFormularza(w.dane, w.pobrano, w.z_pamieci ? "baza firm portalu" : "nowe zapytanie");
+            else if (w.stan === "brak" && !gus) uwaga = "JDG: nie znaleziono firmy (" + w.powod + ")" + (w.powod === "brak w wykazie VAT" ? " — to nie oznacza, że firma nie istnieje" : "") + ". Dane wpisz ręcznie.";
+            else if (w.stan !== "ok" && !gus) uwaga = "JDG: rejestry nie odpowiedziały — dane z bazy klientów. REGON oraz imię i nazwisko przedsiębiorcy sprawdź i uzupełnij ręcznie.";
+          }
+        }
+        if (gus) uwaga = gus.podstawowe
+          ? "JDG: dane podstawowe z Wykazu podatników VAT (MF), stan z " + String(gus.sprawdzono_at ?? "").slice(0, 10) + " — wykaz nie rozróżnia firmy i nazwiska ani nie podaje zawieszenia działalności. Imię i nazwisko przedsiębiorcy oraz nazwę firmy sprawdź i uzupełnij ręcznie; pełne dane będą po podłączeniu CEIDG."
+          : "JDG: dane z " + gus.zrodlo_nazwa + ", stan z " + String(gus.sprawdzono_at ?? "").slice(0, 10) + (gus.wlasciciel ? "" : " — imię i nazwisko przedsiębiorcy uzupełnij ręcznie") + (gus.status && gus.status !== "aktywna" ? ". UWAGA: stan działalności według rejestru: " + gus.status : "") + ".";
+        else if (!uwaga) uwaga = "JDG: brak danych z rejestru — dane z bazy klientów. REGON oraz imię i nazwisko przedsiębiorcy sprawdź i uzupełnij ręcznie.";
+      }
       const rep = rej ? reprezentacja(rej.sposob, rej.osoby) : null;
       const sad = typ !== "jdg" ? ustalSad(rej ?? {}, sady) : null;
       return json({

@@ -32,9 +32,12 @@ const now = () => new Date().toISOString();
 const T: Record<string, Any[]> = {};
 let LIMITY: Record<string, number> = {};
 let gusOdp: (n: string) => Response = () => J({});
+// MF's register of VAT payers and CEIDG: by default out of order, so that the tests of GUS see GUS alone
+let mfOdp: (n: string) => Response = () => J({}, 503);
+let ceidgOdp: (n: string) => Response = () => J({}, 503);
 const PK: Record<string, string> = { klienci_umowy_usuniete: "id", klienci_telegram: "klient", klienci_telegram_historia: "id", klienci_zmiany: "id", portal_ustawienia: "key", portal_zadania: "id",  portal_klienci: "id", klienci_baza: "id", portal_firmy_cache: "nip", portal_odpisy_cache: "krs", klienci_rejestr: "id", klienci_umowy: "id", klienci_status_historia: "id" };
 const FILES: Record<string, Uint8Array> = {};
-const calls = { rio: [] as string[], gus: 0, model: 0, tg: [] as string[] };
+const calls = { rio: [] as string[], gus: 0, mf: 0, ceidg: 0, model: 0, tg: [] as string[] };
 // the Bot API stand-in: chat id -> what the group looks like ("ok" | "left" | "brak" | "przeniesiona" | "limit")
 let CZATY: Record<string, string> = {};
 let zarzad = [{ imie: "ANNA", nazwisko: "WZORCOWA" }];
@@ -54,7 +57,8 @@ function reset() {
   gusOdp = (n) => n === N3 ? J({ success: true, nazwa: "USŁUGI TESTOWE JAN WZORCOWY", regon: "999000013", nip: N3, adres: "ul. Przykładowa 1 /2 00-000 Warszawa" }) : J({ success: false, message: "Nie znaleziono podmiotu" }, 404);
   T.klienci_baza = []; T.klienci_rejestr = []; T.klienci_umowy = []; T.klienci_status_historia = []; T.portal_firmy_cache = []; T.portal_odpisy_cache = [];
   for (const k of Object.keys(FILES)) delete FILES[k];
-  calls.rio = []; calls.gus = 0; calls.model = 0; zarzad = [{ imie: "ANNA", nazwisko: "WZORCOWA" }];
+  mfOdp = () => J({}, 503); ceidgOdp = () => J({}, 503); Deno.env.delete("CEIDG_TOKEN"); Deno.env.set("DATAPORT_API_KEY", "k");
+  calls.rio = []; calls.gus = 0; calls.mf = 0; calls.ceidg = 0; calls.model = 0; zarzad = [{ imie: "ANNA", nazwisko: "WZORCOWA" }];
 }
 
 function test1(row: Any, col: string, expr: string): boolean {
@@ -171,6 +175,8 @@ globalThis.fetch = (async (input: Any, init: Any = {}) => {
       stan: { forma_prawna: "SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ", czy_wykreslona: false }, krs_wpisy: { pierwszy_data: "2019-03-04" } });
   }
   if (url.startsWith("https://dataport.pl/")) { calls.gus++; return gusOdp(url.split("/").pop()!); }
+  if (url.startsWith("https://wl-api.mf.gov.pl/api/search/nip/")) { calls.mf++; assert(/^\d{10}\?date=\d{4}-\d{2}-\d{2}$/.test(url.split("/").pop()!)); return mfOdp(url.split("/").pop()!.slice(0, 10)); }
+  if (url.startsWith("https://dane.biznes.gov.pl/api/ceidg/v3/firma?nip=")) { calls.ceidg++; assertEquals(h.get("Authorization"), "Bearer token-testowy"); return ceidgOdp(url.split("=").pop()!); }
   if (url === "https://api.anthropic.com/v1/messages" && modelWait) await modelWait;
   if (url === "https://api.anthropic.com/v1/messages") {
     calls.model++;
@@ -353,6 +359,92 @@ Deno.test("rejestr: nieaktywny klucz GUS to błąd, a nie „nie znaleziono” �
   }
   reset(); await call("admin", { action: "lista" }); gusOdp = () => J({ success: false, message: "Nie znaleziono podmiotu o podanym NIP" });
   assertEquals((await call("admin", { action: "rejestr", id: N3 })).b.ok, true); assertEquals(T.klienci_rejestr[0].znaleziono, false);
+});
+
+// MF's answer for a sole trader, as the API gives it (schema Entity) — with the fields that must never be kept
+const mfPodmiot = (n: string) => J({ result: { subject: { name: "JAN WZORCOWY", nip: n, statusVat: "Czynny", regon: "999000013", pesel: "00000000000", krs: null, residenceAddress: null, workingAddress: "PRZYKŁADOWA 1/2, 00-000 WARSZAWA",
+  representatives: [], authorizedClerks: [], partners: [], registrationLegalDate: "2020-02-03", accountNumbers: ["00999900000000000000000000"], hasVirtualAccounts: false }, requestId: "test-1", requestDateTime: "09-10-2026 10:00:00" } });
+const ceidgWpis = (n: string) => J({ firma: [{ id: "00000000-0000-0000-0000-000000000001", nazwa: "Usługi Testowe Jan Wzorcowy", wlasciciel: { imie: "Jan", nazwisko: "Wzorcowy", nip: n, regon: "999000013" },
+  adresDzialalnosci: { ulica: "ul. Przykładowa", budynek: "1", lokal: "2", miasto: "Warszawa", kod: "00-000", kraj: "PL" }, adresKorespondencyjny: { ulica: "ul. Wzorcowa", budynek: "5", miasto: "Warszawa", kod: "00-001" },
+  pkdGlowny: { kod: "6920Z", nazwa: "Działalność rachunkowo-księgowa; doradztwo podatkowe" }, pkd: [{ kod: "6920Z", nazwa: "Działalność rachunkowo-księgowa; doradztwo podatkowe" }, { kod: "7022Z", nazwa: "Pozostałe doradztwo" }],
+  dataRozpoczecia: "2020-02-03", dataZawieszenia: "2026-01-01", status: "ZAWIESZONY", telefon: "600000000", email: "jan@example.test", obywatelstwa: [{ symbol: "PL", kraj: "Polska" }], wspolnoscMajatkowa: 1 }] });
+const tylkoJdg = async () => {
+  reset(); await call("admin", { action: "lista" });
+  T.portal_klienci = T.portal_klienci.filter((k) => k.id === N3 || k.id === "nazwa:przykładowa gamma");
+  T.portal_klienci.push({ id: nip("999000024"), nip: nip("999000024"), dane: { ...T.portal_klienci[0].dane, nazwa: "Handel Przykładowy Ewa Testowa", nip: nip("999000024") }, synced_at: now() });
+  T.portal_klienci.push({ id: nip("999000035"), nip: nip("999000035"), dane: { ...T.portal_klienci[0].dane, nazwa: "Warsztat Przykładowy Adam Testowy", nip: nip("999000035") }, synced_at: now() });
+  T.klienci_baza = []; await call("admin", { action: "sync" });
+};
+
+Deno.test("JDG: GUS odmawia -> dane podstawowe z Wykazu VAT (MF), oznaczone; bez PESEL i rachunków; limit dnia zatrzymuje czysto", async () => {
+  await tylkoJdg();
+  gusOdp = () => J({ success: false, message: "Klucz API jest nieaktywny" }); mfOdp = mfPodmiot;
+  const plan = (await call("admin", { action: "rejestr_wszystkie" })).b;
+  assertEquals([plan.gus_firm, plan.jdg.gus, plan.jdg.ceidg, plan.jdg.tylko_mf, plan.jdg.mf_limit, plan.jdg.mf_zostalo_dzis, plan.jdg.mf_dni], [3, true, false, false, 60, 60, 1]);
+  LIMITY["mf-search"] = 58; // two requests of MF's share are left today
+  const run = (await call("admin", { action: "rejestr_wszystkie", dry: false })).b;
+  assertEquals(run.zrobione.map((z: Any) => [z.ok, z.zrodlo, z.podstawowe, z.jutro]), [[true, "mf", true, undefined], [true, "mf", true, undefined], [false, undefined, undefined, true]]);
+  assertEquals(run.jutro, true); assert(run.przerwano.includes("dokończ jutro")); assertEquals(run.pozostalo, 1);
+  assertEquals([calls.gus, calls.mf], [3, 2]); // the third firm: GUS refused, MF was not asked
+  const m = T.klienci_rejestr[0];
+  assertEquals([m.zrodlo, m.znaleziono, m.nazwa, m.regon, m.adres, m.stan, m.pkd, m.data_rejestracji], ["mf", true, "JAN WZORCOWY", "999000013", "PRZYKŁADOWA 1/2, 00-000 WARSZAWA", null, null, null]);
+  assertEquals([m.dane.status_vat, m.dane.vat_od, m.dane.podstawowe, m.dane.proby.map((p: Any) => p.zrodlo).join()], ["Czynny", "2020-02-03", true, "gus,mf"]);
+  assert(!/pesel|00000000000|accountNumbers|0099990000/i.test(JSON.stringify(T.klienci_rejestr)));
+  // the firm that hit the cap is not marked as failed
+  const trzeci = T.klienci_baza.find((k) => k.id === run.zrobione[2].id);
+  assertEquals([trzeci.rejestr_blad ?? null, trzeci.rejestr_at ?? null], [null, null]);
+  // the page: the source, the note for MF, and the warning list stays empty for a found firm
+  const k = (await call("admin", { action: "lista" })).b.klienci.find((x: Any) => x.id === run.zrobione[0].id);
+  assertEquals([k.rej.zrodlo, k.rej.jdg.podstawowe, k.rej.jdg.status_vat], ["mf", true, "Czynny"]);
+});
+
+Deno.test("JDG: MF nie zna NIP -> „brak w wykazie VAT”, nie „firma nie istnieje”", async () => {
+  await tylkoJdg(); Deno.env.delete("DATAPORT_API_KEY");
+  mfOdp = () => J({ result: { subject: null, requestId: "test-2", requestDateTime: "09-10-2026 10:00:00" } });
+  assertEquals((await call("admin", { action: "rejestr_wszystkie" })).b.jdg.tylko_mf, true);
+  const r = (await call("admin", { action: "rejestr", id: N3 })).b;
+  assertEquals([r.ok, r.zrodlo], [true, "mf"]); assertEquals(calls.gus, 0);
+  const m = T.klienci_rejestr[0];
+  assertEquals([m.zrodlo, m.znaleziono, m.dane.powod], ["mf", false, "brak w wykazie VAT"]);
+  const k = (await call("admin", { action: "lista" })).b.klienci.find((x: Any) => x.id === N3);
+  assert(k.ostrzezenia.some((o: string) => o.includes("nie oznacza, że firma nie istnieje")));
+});
+
+Deno.test("JDG: zapis z MF jest zastępowany pełnymi danymi z CEIDG — bez fałszywej „zmiany nazwy”; CEIDG nie jest potem nadpisywany przez MF", async () => {
+  await tylkoJdg(); Deno.env.delete("DATAPORT_API_KEY"); mfOdp = mfPodmiot;
+  assertEquals((await call("admin", { action: "rejestr", id: N3 })).b.zrodlo, "mf");
+  // the next day the token is connected: the fresh MF snapshot is in the plan again, as a replacement
+  const wczoraj = new Date(Date.now() - 25 * 3600000).toISOString();
+  Object.assign(T.klienci_rejestr[0], { fetched_at: wczoraj, sprawdzono_at: wczoraj }); T.klienci_baza.find((k) => k.id === N3).rejestr_at = wczoraj;
+  assertEquals((await call("admin", { action: "rejestr_wszystkie" })).b.jdg.ulepszen, 0); // no fuller source: nothing to replace with
+  Deno.env.set("CEIDG_TOKEN", "token-testowy");
+  // CEIDG still refusing: the MF record stays, the firm is not marked as failed, MF is not asked
+  ceidgOdp = () => J({ message: "Unauthorized" }, 401);
+  let run = (await call("admin", { action: "rejestr_wszystkie", dry: false })).b;
+  const proba = run.zrobione.find((z: Any) => z.id === N3);
+  assertEquals([proba.ok, proba.dostawca], [false, true]); assert(proba.blad.includes("zostają dane podstawowe")); assert(!JSON.stringify(run).includes("token-testowy"));
+  assertEquals([T.klienci_rejestr.filter((r) => r.klient === N3).length, T.klienci_baza.find((k) => k.id === N3).rejestr_blad ?? null], [1, null]);
+  // CEIDG answers
+  ceidgOdp = ceidgWpis; T.klienci_baza.find((k) => k.id === N3).rejestr_at = wczoraj;
+  const plan = (await call("admin", { action: "rejestr_wszystkie" })).b;
+  assertEquals([plan.jdg.ceidg, plan.jdg.ulepszen >= 1], [true, true]);
+  for (let i = 0; i < 3; i++) run = (await call("admin", { action: "rejestr_wszystkie", dry: false })).b;
+  const migawki = T.klienci_rejestr.filter((r) => r.klient === N3).sort((a, b) => String(b.fetched_at).localeCompare(a.fetched_at));
+  assertEquals(migawki.length, 2);
+  const c = migawki[0];
+  assertEquals([c.zrodlo, c.nazwa, c.regon, c.adres, c.stan, c.pkd, c.data_rejestracji, c.zmiany.length],
+    ["ceidg", "Usługi Testowe Jan Wzorcowy", "999000013", "ul. Przykładowa 1/2, 00-000 Warszawa", "zawieszona", "6920Z Działalność rachunkowo-księgowa; doradztwo podatkowe", "2020-02-03", 0]);
+  assertEquals([c.dane.imie, c.dane.nazwisko, c.dane.adres_doreczen, c.dane.data_zawieszenia, c.dane.pkd.length], ["Jan", "Wzorcowy", "ul. Wzorcowa 5, 00-001 Warszawa", "2026-01-01", 2]);
+  assert(!/600000000|jan@example\.test|obywatelstw|wspolnoscMajatkowa/.test(JSON.stringify(T.klienci_rejestr))); // phone, e-mail, citizenship are not kept
+  const lista = (await call("ksieg", { action: "lista" })).b.klienci.find((x: Any) => x.id === N3);
+  assertEquals([lista.rej.zrodlo, lista.rej.jdg.wlasciciel, lista.rej.adres, lista.rej.jdg.adres_doreczen], ["ceidg", "Jan Wzorcowy", null, null]); // addresses: Kadry and administrators only
+  assert(lista.ostrzezenia.some((o: string) => o.includes("zawieszona")));
+  // CEIDG out of order later: its record is not replaced by MF's basic one, and MF is not asked
+  ceidgOdp = () => J({}, 500); T.klienci_baza.find((k) => k.id === N3).rejestr_at = null;
+  const mfPrzed = calls.mf;
+  const pozniej = (await call("admin", { action: "rejestr", id: N3 })).b;
+  assertEquals([pozniej.ok, pozniej.dostawca, calls.mf], [false, true, mfPrzed]);
+  assertEquals(T.klienci_rejestr.filter((r) => r.klient === N3).length, 2);
 });
 
 Deno.test("rejestr: dzienny limit płatnych zapytań zatrzymuje pobieranie przed pierwszym zapytaniem", async () => {

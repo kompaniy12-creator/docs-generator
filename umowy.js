@@ -139,8 +139,13 @@
     function ust(pole, wart, skad) { F.firma[pole] = wart || ''; F.zrodla[pole] = wart ? skad : recz; }
     var adresBazy = [b.adres, b.miasto].filter(Boolean).join(', ');
     if (jdg || !rej) {
-      ust('nazwa', b.nazwa, zBazy); ust('adres', adresBazy, zBazy); ust('nip', b.nip, zBazy);
-      ust('regon', r.gus && r.gus.regon, 'rejestr REGON (GUS), stan z ' + pl(r.gus && r.gus.sprawdzono_at)); ust('krs', '', recz);
+      // a sole trader: CEIDG / GUS give the firm, the address and the owner; MF's VAT register only basic data
+      // (its "name" may be the person, not the firm), so there the name stays as the clients base has it
+      var g = jdg ? r.gus : null, zG = g ? (g.zrodlo_nazwa || 'rejestr REGON (GUS)') + ', stan z ' + pl(g.sprawdzono_at) : '';
+      var pelne = g && !g.podstawowe;
+      ust('nazwa', (pelne && g.nazwa) || b.nazwa, pelne && g.nazwa ? zG : zBazy); ust('adres', (g && g.adres) || adresBazy, g && g.adres ? zG : zBazy); ust('nip', b.nip, zBazy);
+      ust('regon', g && g.regon, zG); ust('krs', '', recz);
+      if (pelne && g.wlasciciel) { F.wlasciciel = g.wlasciciel; F.zrodla.wlasciciel = zG; }
     } else {
       ust('nazwa', rej.nazwa || b.nazwa, rej.nazwa ? zRej : zBazy); ust('adres', rej.adres || adresBazy, rej.adres ? zRej : zBazy);
       ust('nip', rej.nip || b.nip, rej.nip ? zRej : zBazy); ust('krs', rej.krs, zRej); ust('regon', rej.regon, zRej);

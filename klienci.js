@@ -1,6 +1,6 @@
 /* Baza klientów: the office's register of clients and the master of the clients list (administrators
    add and edit clients here; every change is recorded) — who is served and since when, what the
-   registers (KRS, REGON) say about each firm, and the contracts with an audit of what is missing.
+   registers (KRS, CEIDG, REGON, MF's VAT register) say about each firm, and the contracts with an audit of what is missing.
    Everything comes from the `klienci-baza` edge function (one `lista` call); the function alone
    changes the service status and reads the registers. Contract scans are handled like the personnel
    files (akta.js): the file goes to the private bucket klienci-umowy, a row to klienci_umowy, the
@@ -116,10 +116,13 @@
     var s = STATUS[k.status] || [k.status, 'p-grey'];
     return '<span class="pill ' + s[1] + '">' + esc(s[0]) + (k.status === 'zakonczony' && k.koniec_od ? ' od ' + pl(k.koniec_od) : '') + '</span>';
   }
+  // where a firm's register data came from: KRS, or — for a sole trader — CEIDG, REGON (GUS) or MF's VAT register
+  var ZRODLA = { krs: ['KRS', 'KRS (rejestr.io)'], ceidg: ['CEIDG', 'CEIDG'], gus: ['REGON', 'GUS (REGON)'], mf: ['Wykaz VAT', 'Wykaz VAT (MF) — dane podstawowe'] };
+  function zrodlo(r, dlugie) { return (ZRODLA[r && r.zrodlo] || ZRODLA.gus)[dlugie ? 1 : 0]; }
   function rejPill(k) {
     var r = k.rej, o = ostrz(k);
     if (!r) return o && k.status !== 'zakonczony' ? '<span class="pill p-amber">ostrzeżenia: ' + o + '</span><small>dane nie pobrane</small>' : '<span class="pill p-grey">nie pobrano</span>';
-    return '<span class="pill ' + (o ? 'p-amber' : 'p-ok') + '">' + (o ? 'ostrzeżenia: ' + o : (r.zrodlo === 'krs' ? 'KRS' : 'REGON') + ' — bez uwag') + '</span><small>' + (r.znaleziono ? (r.krs ? 'KRS ' + esc(r.krs) + ' · ' : '') + 'stan na ' + pl(r.sprawdzono_at) : 'nie znaleziono') + '</small>';
+    return '<span class="pill ' + (o ? 'p-amber' : 'p-ok') + '">' + (o ? 'ostrzeżenia: ' + o : zrodlo(r) + ' — bez uwag') + '</span><small>' + (r.znaleziono ? (r.krs ? 'KRS ' + esc(r.krs) + ' · ' : '') + 'stan na ' + pl(r.sprawdzono_at) : 'nie znaleziono') + '</small>';
   }
   function umPills(k) {
     var a = k.audyt; if (!a) return '';
@@ -317,16 +320,22 @@
       if (ja.admin) h += '<div class="acts" style="margin-top:8px">' + (mozeGrupe(k) ? '<button type="button" class="mini ok" data-c="tgNowa">Utwórz grupę Telegram…</button>' : '') + '<button type="button" class="mini" data-c="tg">Sprawdź teraz</button><span class="sub" id="tgMsg"></span></div>';
     }
 
-    h += '<h4>Rejestr' + (r ? ' — ' + (r.zrodlo === 'krs' ? 'KRS (rejestr.io)' : 'REGON (GUS)') : '') + '</h4>';
+    h += '<h4>Rejestr' + (r ? ' — ' + zrodlo(r, true) : '') + '</h4>';
     if ((k.ostrzezenia || []).length) h += '<ul class="chk">' + k.ostrzezenia.map(function (o) { return '<li class="s-uwaga"><i>!</i><span>' + esc(o) + '</span></li>'; }).join('') + '</ul>';
     if (r && r.znaleziono) {
-      h += dl([['Nazwa', r.nazwa], ['Forma prawna', r.forma], ['KRS', r.krs], ['REGON', r.regon], ['Data rejestracji', pl(r.data_rejestracji)], ['Kapitał zakładowy', r.kapital != null ? zl(r.kapital) : ''], ['Adres siedziby', r.adres],
-        ['Przeważająca działalność', r.pkd], ['Stan', r.stan], ['Organ reprezentacji', r.organ], ['Sposób reprezentacji', r.reprezentacja],
+      var j = r.zrodlo !== 'krs' ? (r.jdg || {}) : null;
+      h += dl([['Źródło danych', j ? zrodlo(r, true) : ''], ['Nazwa', r.nazwa], ['Przedsiębiorca', j && j.wlasciciel], ['Forma prawna', r.forma], ['KRS', r.krs], ['REGON', r.regon], [j ? 'Data rozpoczęcia działalności' : 'Data rejestracji', pl(r.data_rejestracji)], ['Kapitał zakładowy', r.kapital != null ? zl(r.kapital) : ''],
+        [j ? 'Adres działalności' : 'Adres siedziby', r.adres], ['Adres do doręczeń', j && j.adres_doreczen],
+        ['Przeważająca działalność', r.pkd], ['Pozostałe kody PKD', j && (j.pkd || []).map(function (p) { return p.kod; }).filter(function (kod) { return String(r.pkd || '').indexOf(kod) !== 0; }).join(', ')],
+        ['Stan', r.stan], ['Zawieszenie działalności', j && pl(j.data_zawieszenia)], ['Wznowienie działalności', j && pl(j.data_wznowienia)], ['Zakończenie działalności', j && pl(j.data_zakonczenia)], ['Wykreślenie z CEIDG', j && pl(j.data_wykreslenia)],
+        ['Status VAT', j && j.status_vat ? j.status_vat + (j.vat_od ? ' (od ' + pl(j.vat_od) + ')' : '') + (j.vat_wykreslenie ? ', wykreślenie ' + pl(j.vat_wykreslenie) : '') : ''],
+        ['Organ reprezentacji', r.organ], ['Sposób reprezentacji', r.reprezentacja],
         ['Stan na dzień', pl(r.sprawdzono_at) + (r.fetched_at && pl(r.fetched_at) !== pl(r.sprawdzono_at) ? ' (bez zmian od ' + pl(r.fetched_at) + ')' : '')]]);
       h += osoby('Organ reprezentacji', r.zarzad, ['Funkcja', function (p) { return low(p.funkcja); }]);
       h += osoby('Wspólnicy', r.wspolnicy, ['Udziały', function (p) { return p.opis ? low(p.opis) : p.udzialy != null ? String(p.udzialy) : ''; }]);
       h += osoby('Prokurenci', r.prokurenci, ['Rodzaj prokury', function (p) { return low(p.rodzaj); }]);
-      if (r.zrodlo === 'gus') h += '<p class="hint" style="margin-top:8px">Działalność jednoosobowa nie figuruje w KRS — rejestr REGON podaje nazwę, numer i adres. Beneficjentów rzeczywistych (CRBR) portal nie pobiera.</p>';
+      if (r.zrodlo === 'mf') h += '<p class="hint warn" style="margin-top:8px">To są dane podstawowe z Wykazu podatników VAT (Ministerstwo Finansów): nazwa, REGON, adres i status VAT. Pełniejsze dane — kody PKD, data rozpoczęcia, zawieszenie i wznowienie działalności, imię i nazwisko przedsiębiorcy — pojawią się po podłączeniu CEIDG; portal sam zastąpi wtedy ten zapis.</p>';
+      else if (r.zrodlo !== 'krs') h += '<p class="hint" style="margin-top:8px">Działalność jednoosobowa nie figuruje w KRS — dane pochodzą z ' + (r.zrodlo === 'ceidg' ? 'CEIDG' : 'rejestru REGON (GUS)') + '. Beneficjentów rzeczywistych (CRBR) portal nie pobiera.</p>';
       if ((r.zmiany || []).length) h += '<p class="sub" style="margin:10px 0 2px">Zmiany od poprzedniego pobrania (' + pl(r.fetched_at) + '):</p>' + zmianyHtml(r.zmiany);
       (k.rej_historia || []).filter(function (x) { return (x.zmiany || []).length; }).forEach(function (x) { h += '<p class="sub" style="margin:10px 0 2px">Wcześniej, ' + pl(x.fetched_at) + ':</p>' + zmianyHtml(x.zmiany); });
     } else if (!r && !(k.ostrzezenia || []).some(function (o) { return /nie zostały jeszcze pobrane/.test(o); })) h += '<p class="hint">Dane z rejestru nie zostały jeszcze pobrane.</p>';
@@ -365,11 +374,11 @@
     } catch (e) { alert('Nie udało się pobrać odpisu: ' + (e.message || e)); }
     b.disabled = false;
   }
-  // the provider's refusal in words: sole traders are read from REGON through DataPort, whose key may be switched off
+  // the provider's refusal in words: sole traders are read from CEIDG, then REGON (DataPort), then MF's VAT register
   function bladRejestru(t) {
     t = String(t || '');
-    return /DataPort/i.test(t) && /nieaktywn|brak konfiguracji|inactive/i.test(t)
-      ? t + '. Dane działalności jednoosobowych (REGON) będą dostępne po aktywacji klucza DataPort biura — to nie jest błąd danych klienta; spółki z KRS pobierają się normalnie.' : t;
+    return /DataPort|CEIDG/i.test(t) && /nieaktywn|brak konfiguracji|inactive|token odrzucony/i.test(t) && !/dokończ jutro/.test(t)
+      ? t + '. To nie jest błąd danych klienta — źródło danych działalności jednoosobowych (CEIDG / GUS) nie przyjęło klucza biura; spółki z KRS pobierają się normalnie.' : t;
   }
   $('kartaBody').addEventListener('click', async function (e) {
     var k = klient(otwarta), b = e.target.closest('[data-c]');
@@ -388,11 +397,11 @@
       }
       else if (c === 'up') { $('hintKl').value = k.id; plikiDla = k.id; $('file').click(); }
       else if (c === 'rej') {
-        if (!confirm('Pobrać aktualne dane z rejestru dla „' + k.nazwa + '”?' + (k.rej && k.rej.zrodlo === 'gus' ? '' : ' Pobranie z KRS (rejestr.io) jest płatne — ok. ' + zl(3 * cena) + '.'))) return;
+        if (!confirm('Pobrać aktualne dane z rejestru dla „' + k.nazwa + '”?' + (k.rej && k.rej.zrodlo !== 'krs' ? '' : ' Pobranie z KRS (rejestr.io) jest płatne — ok. ' + zl(3 * cena) + '.'))) return;
         b.disabled = true; b.textContent = 'Pobieram…';
         var r = await api('rejestr', { id: k.id });
         await wczytaj();
-        var m = $('kMsg'); if (m) m.textContent = r.error || r.blad ? 'Nie udało się: ' + bladRejestru(r.error || r.blad) : r.zmiany ? 'Pobrano — są zmiany (' + r.zmiany + ').' : 'Pobrano — bez zmian.';
+        var m = $('kMsg'); if (m) m.textContent = r.error || r.blad ? 'Nie udało się: ' + bladRejestru(r.error || r.blad) : (r.zmiany ? 'Pobrano — są zmiany (' + r.zmiany + ').' : 'Pobrano — bez zmian.') + (r.podstawowe ? ' Źródło: Wykaz VAT (MF) — dane podstawowe.' : '');
       }
       return;
     }
@@ -564,10 +573,16 @@
     $('rjGo').disabled = true; $('rjPlan').textContent = 'Liczę…'; $('rjMsg').textContent = '';
     var p = await api('rejestr_wszystkie', Object.assign({ dry: true }, rjBody()));
     if (p.error) { $('rjPlan').textContent = p.error; return null; }
-    var pm = p.pominiete || {};
+    var pm = p.pominiete || {}, jd = p.jdg || {};
+    // sole traders: which source will answer, and — with MF's VAT register alone — its daily share
+    var skad = jd.ceidg ? 'CEIDG (bezpłatnie)' : jd.gus ? 'rejestru REGON (GUS, DataPort — według planu DataPort biura)' : 'Wykazu podatników VAT (MF, bezpłatnie — dane podstawowe)';
+    var mfOpis = 'najwyżej ' + jd.mf_limit + ' firm dziennie (dziś zostało ' + jd.mf_zostalo_dzis + ')';
+    var jdgOpis = !p.gus_firm ? '' : '<br>Działalności jednoosobowe: ' + p.gus_firm + ' z ' + skad + '. ' + (jd.tylko_mf
+      ? 'CEIDG nie jest jeszcze podłączony, więc portal pobierze z Wykazu VAT nazwę, REGON, adres i status VAT — ' + mfOpis + (jd.mf_dni > 1 ? '; całość zajmie ok. ' + jd.mf_dni + ' dni — po wyczerpaniu limitu pobieranie zatrzyma się, dokończ jutro' : '') + '. Po podłączeniu CEIDG te zapisy zostaną zastąpione pełnymi danymi.'
+      : 'Gdy to źródło nie odpowie, portal sięgnie po dane podstawowe z Wykazu VAT (MF) — ' + mfOpis + '.' + (jd.ulepszen ? ' W tym ' + jd.ulepszen + ' zapisów z Wykazu VAT do zastąpienia pełnymi danymi.' : ''));
     $('rjPlan').innerHTML = !p.firm ? 'Nie ma nic do pobrania — dane wszystkich klientów są aktualne.' :
-      '<b>Do pobrania: ' + p.firm + ' firm</b> — ' + p.krs_firm + ' z KRS (rejestr.io), ' + p.gus_firm + ' z rejestru REGON (GUS).<br>' +
-      'Zapytań do rejestr.io: ' + p.zapytan_rejestr_io + ' × ' + zl(p.cena) + ' = <b>ok. ' + zl(p.koszt_zl) + '</b>' + (p.zapytan_gus ? '; zapytań do GUS (DataPort): ' + p.zapytan_gus + ' — według planu DataPort biura' : '') + '.';
+      '<b>Do pobrania: ' + p.firm + ' firm</b> — ' + p.krs_firm + ' z KRS (rejestr.io), ' + p.gus_firm + ' działalności jednoosobowych i innych spoza KRS.<br>' +
+      'Zapytań do rejestr.io: ' + p.zapytan_rejestr_io + ' × ' + zl(p.cena) + ' = <b>ok. ' + zl(p.koszt_zl) + '</b>.' + jdgOpis;
     $('rjPlan').innerHTML += '<br><span class="sub">Pominięto: ' + [pm.swieze + ' sprawdzonych niedawno', pm.bez_nip + ' bez poprawnego NIP', pm.zakonczone + ' z zakończoną obsługą'].concat(pm.po_bledzie ? [pm.po_bledzie + ' po błędzie w ostatniej godzinie'] : []).join(', ') + '.</span>';
     $('rjGo').disabled = !p.firm; $('rjGo').textContent = p.firm ? 'Pobierz (ok. ' + zl(p.koszt_zl) + ')' : 'Pobierz';
     return p;
@@ -581,22 +596,22 @@
     if (!confirm('Pobrać dane ' + p.firm + ' firm? Szacowany koszt rejestr.io: ok. ' + zl(p.koszt_zl) + '.')) return;
     rjTrwa = true; rjStop = false; this.disabled = true; $('rjDni').disabled = $('rjZak').disabled = true; $('rjCancel').textContent = 'Zatrzymaj';
     $('rjProg').hidden = false;
-    var razem = p.firm, zrobione = 0, bledy = [], zmiany = 0, przerwano = '';
+    var razem = p.firm, zrobione = 0, bledy = [], zmiany = 0, przerwano = '', jutro = false;
     // the function reads a few firms per call; the number of calls is bounded by the plan
     for (var i = 0; i < Math.ceil(razem / (p.na_raz || 5)) + 2 && !rjStop; i++) {
       var r = await api('rejestr_wszystkie', Object.assign({ dry: false }, rjBody()));
       if (r.error) { $('rjMsg').textContent = r.error; break; }
-      (r.zrobione || []).forEach(function (x) { if (x.ok) zrobione++; if (!x.ok) bledy.push(x.nazwa + ' — ' + (x.blad || 'błąd')); else if (x.zmiany) zmiany++; });
+      (r.zrobione || []).forEach(function (x) { if (x.ok) zrobione++; if (!x.ok && x.jutro) return; if (!x.ok) bledy.push(x.nazwa + ' — ' + (x.blad || 'błąd')); else if (x.zmiany) zmiany++; });
       $('rjBar').style.width = Math.min(100, Math.round(zrobione / razem * 100)) + '%';
       $('rjTxt').textContent = 'Pobrano ' + zrobione + ' z ' + razem + (bledy.length ? ' · błędy: ' + bledy.length : '');
       // the provider refused (inactive key, limit, outage) or the daily cap was reached: asking on is pointless
-      if (r.przerwano) { przerwano = r.przerwano; break; }
+      if (r.przerwano) { przerwano = r.przerwano; jutro = r.jutro === true; break; }
       if (!(r.zrobione || []).length || !r.pozostalo) break;
     }
     rjTrwa = false; $('rjDni').disabled = $('rjZak').disabled = false; $('rjCancel').disabled = false; $('rjCancel').textContent = 'Zamknij';
-    $('rjTxt').textContent = (przerwano ? 'Przerwano — dostawca danych odmówił. ' : rjStop ? 'Zatrzymano. ' : 'Gotowe. ') + 'Pobrano ' + zrobione + ' z ' + razem + (zmiany ? ' · zmiany w rejestrze: ' + zmiany : '') + (bledy.length ? ' · błędy: ' + bledy.length : '');
+    $('rjTxt').textContent = (jutro ? 'Dzienny limit Wykazu VAT wyczerpany — dokończ jutro. ' : przerwano ? 'Przerwano — dostawca danych odmówił. ' : rjStop ? 'Zatrzymano. ' : 'Gotowe. ') + 'Pobrano ' + zrobione + ' z ' + razem + (zmiany ? ' · zmiany w rejestrze: ' + zmiany : '') + (bledy.length ? ' · błędy: ' + bledy.length : '');
     await wczytaj(); await rjPlan();
-    $('rjMsg').textContent = przerwano ? 'Pobieranie przerwane: ' + bladRejestru(przerwano) : bledy.slice(0, 8).join('; ');
+    $('rjMsg').textContent = jutro ? przerwano : przerwano ? 'Pobieranie przerwane: ' + bladRejestru(przerwano) : bledy.slice(0, 8).join('; ');
   });
   $('rej').addEventListener('click', function (e) { if (e.target === $('rej') && !rjTrwa) $('rej').hidden = true; });
 

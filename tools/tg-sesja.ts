@@ -46,8 +46,15 @@ function ukryte(etykieta: string): string {
 const kod = (e: unknown) => { const k = String((e as { errorMessage?: string })?.errorMessage ?? ""); return /^[A-Z][A-Z0-9_]{2,60}$/.test(k) ? k : "błąd połączenia"; };
 
 function dostep(): { id: number; hash: string } {
-  const id = Number(Deno.env.get("TG_API_ID") || pytaj("api id aplikacji Telegram (my.telegram.org):"));
-  const hash = Deno.env.get("TG_API_HASH") || ukryte("api hash (nie będzie widoczny):");
+  // the office's bot project already holds the application's id and hash — take them from there when not given
+  const zPliku: Record<string, string> = {};
+  try {
+    for (const l of Deno.readTextFileSync((Deno.env.get("HOME") ?? "") + "/Claude/td-accounting-bot/.env").split("\n")) {
+      const m = l.match(/^(TG_API_ID|TG_API_HASH)=\s*["']?([^"'\s#]+)/); if (m) zPliku[m[1]] = m[2];
+    }
+  } catch { /* no such file: ask */ }
+  const id = Number(Deno.env.get("TG_API_ID") || zPliku.TG_API_ID || pytaj("api id aplikacji Telegram (my.telegram.org):"));
+  const hash = Deno.env.get("TG_API_HASH") || zPliku.TG_API_HASH || ukryte("api hash (nie będzie widoczny):");
   if (!Number.isInteger(id) || id <= 0 || !/^[0-9a-f]{32}$/i.test(hash)) { console.error("Nieprawidłowe api id albo api hash (hash to 32 znaki szesnastkowe)."); Deno.exit(1); }
   return { id, hash };
 }

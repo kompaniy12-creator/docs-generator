@@ -157,6 +157,24 @@ export function wyciagGus(d: Any): Wyciag {
     stan: koniec ? "wykreślona" : zaw && !(wzn && String(wzn) > String(zaw)) ? "zawieszona" : "aktywna",
   };
 }
+// from a sole trader's normalised record (_shared/jdg.ts: CEIDG, GUS or — basic data only — MF's VAT register)
+export function wyciagJdg(j: Any): Wyciag {
+  const pusty = wyciagKrs(null);
+  if (!j || j.znaleziono !== true) return pusty;
+  return {
+    ...pusty, znaleziono: true, regon: txt(j.regon, 14), nazwa: txt(j.nazwa), forma: txt(j.forma, 120),
+    data_rejestracji: isDate(j.data_rozpoczecia) ? j.data_rozpoczecia : null, adres: txt(j.adres), pkd: txt(j.pkd_glowne, 300),
+    // MF does not say whether the business is active: the state stays unknown rather than "aktywna"
+    stan: txt(j.status, 80),
+  };
+}
+// a snapshot of a sole trader (any source but KRS)
+export const zJdg = (zrodlo: unknown) => zrodlo != null && zrodlo !== "krs";
+// MF's share of the day: MF allows 100 "search" requests a day; the bulk refresh takes at most this many,
+// single lookups (forms, contracts) may go a little further, the rest is left to the VAT tool
+export const MF_DZIENNIE = 60;
+export const MF_DZIENNIE_POJEDYNCZE = 80;
+export const MF_KLUCZ = "mf-search";
 
 const osoba = (p: Any) => [p.imie, p.nazwisko].filter(Boolean).join(" ").toUpperCase().trim() || String(p.imie_nazwisko ?? "").toUpperCase().trim();
 const POLA: Array<[keyof Wyciag, string]> = [
@@ -196,24 +214,36 @@ export function roznice(prev: Wyciag | null, next: Wyciag): Zmiana[] {
 // ---------------------------------------------------------------- register refresh: plan and cost
 // rejestr.io is paid per request (about 0.05 zł each, per the office's price list — confirm in the account).
 export const CENA_REJESTR_IO = 0.05;
-export type PlanPoz = { id: string; nazwa: string; zrodlo: "krs" | "gus"; zapytan: number };
-export type Plan = { pozycje: PlanPoz[]; pominiete: { swieze: number; bez_nip: number; zakonczone: number; po_bledzie: number }; krs_firm: number; gus_firm: number; zapytan_rejestr_io: number; zapytan_gus: number; koszt_zl: number };
-// klienci: rows of klienci_baza with `rej_at` (last confirmed snapshot); cache: NIP -> when portal_firmy_cache got it
-export function planOdswiezenia(klienci: Any[], cache: Record<string, string>, dni: number, teraz: number, zZakonczonymi = false): Plan {
+// `ulepszenie`: a recent snapshot that holds only MF's basic data, to be replaced from a fuller source
+export type PlanPoz = { id: string; nazwa: string; zrodlo: "krs" | "gus"; zapytan: number; ulepszenie?: boolean };
+export type Plan = { pozycje: PlanPoz[]; pominiete: { swieze: number; bez_nip: number; zakonczone: number; po_bledzie: number }; krs_firm: number; gus_firm: number; ulepszen: number; zapytan_rejestr_io: number; zapytan_gus: number; koszt_zl: number };
+// klienci: rows of klienci_baza with `rej_at` (last confirmed snapshot) and `rej_zrodlo` (where it came from);
+// cache: NIP -> when portal_firmy_cache got it; pelne: a fuller source for sole traders (CEIDG / GUS) is configured
+export function planOdswiezenia(klienci: Any[], cache: Record<string, string>, dni: number, teraz: number, zZakonczonymi = false, pelne = false): Plan {
   const stare = (iso: string | null | undefined) => !iso || teraz - Date.parse(iso) > dni * 86400000;
-  const p: Plan = { pozycje: [], pominiete: { swieze: 0, bez_nip: 0, zakonczone: 0, po_bledzie: 0 }, krs_firm: 0, gus_firm: 0, zapytan_rejestr_io: 0, zapytan_gus: 0, koszt_zl: 0 };
+  const p: Plan = { pozycje: [], pominiete: { swieze: 0, bez_nip: 0, zakonczone: 0, po_bledzie: 0 }, krs_firm: 0, gus_firm: 0, ulepszen: 0, zapytan_rejestr_io: 0, zapytan_gus: 0, koszt_zl: 0 };
+  // KRS firms first: MF's daily share running out among the sole traders must not hold them back
+  const jdg: PlanPoz[] = [], ulepszenia: PlanPoz[] = [];
   for (const k of klienci) {
     if (k.status === "zakonczony" && !zZakonczonymi) { p.pominiete.zakonczone++; continue; }
     if (!nipOk(digits(k.nip))) { p.pominiete.bez_nip++; continue; }
-    if (!stare(k.rej_at)) { p.pominiete.swieze++; continue; }
+    if (!stare(k.rej_at)) {
+      // MF's basic record is not "fresh" once CEIDG / GUS can be asked — but not more often than once a day,
+      // and after everything else (a fuller source that still refuses ends the run there)
+      if (pelne && k.rej_zrodlo === "mf" && formaTyp(k.forma) !== "krs" && teraz - Date.parse(k.rej_at) > 86400000 && !(k.rejestr_at && teraz - Date.parse(k.rejestr_at) < 86400000)) ulepszenia.push({ id: k.id, nazwa: k.nazwa, zrodlo: "gus", zapytan: 1, ulepszenie: true });
+      else p.pominiete.swieze++;
+      continue;
+    }
     // a firm whose reading has just failed is not asked again within the hour (no paid loop on a broken record)
     if (k.rejestr_blad && k.rejestr_at && teraz - Date.parse(k.rejestr_at) < 3600000) { p.pominiete.po_bledzie++; continue; }
     if (formaTyp(k.forma) === "krs") {
       // getFirma: 2 requests (basic record + KRS chapter), none when our cache is recent; + 1 for the basic record kept in full
       const z = (stare(cache[digits(k.nip)]) ? 2 : 0) + 1;
       p.pozycje.push({ id: k.id, nazwa: k.nazwa, zrodlo: "krs", zapytan: z }); p.krs_firm++; p.zapytan_rejestr_io += z;
-    } else { p.pozycje.push({ id: k.id, nazwa: k.nazwa, zrodlo: "gus", zapytan: 1 }); p.gus_firm++; p.zapytan_gus++; }
+    } else { jdg.push({ id: k.id, nazwa: k.nazwa, zrodlo: "gus", zapytan: 1 }); p.gus_firm++; p.zapytan_gus++; }
   }
+  p.pozycje.push(...jdg);
+  for (const u of ulepszenia) { p.pozycje.push(u); p.gus_firm++; p.zapytan_gus++; p.ulepszen++; }
   p.koszt_zl = Math.round(p.zapytan_rejestr_io * CENA_REJESTR_IO * 100) / 100;
   return p;
 }
@@ -225,7 +255,12 @@ export function ostrzezeniaRejestru(k: Any, rej: Any | null, teraz: number, szcz
   if (!nipOk(digits(k.nip))) { if (k.status !== "zakonczony") o.push("Brak NIP klienta — nie można sprawdzić rejestru."); return o; }
   if (k.rejestr_blad) o.push("Ostatnie pobranie z rejestru nie powiodło się" + (szczegoly ? ": " + k.rejestr_blad : "."));
   if (!rej) { if (!k.rejestr_blad) o.push("Dane z rejestru nie zostały jeszcze pobrane."); return o; }
-  if (!rej.znaleziono) { o.push(rej.zrodlo === "krs" ? "Nie znaleziono firmy w KRS pod tym NIP." : "Nie znaleziono firmy w rejestrze REGON pod tym NIP."); return o; }
+  if (!rej.znaleziono) {
+    // MF lists VAT payers only: a firm it does not know may well exist
+    o.push(rej.zrodlo === "krs" ? "Nie znaleziono firmy w KRS pod tym NIP." : rej.zrodlo === "ceidg" ? "Nie znaleziono firmy w CEIDG pod tym NIP."
+      : rej.zrodlo === "mf" ? "Brak w wykazie podatników VAT (MF) — to nie oznacza, że firma nie istnieje; pełne dane po podłączeniu CEIDG." : "Nie znaleziono firmy w rejestrze REGON pod tym NIP.");
+    return o;
+  }
   if (rej.stan && rej.stan !== "aktywna") o.push("Stan firmy według rejestru: " + rej.stan + ".");
   const a = nazwaKlucz(k.nazwa), b = nazwaKlucz(rej.nazwa);
   if (a && b && a !== b && !nazwaZawiera(a, b)) o.push("Nazwa klienta różni się od nazwy w rejestrze („" + rej.nazwa + "”).");
@@ -328,13 +363,13 @@ export function audytKlienta(k: Any, rejestry: Any[], wszystkie: Any[], dzis: st
       const krsU = digits(u.kontrahent_krs).replace(/^0+/, ""), krsR = digits(rej.krs).replace(/^0+/, "");
       if (krsU && krsR && krsU !== krsR) poz.push({ kod: "strony", stan: "uwaga", tekst: "Numer KRS w umowie (" + u.kontrahent_krs + ") różni się od numeru w rejestrze (" + rej.krs + ")." });
       else if (!a) poz.push({ kod: "strony", stan: "uwaga", tekst: "Nie odczytano nazwy klienta z umowy " + opis(u) + " — do sprawdzenia." });
-      else if (a === b || nazwaZawiera(a, b) || (rej.zrodlo === "gus" && (a === c || nazwaZawiera(a, c)))) poz.push({ kod: "strony", stan: "ok", tekst: "Strona umowy zgodna z rejestrem (" + rej.nazwa + ")." });
+      else if (a === b || nazwaZawiera(a, b) || (zJdg(rej.zrodlo) && (a === c || nazwaZawiera(a, c)))) poz.push({ kod: "strony", stan: "ok", tekst: "Strona umowy zgodna z rejestrem (" + rej.nazwa + ")." });
       else poz.push({ kod: "strony", stan: "uwaga", tekst: "Nazwa klienta w umowie („" + u.kontrahent + "”) różni się od aktualnej nazwy w rejestrze („" + rej.nazwa + "”) — do sprawdzenia (zmiana firmy, przekształcenie?)." });
 
       // who signed: the register as it stood on the day of signing, when one of our snapshots covers that day
       const podp: string[] = (Array.isArray(u.reprezentanci) ? u.reprezentanci : []).map((r: Any) => String(r.imie_nazwisko ?? "")).filter(Boolean);
       if (!podp.length) poz.push({ kod: "reprezentacja", stan: "uwaga", tekst: "Nie odczytano, kto podpisał umowę za klienta — do sprawdzenia." });
-      else if (rej.zrodlo === "gus") {
+      else if (zJdg(rej.zrodlo)) {
         const wl = podp.some((p) => nazwaZawiera(osobaKlucz(p), norm(rej.nazwa)) || nazwaZawiera(osobaKlucz(p), norm(k.nazwa)));
         poz.push(wl ? { kod: "reprezentacja", stan: "ok", tekst: "Umowę podpisał przedsiębiorca (" + podp.join(", ") + ")." }
           : { kod: "reprezentacja", stan: "uwaga", tekst: "Umowę podpisał(a) " + podp.join(", ") + " — nazwisko nie występuje w nazwie firmy; sprawdź pełnomocnictwo." });
