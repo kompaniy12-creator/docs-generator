@@ -3,11 +3,22 @@
 //
 //   lista                                  any portal user
 //     -> { ja, klienci: [{ ...client, rej, rej_historia, ostrzezenia, odpis, kontakt?, audyt?, historia? }], umowy?, cena }
-//     Brings the list up to date with the clients sheet first (at most every 30 minutes; never deletes).
+//     The portal is the master of the clients list (table portal_klienci, edited with klient_zapisz below);
+//     klienci_baza is kept in step with it (checked at most every 30 minutes; never deletes).
 //     A user who is not an administrator gets a fixed set of columns (no "who changed", no upstream error
 //     texts); contact data and sole traders' addresses only for the Kadry section (as in klienci-list);
 //     contracts, the audit and the status history only for administrators.
-//   sync                                   administrator — the same update, at once
+//   sync                                   administrator — the same check, at once
+//   klient_zapisz      { id?, dane, dry?, potwierdz_nip? }   administrator — adds a client (no id) or changes one.
+//     dry: true answers with what would change and saves nothing. Every save is one transaction that also
+//     moves the client's id when its NIP (or, without a NIP, its name) changes, and appends who changed what.
+//     Changing the NIP of a client that already had one needs potwierdz_nip: other modules keep their rows
+//     under the old NIP (the answer says how many). Clients are never deleted — service is ended instead.
+//   telegram_sprawdz   { id } | { wszystkie: true, od }   administrator — the Telegram audit, now
+//   telegram_ustawienia { boty: [{ nazwa, user_id }] }    administrator — bots required in every group
+//   telegram_cron                          x-cron-key — the daily audit, a batch per call; when a run is complete
+//                                          and something got worse, ONE task for the administrator (never a
+//                                          message to a client's group). Telegram is only ever read.
 //   rejestr            { id, fresh? }      administrator — reads the register for one client (paid);
 //                                          once a day per client, and within the daily cap of requests
 //   rejestr_wszystkie  { dry, dni?, z_zakonczonymi? }   administrator
@@ -25,12 +36,12 @@
 // Register data: KRS firms through _shared/firma.ts (rejestr.io, paid per request) plus rejestr.io's basic
 // record kept in full; sole traders are not in KRS — they are read from GUS (REGON) through DataPort.
 
-import { loadKlienciRows } from "../_shared/klienci.ts";
 import { firmaConfigured, getFirma } from "../_shared/firma.ts";
 import {
-  audytKlienta, bezDanychOsobowych, CENA_REJESTR_IO, csvBraki, digits, dopasuj, formaTyp, isDate, klientId, nipOk, odcisk, ostrzezeniaRejestru,
-  pewnyKlient, planOdswiezenia, roznice, type Wyciag, wyciagGus, wyciagKrs, zakres,
+  audytKlienta, bezDanychOsobowych, CENA_REJESTR_IO, csvBraki, digits, dopasuj, formaTyp, FORMY_LISTA, isDate, JEZYKI_LISTA, klientId, nipOk, odcisk, ostrzezeniaRejestru, POLA_KLIENTA,
+  pewnyKlient, planOdswiezenia, roznice, type Wyciag, walidujKlienta, wyciagGus, wyciagKrs, zakres, zmianyKlienta,
 } from "./logic.ts";
+import { Limit, type Metoda, METODY, pogorszenie, powtorzoneCzaty, PROBLEM, sprawdzCzat, type Status, trescZadania, tytulPasuje, type Wynik, wymaganeBoty } from "./telegram.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -39,10 +50,16 @@ const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 const REJESTR_IO_KEY = Deno.env.get("REJESTR_IO_KEY") ?? "";
 const DATAPORT_KEY = Deno.env.get("DATAPORT_API_KEY") ?? "";
 const BIURO_NIP = Deno.env.get("BIURO_NIP") ?? "7831916366";
+const TG_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
+const CRON_KEY = Deno.env.get("CRON_KEY") ?? "";
 const MODEL = "claude-opus-4-8";
 const BUCKET = "klienci-umowy";
 const MAX_BYTES = 24 * 1024 * 1024;
-const SYNC_MIN = 30;       // the list follows the clients sheet at most this often
+const SYNC_MIN = 30;       // klienci_baza is checked against the list at most this often (a save updates it at once)
+const TG_ODSTEP_MS = 150;  // pause between Bot API calls: well under Telegram's limits
+const TG_NA_RAZ = 40;      // groups checked in one call
+const TG_BUDZET_MS = 90000;
+const TG_USTAWIENIA = "klienci_telegram"; // key in portal_ustawienia: { boty, przebieg: { start, koniec } }
 const MAX_NA_RAZ = 5;      // firms read from the register in one call of rejestr_wszystkie
 const DNI_DOMYSLNIE = 30;  // a snapshot younger than this is not read again
 const MAX_REJESTR_DZIEN = 300;  // paid register requests a day, everybody together (table klienci_limity)
@@ -95,7 +112,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const okId = (v: unknown): v is string => typeof v === "string" && v.length <= 300 && (/^\d{10}$/.test(v) || /^nazwa:.+/.test(v));
 const REJ_KOL = "id,klient,nip,fetched_at,sprawdzono_at,zrodlo,znaleziono,krs,regon,nazwa,forma,data_rejestracji,kapital,adres,organ,reprezentacja,zarzad,wspolnicy,prokurenci,pkd,stan,zmiany,odcisk";
 
-// ---------------------------------------------------------------- the list follows the clients sheet
+// ---------------------------------------------------------------- klienci_baza follows the list (portal_klienci)
+// the clients as stored: [{ id, dane }]
+const listaKlientow = () => all("portal_klienci?select=id,dane&order=id");
 async function sync(force: boolean): Promise<{ zsynchronizowano: boolean; blad?: string }> {
   if (!force) {
     const r = await db("klienci_baza?select=arkusz_at&arkusz_at=not.is.null&order=arkusz_at.desc&limit=1");
@@ -103,28 +122,159 @@ async function sync(force: boolean): Promise<{ zsynchronizowano: boolean; blad?:
     if (last && Date.now() - Date.parse(last) < SYNC_MIN * 60000) return { zsynchronizowano: false };
   }
   try {
-    const list = await loadKlienciRows();
+    const list = await listaKlientow();
     if (list.length < 3) throw new Error("podejrzanie mało wierszy w bazie klientów"); // never mark everybody as gone on a broken read
     const now = new Date().toISOString(), seen = new Set<string>(), rows: Any[] = [];
     const t = (v: unknown, n = 300) => String(v ?? "").trim().slice(0, n) || null;
-    for (const k of list) {
-      const id = klientId(k);
-      if (seen.has(id) || id === "nazwa:") continue; // the first row of a repeated NIP wins, as in the sheet copy
+    for (const { id, dane: k } of list) {
+      if (!okId(id) || seen.has(id)) continue;
       seen.add(id);
       rows.push({ id, nip: digits(k.nip) || null, nazwa: t(k.nazwa) ?? digits(k.nip), forma: t(k.forma, 120), opodatkowanie: t(k.opodatkowanie, 200), adres: t(k.adres), miasto: t(k.miasto, 120), opiekun: t(k.opiekun, 120), kadrowy: t(k.kadrowy, 120), w_arkuszu: true, arkusz_at: now, brak_od: null });
     }
     // only the columns sent are overwritten: the service status of a client already known stays as it is
     const up = await db("klienci_baza", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(rows) });
     if (!up.ok) throw new Error("zapis listy: " + up.status);
-    // rows that left the sheet are kept and only marked
+    // a row that is no longer on the list (removed in the database by hand) is kept and only marked
     for (const k of await all("klienci_baza?select=id&w_arkuszu=is.true")) {
       if (!seen.has(k.id)) await db(`klienci_baza?id=eq.${enc(k.id)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ w_arkuszu: false, brak_od: now }) });
     }
     return { zsynchronizowano: true };
   } catch (e) {
     console.error("klienci-baza sync", String((e as Error)?.message ?? e));
-    return { zsynchronizowano: false, blad: "Nie udało się odświeżyć listy z arkusza klientów — pokazuję ostatni zapisany stan." };
+    return { zsynchronizowano: false, blad: "Nie udało się sprawdzić listy klientów — pokazuję ostatni zapisany stan." };
   }
+}
+
+// ---------------------------------------------------------------- editing a client
+// how many rows other modules keep under a NIP (they are not moved when a client's NIP changes)
+async function inneModuly(nip: string): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  const gdzie: Array<[string, string]> = [["zamknięcia miesiąca", `ksieg_zamkniecia?nip=eq.${nip}`], ["akta osobowe", `akta_dokumenty?nip=eq.${nip}`], ["konto klienta", `klient_konta?nip=eq.${nip}`],
+    ["pakiety do podpisu", `podpisy_pakiety?nip=eq.${nip}`], ["sprawdzenia VAT", `vat_sprawdzenia?nip=eq.${nip}`], ["poczta", `poczta_wiadomosci?klient_nip=eq.${nip}`], ["wysłane przypomnienia", `portal_powiadomienia?nip=eq.${nip}`],
+    ["szablony umów", `umowa_szablony?nip=eq.${nip}`], ["pracownicy (zgłoszenia)", `zatrudnienie_zgloszenia?payload->>z_nip=eq.${nip}`]];
+  await Promise.all(gdzie.map(async ([nazwa, sciezka]) => {
+    try {
+      const r = await db(sciezka + "&select=*&limit=1", { method: "HEAD", headers: { Prefer: "count=exact" } });
+      const n = Number((r.headers.get("content-range") ?? "").split("/")[1]);
+      if (r.ok && n > 0) out[nazwa] = n;
+    } catch { /* a module that is not there has nothing under the NIP */ }
+  }));
+  return out;
+}
+
+// ---------------------------------------------------------------- Telegram audit (read only)
+let tgOstatnie = 0;
+// The only door to the Bot API: five read methods, a pause between calls, never the token in a log.
+async function tg(metoda: Metoda, params: Record<string, string> = {}): Promise<Any> {
+  if (!METODY.includes(metoda)) throw new Error("metoda niedozwolona");
+  const czekaj = tgOstatnie + TG_ODSTEP_MS - Date.now();
+  if (czekaj > 0) await new Promise((ok) => setTimeout(ok, czekaj));
+  tgOstatnie = Date.now();
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/${metoda}?${new URLSearchParams(params)}`, { signal: AbortSignal.timeout(10000) });
+    return await r.json().catch(() => ({ ok: false, error_code: r.status, description: "HTTP " + r.status }));
+  } catch { return { ok: false, error_code: 0, description: "brak połączenia z Telegramem" }; } // the error text would carry the URL with the token
+}
+const botId = () => (/^(\d{5,15}):/.exec(TG_TOKEN)?.[1] ?? ""); // a bot's id is the part of its token before the colon
+async function tgUstawienia(): Promise<Any> {
+  const r = await db(`portal_ustawienia?key=eq.${TG_USTAWIENIA}&select=value`);
+  return (r.ok ? (await r.json())[0]?.value : null) ?? {};
+}
+async function tgZapiszUstawienia(v: Any) {
+  await db("portal_ustawienia", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ key: TG_USTAWIENIA, value: v, updated_at: new Date().toISOString() }) });
+}
+// stores one result; a status change goes to the history. Trouble reaching Telegram ('blad') does not
+// replace what was known about the group — only the time and the error text are noted.
+async function tgZapisz(klient: string, w: Wynik, prev: Any | null): Promise<{ bylo: string | null; jest: Status } | null> {
+  const now = new Date().toISOString();
+  if (w.status === "blad" && prev && prev.status !== "blad" && prev.chat_id === w.chat_id) {
+    await db(`klienci_telegram?klient=eq.${enc(klient)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ sprawdzono_at: now, blad: w.blad }) });
+    return null;
+  }
+  const zmiana = !prev || prev.status !== w.status;
+  const row = { klient, chat_id: w.chat_id, status: w.status, od: zmiana ? now : prev.od, sprawdzono_at: now, tytul: w.tytul, typ: w.typ, czlonkow: w.czlonkow, bot_status: w.bot_status, boty: w.boty, brak_botow: w.brak_botow, nowe_id: w.nowe_id, blad: w.blad, uwagi: w.uwagi };
+  const up = await db("klienci_telegram", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(row) });
+  if (!up.ok) throw new Error("zapis wyniku Telegram: " + up.status);
+  if (!zmiana) return null;
+  await db("klienci_telegram_historia", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ klient, bylo: prev?.status ?? null, jest: w.status, opis: w.blad }) });
+  return { bylo: prev?.status ?? null, jest: w.status };
+}
+// Checks the clients in service whose result is older than `od` (or all the ids given), a batch per call.
+// Resumable: what was checked is stored at once; a rate limit or the cap simply ends the batch.
+async function tgPartia(od: string, tylko: string | null): Promise<{ sprawdzono: number; pozostalo: number; limit?: number; blad?: string }> {
+  const bot = botId();
+  if (!bot) return { sprawdzono: 0, pozostalo: 0, blad: "Brak konfiguracji bota Telegram (TELEGRAM_BOT_TOKEN)." };
+  const [baza, pk, wyniki, ust] = await Promise.all([all("klienci_baza?select=id,status"), listaKlientow(), all("klienci_telegram?select=*"), tgUstawienia()]);
+  const wSluzbie = new Set(baza.filter((k) => k.status !== "zakonczony").map((k) => k.id));
+  const prev = new Map<string, Any>(wyniki.map((w) => [w.klient, w]));
+  const wymagane = wymaganeBoty(ust.boty);
+  const kolejka = pk.filter((k) => wSluzbie.has(k.id) && (tylko ? k.id === tylko : !prev.has(k.id) || prev.get(k.id).sprawdzono_at < od));
+  const start = Date.now();
+  let sprawdzono = 0, zApi = 0;
+  for (const k of kolejka) {
+    const chat = String(k.dane?.telegram ?? "").trim();
+    // a client without a chat id costs no request and is not counted against the cap
+    if (chat && (zApi >= TG_NA_RAZ || Date.now() - start > TG_BUDZET_MS)) break;
+    try {
+      const w = await sprawdzCzat(tg, chat, bot, wymagane);
+      if (chat) zApi++;
+      await tgZapisz(k.id, w, prev.get(k.id) ?? null);
+      sprawdzono++;
+    } catch (e) {
+      if (e instanceof Limit) return { sprawdzono, pozostalo: kolejka.length - sprawdzono, limit: e.sekund };
+      throw e;
+    }
+  }
+  return { sprawdzono, pozostalo: kolejka.length - sprawdzono };
+}
+// the daily run: a batch per call; when the run is complete, one task about what got worse
+async function tgCron(): Promise<Any> {
+  const ust = await tgUstawienia();
+  let p = ust.przebieg ?? null;
+  if (p?.koniec && Date.now() - Date.parse(p.koniec) < 20 * 3600000) return { nic: true, ostatni: p.koniec };
+  if (!p || p.koniec) { p = { start: new Date().toISOString() }; await tgZapiszUstawienia({ ...ust, przebieg: p }); }
+  const r = await tgPartia(p.start, null);
+  if (r.blad || r.limit || r.pozostalo > 0) return { ...r, start: p.start };
+  // complete: what changed for the worse since the run began (the newest change of each client)
+  const hist = await all(`klienci_telegram_historia?select=klient,bylo,jest,created_at&created_at=gte.${enc(p.start)}&order=created_at.desc`);
+  const nazwy = new Map<string, string>((await all("klienci_baza?select=id,nazwa,status")).filter((k) => k.status !== "zakonczony").map((k) => [k.id, k.nazwa]));
+  const widziani = new Set<string>(), zmiany: Array<{ nazwa: string; bylo: string | null; jest: Status }> = [];
+  for (const h of hist) {
+    if (widziani.has(h.klient) || !nazwy.has(h.klient)) continue;
+    widziani.add(h.klient);
+    if (pogorszenie(h.bylo, h.jest)) zmiany.push({ nazwa: nazwy.get(h.klient)!, bylo: h.bylo, jest: h.jest });
+  }
+  let zadanie = false;
+  if (zmiany.length) {
+    zmiany.sort((a, b) => a.nazwa.localeCompare(b.nazwa, "pl"));
+    const komu = await adminPortalu();
+    if (komu) {
+      // one task per run, for the administrator; created as a hand-made task of "system" so that the
+      // tasks module does not close it as a system task whose reason it does not know
+      const t = trescZadania(zmiany);
+      const ins = await db("portal_zadania?on_conflict=klucz", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
+        body: JSON.stringify({ ...t, created_by: "system", assignee: komu, zrodlo: "reczne", klucz: "tg-audyt:" + p.start.slice(0, 10), termin: new Date().toISOString().slice(0, 10), pilne: false, link: "klienci.html" }) });
+      zadanie = ins.ok;
+    }
+  }
+  await tgZapiszUstawienia({ ...(await tgUstawienia()), przebieg: { start: p.start, koniec: new Date().toISOString(), zmian: zmiany.length } });
+  return { ...r, start: p.start, zakonczono: true, zmian: zmiany.length, zadanie };
+}
+// who gets the alert: the first portal administrator
+async function adminPortalu(): Promise<string> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=200`, { headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` } });
+    const j = r.ok ? await r.json() : {};
+    const u = (j.users ?? []).filter((x: Any) => x?.app_metadata?.portal === true && x.app_metadata.portal_admin === true && x.email).sort((a: Any, b: Any) => String(a.created_at).localeCompare(String(b.created_at)))[0];
+    return u ? String(u.email).toLowerCase() : "";
+  } catch { return ""; }
+}
+function isCron(req: Request) {
+  const k = req.headers.get("x-cron-key") ?? "";
+  if (!CRON_KEY || k.length !== CRON_KEY.length) return false;
+  let diff = 0;
+  for (let i = 0; i < k.length; i++) diff |= k.charCodeAt(i) ^ CRON_KEY.charCodeAt(i);
+  return diff === 0;
 }
 
 // ---------------------------------------------------------------- register
@@ -324,20 +474,25 @@ async function rozpoznaj(id: string, ja: Ja, force: boolean, origin: string | nu
 // ---------------------------------------------------------------- everything the page shows
 async function lista(ja: Ja) {
   const s = await sync(false);
-  const [klienci, rej, odpisy] = await Promise.all([
+  const [klienci, rej, odpisy, pk, tgWyniki] = await Promise.all([
     all("klienci_baza?select=*&order=nazwa"),
     all(`klienci_rejestr?select=${REJ_KOL}&order=fetched_at.desc`),
     all("portal_odpisy_cache?select=krs,fetched_at"),
+    listaKlientow(),
+    all("klienci_telegram?select=*"),
   ]);
+  const dane = new Map<string, Any>(pk.map((x) => [x.id, x.dane ?? {}]));
+  const tgBy = new Map<string, Any>(tgWyniki.map((w) => [w.klient, w]));
+  const powt = powtorzoneCzaty(klienci.filter((k) => k.status !== "zakonczony").map((k) => ({ nazwa: k.nazwa, telegram: dane.get(k.id)?.telegram })));
   const rejBy = new Map<string, Any[]>();
   for (const r of rej) { const l = rejBy.get(r.klient) ?? []; l.push(r); rejBy.set(r.klient, l); }
   const odpis = new Map<string, string>(odpisy.map((o) => [String(o.krs), String(o.fetched_at)]));
-  let kontakty = new Map<string, Any>();
-  if (ja.kadry) {
-    try { kontakty = new Map((await loadKlienciRows()).map((k) => [klientId(k), { telefon: k.telefon, email: k.email, kontakt: k.kontakt, jezyk: k.jezyk }])); } catch { /* the list still shows without contact data */ }
+  let umowy: Any[] = [], historia: Any[] = [], zmiany: Any[] = [], ust: Any = {}, aliasy: string[] = [];
+  if (ja.admin) {
+    [umowy, historia, zmiany, ust] = await Promise.all([all("klienci_umowy?select=*&order=created_at.desc"), all("klienci_status_historia?select=*&order=created_at.desc"), all("klienci_zmiany?select=*&order=created_at.desc"), tgUstawienia()]);
+    // short names of the staff (module Zespół), when that table is there and filled
+    try { aliasy = (await all("portal_pracownicy?select=aliasy,aktywny")).filter((p) => p.aktywny !== false).flatMap((p) => Array.isArray(p.aliasy) ? p.aliasy : []).map((a) => String(a).trim()).filter(Boolean); } catch { /* no such table yet */ }
   }
-  let umowy: Any[] = [], historia: Any[] = [];
-  if (ja.admin) [umowy, historia] = await Promise.all([all("klienci_umowy?select=*&order=created_at.desc"), all("klienci_status_historia?select=*&order=created_at.desc")]);
   const dzis = new Date().toISOString().slice(0, 10), teraz = Date.now();
   const out = klienci.map((k) => {
     const rs = rejBy.get(k.id) ?? [], r = rs[0] ?? null;
@@ -355,24 +510,58 @@ async function lista(ja: Ja) {
       ostrzezenia: ostrzezeniaRejestru(k, r, teraz, ja.admin),
       odpis: r?.krs && odpis.has(String(r.krs).padStart(10, "0")) ? odpis.get(String(r.krs).padStart(10, "0")) : null,
     };
-    if (ja.kadry) o.kontakt = kontakty.get(k.id) ?? null;
+    const d = dane.get(k.id) ?? {};
+    if (ja.kadry) o.kontakt = { telefon: d.telefon ?? "", email: d.email ?? "", kontakt: d.kontakt ?? "", jezyk: d.jezyk ?? "", telegram: d.telegram ?? "" };
+    // Telegram: everybody sees the status; the group's title, id and bots — administrators only
+    if (k.status !== "zakonczony") {
+      const chat = String(d.telegram ?? "").trim(), w = tgBy.get(k.id);
+      const aktualny = w && String(w.chat_id ?? "") === chat ? w : null; // a result for another chat id says nothing about this one
+      const status = aktualny ? aktualny.status : chat ? null : "brak_grupy";
+      o.tg = { status, opis: status ? PROBLEM[status as Status] : "nie sprawdzono" };
+      if (ja.admin) {
+        const uwagi: string[] = [...(aktualny?.uwagi ?? [])];
+        if (chat && powt.has(chat)) uwagi.push("To samo id czatu mają: " + powt.get(chat)!.join(", ") + ".");
+        if (aktualny?.tytul && !tytulPasuje(aktualny.tytul, k.nazwa)) uwagi.push("Nazwa grupy nie przypomina nazwy klienta — sprawdź, czy to właściwa grupa.");
+        Object.assign(o.tg, aktualny ? { od: aktualny.od, sprawdzono_at: aktualny.sprawdzono_at, tytul: aktualny.tytul, typ: aktualny.typ, czlonkow: aktualny.czlonkow, bot_status: aktualny.bot_status, boty: aktualny.boty, brak_botow: aktualny.brak_botow, nowe_id: aktualny.nowe_id, blad: aktualny.blad } : {}, { chat_id: chat, uwagi });
+      }
+    }
     if (ja.admin) {
       o.audyt = audytKlienta(k, rs, umowy.filter((u) => u.klient === k.id && u.status === "przypisany"), dzis);
       o.historia = historia.filter((h) => h.klient === k.id);
+      o.zmiany = zmiany.filter((h) => h.klient === k.id).slice(0, 30);
+      o.dane = Object.fromEntries(POLA_KLIENTA.map(([p]) => [p, String(d[p] ?? "")])); // the row as stored, for the edit form
     }
     return o;
   });
-  return { ja: { email: ja.email, admin: ja.admin, kontakty: ja.kadry }, klienci: out, umowy: ja.admin ? umowy : undefined, cena: CENA_REJESTR_IO, dni: DNI_DOMYSLNIE, sync: s };
+  let admin: Any;
+  if (ja.admin) {
+    const uniq = (pole: string) => [...new Set(klienci.map((k) => String(k[pole] ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pl"));
+    // bots seen among the administrators of the groups, with the number of groups: candidates for "required"
+    const widziane = new Map<string, Any>();
+    for (const w of tgWyniki) for (const b of Array.isArray(w.boty) ? w.boty : []) { const x = widziane.get(b.id) ?? { ...b, grup: 0 }; x.grup++; widziane.set(b.id, x); }
+    admin = {
+      podpowiedzi: { opiekun: aliasy.length ? [...new Set(aliasy)].sort((a, b) => a.localeCompare(b, "pl")) : uniq("opiekun"), kadrowy: aliasy.length ? [...new Set(aliasy)].sort((a, b) => a.localeCompare(b, "pl")) : uniq("kadrowy"), opodatkowanie: uniq("opodatkowanie"), formy: FORMY_LISTA, jezyki: JEZYKI_LISTA, z_zespolu: aliasy.length > 0 },
+      telegram: { skonfigurowany: !!botId(), bot_id: botId(), boty: wymaganeBoty(ust.boty), widziane: [...widziane.values()].sort((a, b) => b.grup - a.grup).slice(0, 30), przebieg: ust.przebieg ?? null },
+    };
+  }
+  return { ja: { email: ja.email, admin: ja.admin, kontakty: ja.kadry }, klienci: out, umowy: ja.admin ? umowy : undefined, admin, cena: CENA_REJESTR_IO, dni: DNI_DOMYSLNIE, sync: s };
 }
 
 Deno.serve(async (req) => {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
+  let body: Any, zly = false;
+  try { body = await req.json(); } catch { zly = true; }
+  // the scheduler: its own key instead of a portal session, and one action only
+  if (isCron(req)) {
+    if (body?.action !== "telegram_cron") return json({ error: "Nieznana akcja." }, 400, origin);
+    try { return json(await tgCron(), 200, origin); }
+    catch (e) { console.error("klienci-baza telegram_cron", String((e as Error)?.message ?? e).slice(0, 200)); return json({ error: "Błąd kontroli Telegram." }, 500, origin); }
+  }
   const ja = await portal(req);
   if (!ja) return json({ error: "Brak dostępu (portal)." }, 403, origin);
-  let body: Any;
-  try { body = await req.json(); } catch { return json({ error: "Nieprawidłowy JSON." }, 400, origin); }
+  if (zly) return json({ error: "Nieprawidłowy JSON." }, 400, origin);
   const action = String(body?.action ?? "");
   const tylkoAdmin = () => json({ error: "Tę czynność może wykonać tylko administrator portalu." }, 403, origin);
 
@@ -463,7 +652,59 @@ Deno.serve(async (req) => {
     if (action === "braki_csv") {
       if (!ja.admin) return tylkoAdmin();
       const l = await lista(ja);
-      return json({ csv: csvBraki(l.klienci.filter((k: Any) => k.status !== "zakonczony").map((k: Any) => ({ k, a: k.audyt }))) }, 200, origin);
+      return json({ csv: csvBraki(l.klienci.filter((k: Any) => k.status !== "zakonczony").map((k: Any) => ({ k, a: k.audyt, tg: k.tg?.opis ?? "" }))) }, 200, origin);
+    }
+
+    if (action === "klient_zapisz") {
+      if (!ja.admin) return tylkoAdmin();
+      const id = body.id == null || body.id === "" ? null : body.id;
+      if (id !== null && !okId(id)) return json({ error: "Nieprawidłowy identyfikator klienta." }, 400, origin);
+      const { dane, bledy } = walidujKlienta(body.dane);
+      if (bledy.length) return json({ error: bledy.join(" "), bledy }, 400, origin);
+      const noweId = klientId(dane);
+      if (!okId(noweId)) return json({ error: "Nieprawidłowa nazwa klienta." }, 400, origin);
+      let stare: Any = null;
+      if (id !== null) {
+        stare = (await all(`portal_klienci?id=eq.${enc(id)}&select=dane`))[0]?.dane;
+        if (!stare) return json({ error: "Nie ma takiego klienta." }, 404, origin);
+      }
+      const zm = zmianyKlienta(stare ?? {}, dane), zmianaId = id !== null && noweId !== id;
+      if (noweId !== id && (await all(`portal_klienci?id=eq.${enc(noweId)}&select=id`)).length) return json({ error: dane.nip ? "Klient z tym NIP już jest w bazie." : "Klient o tej nazwie (bez NIP) już jest w bazie." }, 409, origin);
+      // a client that already had a NIP gets another: other modules keep their rows under the old one
+      const zmianaNip = zmianaId && /^\d{10}$/.test(id!);
+      const inne = zmianaNip ? await inneModuly(id!) : {};
+      if (body.dry === true) return json({ ok: true, dry: true, zmiany: zm, id: noweId, zmiana_id: zmianaId, zmiana_nip: zmianaNip, inne_moduly: inne }, 200, origin);
+      if (id !== null && !zm.length) return json({ ok: true, id, bez_zmian: true }, 200, origin);
+      if (zmianaNip && body.potwierdz_nip !== true) return json({ error: "Zmiana NIP klienta wymaga potwierdzenia.", wymaga_potwierdzenia: true, inne_moduly: inne }, 409, origin);
+      const r = await db("rpc/klienci_zapisz", { method: "POST", body: JSON.stringify({ p_id: id, p_nowe_id: noweId, p_dane: dane, p_kto: ja.email, p_zmiany: zm }) });
+      if (!r.ok) {
+        const t = await r.text();
+        if (t.includes("klient_istnieje")) return json({ error: "Taki klient już jest w bazie." }, 409, origin);
+        console.error("klienci-baza klient_zapisz", r.status);
+        return json({ error: "Nie udało się zapisać klienta." }, 500, origin);
+      }
+      console.log("klienci-baza klient_zapisz", id === null ? "dodanie" : zmianaId ? "zmiana_id" : "edycja", "pól:", zm.length);
+      return json({ ok: true, id: noweId, zmiany: zm, zmiana_id: zmianaId }, 200, origin);
+    }
+
+    if (action === "telegram_sprawdz") {
+      if (!ja.admin) return tylkoAdmin();
+      if (body.wszystkie === true) {
+        // `od`: when the page began this round — everything checked since then is left alone
+        const od = typeof body.od === "string" && !isNaN(Date.parse(body.od)) && Date.parse(body.od) <= Date.now() + 60000 && Date.now() - Date.parse(body.od) < 3 * 3600000 ? new Date(Date.parse(body.od)).toISOString() : null;
+        if (!od) return json({ error: "Nieprawidłowy początek sprawdzania." }, 400, origin);
+        return json(await tgPartia(od, null), 200, origin);
+      }
+      if (!okId(body.id)) return json({ error: "Nieprawidłowy identyfikator klienta." }, 400, origin);
+      return json(await tgPartia(new Date().toISOString(), body.id), 200, origin);
+    }
+    if (action === "telegram_ustawienia") {
+      if (!ja.admin) return tylkoAdmin();
+      if (!Array.isArray(body.boty) || body.boty.length > 10) return json({ error: "Nieprawidłowa lista botów." }, 400, origin);
+      const boty = wymaganeBoty(body.boty);
+      if (boty.length !== body.boty.length) return json({ error: "Każdy bot potrzebuje nazwy i liczbowego id (5–15 cyfr), bez powtórzeń." }, 400, origin);
+      await tgZapiszUstawienia({ ...(await tgUstawienia()), boty });
+      return json({ ok: true, boty }, 200, origin);
     }
     return json({ error: "Nieznana akcja." }, 400, origin);
   } catch (e) {

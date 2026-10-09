@@ -221,14 +221,14 @@ export function planOdswiezenia(klienci: Any[], cache: Record<string, string>, d
 // ---------------------------------------------------------------- warnings from the register (every portal user sees them)
 export function ostrzezeniaRejestru(k: Any, rej: Any | null, teraz: number, szczegoly = true): string[] {
   const o: string[] = [];
-  if (!k.w_arkuszu && k.status !== "zakonczony") o.push("Klienta nie ma już w arkuszu klientów, a obsługa nie jest oznaczona jako zakończona.");
-  if (!nipOk(digits(k.nip))) { if (k.status !== "zakonczony") o.push("Brak poprawnego NIP w arkuszu klientów — nie można sprawdzić rejestru."); return o; }
+  if (!k.w_arkuszu && k.status !== "zakonczony") o.push("Klient został usunięty z listy klientów, a obsługa nie jest oznaczona jako zakończona.");
+  if (!nipOk(digits(k.nip))) { if (k.status !== "zakonczony") o.push("Brak NIP klienta — nie można sprawdzić rejestru."); return o; }
   if (k.rejestr_blad) o.push("Ostatnie pobranie z rejestru nie powiodło się" + (szczegoly ? ": " + k.rejestr_blad : "."));
   if (!rej) { if (!k.rejestr_blad) o.push("Dane z rejestru nie zostały jeszcze pobrane."); return o; }
   if (!rej.znaleziono) { o.push(rej.zrodlo === "krs" ? "Nie znaleziono firmy w KRS pod tym NIP." : "Nie znaleziono firmy w rejestrze REGON pod tym NIP."); return o; }
   if (rej.stan && rej.stan !== "aktywna") o.push("Stan firmy według rejestru: " + rej.stan + ".");
   const a = nazwaKlucz(k.nazwa), b = nazwaKlucz(rej.nazwa);
-  if (a && b && a !== b && !nazwaZawiera(a, b)) o.push("Nazwa w arkuszu różni się od nazwy w rejestrze („" + rej.nazwa + "”).");
+  if (a && b && a !== b && !nazwaZawiera(a, b)) o.push("Nazwa klienta różni się od nazwy w rejestrze („" + rej.nazwa + "”).");
   if (rej.zrodlo === "krs" && formaTyp(k.forma) === "krs" && !(rej.zarzad ?? []).length) o.push("W rejestrze nie ma nikogo w organie reprezentacji.");
   const zm = Array.isArray(rej.zmiany) ? rej.zmiany : [];
   // a change found by the last reading stays on the list for 60 days
@@ -240,7 +240,7 @@ export function ostrzezeniaRejestru(k: Any, rej: Any | null, teraz: number, szcz
 export type Poz = { kod: string; stan: "ok" | "uwaga" | "brak" | "info"; tekst: string };
 export type Zakres = { ksiegowosc: boolean; kadry: boolean };
 export type Audyt = { wynik: "ok" | "uwagi" | "braki"; zakres: Zakres; ma: { umowa: boolean; ksiegowosc: boolean; kadry: boolean; powierzenie: boolean; pelnomocnictwo: boolean }; pozycje: Poz[] };
-// What the office does for a client follows from the caretakers in the clients sheet: no accounting
+// What the office does for a client follows from its caretakers: no accounting
 // caretaker (opiekun) — no accounting; no HR caretaker (kadrowy) — no HR and payroll.
 export function zakres(k: Any): Zakres {
   return { ksiegowosc: String(k?.opiekun ?? "").trim() !== "", kadry: String(k?.kadrowy ?? "").trim() !== "" };
@@ -264,7 +264,7 @@ export function audytKlienta(k: Any, rejestry: Any[], wszystkie: Any[], dzis: st
   // nobody looks after the client: what should be on file cannot be told — one warning instead of a list of gaps
   if (!z.ksiegowosc && !z.kadry) {
     return { wynik: "uwagi", zakres: z, ma: { umowa: false, ksiegowosc: false, kadry: false, powierzenie: false, pelnomocnictwo: false },
-      pozycje: [{ kod: "zakres", stan: "uwaga", tekst: "Brak opiekuna i kadrowej — zakres obsługi nieokreślony. Uzupełnij opiekunów w arkuszu klientów albo zakończ obsługę." }] };
+      pozycje: [{ kod: "zakres", stan: "uwaga", tekst: "Brak opiekuna i kadrowej — zakres obsługi nieokreślony. Uzupełnij opiekunów w danych klienta albo zakończ obsługę." }] };
   }
   const czego = z.ksiegowosc && z.kadry ? "księgowych i kadrowo-płacowych" : z.ksiegowosc ? "księgowych" : "kadrowo-płacowych";
   const umowy = wszystkie.filter((u) => !!u.sprawdzil), auto = wszystkie.filter((u) => !u.sprawdzil);
@@ -294,8 +294,8 @@ export function audytKlienta(k: Any, rejestry: Any[], wszystkie: Any[], dzis: st
   if (czynne.length) {
     if (z.ksiegowosc && !maKs) poz.push({ kod: "ksiegowosc", stan: "brak", tekst: "Brak umowy obejmującej usługi księgowe — klient ma opiekuna księgowego, a żadna obowiązująca umowa ich nie obejmuje." });
     if (z.kadry && !maKd) poz.push({ kod: "kadry", stan: "brak", tekst: "Brak umowy obejmującej obsługę kadrowo-płacową — klient ma kadrową, a żadna obowiązująca umowa jej nie obejmuje." });
-    if (!z.ksiegowosc && maKs) poz.push({ kod: "ksiegowosc", stan: "uwaga", tekst: "Umowa obejmuje księgowość, a klient nie ma opiekuna księgowego — uzupełnij opiekuna w arkuszu albo sprawdź zakres umowy." });
-    if (!z.kadry && maKd) poz.push({ kod: "kadry", stan: "uwaga", tekst: "Umowa obejmuje kadry i płace, a klient nie ma kadrowej — uzupełnij kadrową w arkuszu albo sprawdź zakres umowy." });
+    if (!z.ksiegowosc && maKs) poz.push({ kod: "ksiegowosc", stan: "uwaga", tekst: "Umowa obejmuje księgowość, a klient nie ma opiekuna księgowego — uzupełnij opiekuna w danych klienta albo sprawdź zakres umowy." });
+    if (!z.kadry && maKd) poz.push({ kod: "kadry", stan: "uwaga", tekst: "Umowa obejmuje kadry i płace, a klient nie ma kadrowej — uzupełnij kadrową w danych klienta albo sprawdź zakres umowy." });
   }
 
   // 2. entrusting personal data (art. 28 ust. 3 RODO): a separate contract or a clause in the service contract
@@ -366,16 +366,58 @@ export function csvPole(v: unknown): string {
 }
 export const csvWiersz = (pola: unknown[]) => pola.map(csvPole).join(";");
 const STATUS: Any = { obslugiwany: "obsługiwany", wstrzymany: "wstrzymany", zakonczony: "zakończony" };
-export function csvBraki(wiersze: Array<{ k: Any; a: Audyt }>): string {
+export function csvBraki(wiersze: Array<{ k: Any; a: Audyt; tg?: string }>): string {
   const tak = (b: boolean) => (b ? "tak" : "NIE");
   // outside the scope of service a missing contract is not a gap
   const wZakresie = (w: boolean, b: boolean) => (w ? tak(b) : b ? "tak (poza zakresem)" : "nie dotyczy");
-  const out = [csvWiersz(["Klient", "NIP", "Forma", "Opiekun", "Kadrowy", "Zakres obsługi", "Status obsługi", "Wynik audytu", "Umowy na cały zakres", "Umowa — księgowość", "Umowa — kadry", "Powierzenie danych", "Pełnomocnictwa", "Braki", "Uwagi do sprawdzenia"])];
-  for (const { k, a } of wiersze) {
+  const out = [csvWiersz(["Klient", "NIP", "Forma", "Opiekun", "Kadrowy", "Zakres obsługi", "Status obsługi", "Wynik audytu", "Umowy na cały zakres", "Umowa — księgowość", "Umowa — kadry", "Powierzenie danych", "Pełnomocnictwa", "Telegram", "Braki", "Uwagi do sprawdzenia"])];
+  for (const { k, a, tg } of wiersze) {
     const nikt = !a.zakres.ksiegowosc && !a.zakres.kadry;
     out.push(csvWiersz([k.nazwa, k.nip ?? "", k.forma ?? "", k.opiekun ?? "", k.kadrowy ?? "", zakresOpis(a.zakres), STATUS[k.status] ?? k.status,
-      a.wynik === "ok" ? "w porządku" : a.wynik, nikt ? "nie dotyczy" : tak(a.ma.umowa), wZakresie(a.zakres.ksiegowosc, a.ma.ksiegowosc), wZakresie(a.zakres.kadry, a.ma.kadry), nikt ? "nie dotyczy" : tak(a.ma.powierzenie), nikt ? "nie dotyczy" : tak(a.ma.pelnomocnictwo),
+      a.wynik === "ok" ? "w porządku" : a.wynik, nikt ? "nie dotyczy" : tak(a.ma.umowa), wZakresie(a.zakres.ksiegowosc, a.ma.ksiegowosc), wZakresie(a.zakres.kadry, a.ma.kadry), nikt ? "nie dotyczy" : tak(a.ma.powierzenie), nikt ? "nie dotyczy" : tak(a.ma.pelnomocnictwo), tg ?? "",
       a.pozycje.filter((p) => p.stan === "brak").map((p) => p.tekst).join(" | "), a.pozycje.filter((p) => p.stan === "uwaga").map((p) => p.tekst).join(" | ")]));
   }
   return out.join("\r\n") + "\r\n";
+}
+
+// ---------------------------------------------------------------- editing a client (the portal is the master of the list)
+export const FORMY_LISTA = ["JDG", "spółka z o.o.", "spółka cywilna", "spółka jawna", "spółka partnerska", "spółka komandytowa", "spółka komandytowo-akcyjna", "prosta spółka akcyjna", "spółka akcyjna", "fundacja", "stowarzyszenie", "spółdzielnia", "inna"];
+export const JEZYKI_LISTA = ["Polish", "Ukrainian", "Russian", "English"];
+export const POLA_KLIENTA: Array<[string, string, number]> = [
+  ["nazwa", "nazwa", 200], ["nip", "NIP", 20], ["forma", "forma prawna", 60], ["opodatkowanie", "opodatkowanie", 100], ["adres", "adres", 300], ["miasto", "miasto", 120],
+  ["kontakt", "osoba kontaktowa", 200], ["telefon", "telefon", 100], ["email", "e-mail", 400], ["opiekun", "opiekun (księgowość)", 60], ["kadrowy", "kadrowa / kadrowy", 60],
+  ["telegram", "grupa Telegram (id czatu)", 30], ["jezyk", "język", 30],
+];
+// one line of text: no control characters, single spaces
+const linia = (v: unknown, n: number) => String(v ?? "").replace(/[\u0000-\u001f\u007f\u200b-\u200f\u2028\u2029\ufeff]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
+const mailOk = (s: string) => /^[^@\s<>"',;]+@[^@\s<>"',;]+\.[^@\s<>"',;]{2,}$/.test(s);
+
+// What an administrator typed -> the row to store, or the list of what is wrong with it.
+export function walidujKlienta(wej: Any): { dane: Record<string, string>; bledy: string[] } {
+  const d: Record<string, string> = {}, bledy: string[] = [];
+  for (const [p, , n] of POLA_KLIENTA) d[p] = linia(wej?.[p], n);
+  if (d.nazwa.length < 2) bledy.push("Podaj nazwę klienta.");
+  if (/^nazwa:/i.test(d.nazwa)) bledy.push("Nazwa nie może zaczynać się od „nazwa:”.");
+  d.nip = d.nip.replace(/^PL/i, "").replace(/[\s-]/g, "");
+  if (d.nip && !nipOk(d.nip)) bledy.push("NIP jest nieprawidłowy (10 cyfr, zgodna cyfra kontrolna).");
+  if (d.forma && !FORMY_LISTA.includes(d.forma)) bledy.push("Wybierz formę prawną z listy.");
+  if (d.jezyk && !JEZYKI_LISTA.includes(d.jezyk)) bledy.push("Wybierz język z listy.");
+  // several addresses may be given, separated by a comma, a semicolon or a space
+  const maile = d.email.split(/[;,\s]+/).filter(Boolean);
+  if (maile.length > 6) bledy.push("Najwyżej 6 adresów e-mail.");
+  for (const m of maile) if (!mailOk(m)) bledy.push("Nieprawidłowy adres e-mail: " + m.slice(0, 60));
+  d.email = maile.join("; ");
+  if (d.telefon && !/^[0-9+ ()\/;,.\-]{5,100}$/.test(d.telefon)) bledy.push("Telefon może zawierać tylko cyfry, spacje i znaki + ( ) - / ; ,");
+  // a group's chat id is a negative number (supergroups: -100…); the client's private chat would be positive
+  if (d.telegram && !/^-?\d{5,20}$/.test(d.telegram)) bledy.push("Id czatu Telegram to liczba (dla grupy ujemna, np. -1001234567890).");
+  return { dane: d, bledy };
+}
+// what changes between the stored row and the new one: [{pole, bylo, jest}] with the fields' Polish names
+export function zmianyKlienta(stare: Any, nowe: Record<string, string>): Zmiana[] {
+  const out: Zmiana[] = [];
+  for (const [p, et] of POLA_KLIENTA) {
+    const a = linia(stare?.[p], 1000), b = nowe[p] ?? "";
+    if (a !== b) out.push({ pole: et, bylo: a || "—", jest: b || "—" });
+  }
+  return out;
 }

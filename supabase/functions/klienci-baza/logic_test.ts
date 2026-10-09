@@ -2,7 +2,7 @@
 // Fictional firms and people only.
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import {
-  audytKlienta, bezDanychOsobowych, csvBraki, zakres, zakresOpis, csvPole, dopasuj, formaTyp, klientId, nazwaKlucz, nipOk, odcisk, ostrzezeniaRejestru, pewnyKlient,
+  audytKlienta, bezDanychOsobowych, csvBraki, walidujKlienta, zakres, zakresOpis, zmianyKlienta, csvPole, dopasuj, formaTyp, klientId, nazwaKlucz, nipOk, odcisk, ostrzezeniaRejestru, pewnyKlient,
   planOdswiezenia, roznice, stanFirmy, wyciagGus, wyciagKrs,
 } from "./logic.ts";
 
@@ -255,7 +255,7 @@ Deno.test("ostrzezeniaRejestru", () => {
   const t = Date.parse("2026-10-09T10:00:00Z");
   assertEquals(ostrzezeniaRejestru(K, REJ, t), []);
   assertEquals(ostrzezeniaRejestru(K, null, t).length, 1);
-  assert(ostrzezeniaRejestru({ ...K, w_arkuszu: false }, REJ, t)[0].includes("arkuszu"));
+  assert(ostrzezeniaRejestru({ ...K, w_arkuszu: false }, REJ, t)[0].includes("usunięty z listy klientów"));
   assertEquals(ostrzezeniaRejestru({ ...K, w_arkuszu: false, status: "zakonczony" }, REJ, t), []);
   assert(ostrzezeniaRejestru(K, { ...REJ, stan: "w likwidacji" }, t)[0].includes("w likwidacji"));
   assert(ostrzezeniaRejestru(K, { ...REJ, zmiany: [{ pole: "skład organu reprezentacji", bylo: "a", jest: "b" }] }, t)[0].includes("skład organu"));
@@ -287,11 +287,40 @@ Deno.test("csvBraki: nagłówek, wiersz, groźna nazwa klienta", () => {
   const linie = csv.trimEnd().split("\r\n");
   assertEquals(linie.length, 3);
   assert(linie[0].startsWith('"Klient";"NIP";"Forma"'));
-  assert(linie[1].startsWith('"Przykładowa Alfa sp. z o.o.";"' + N1 + '";"spółka z o.o.";"Księgowa Testowa";"";"tylko księgowość";"obsługiwany";"braki";"NIE";"NIE";"nie dotyczy";"NIE";"NIE";"Brak umowy'));
+  assert(linie[1].startsWith('"Przykładowa Alfa sp. z o.o.";"' + N1 + '";"spółka z o.o.";"Księgowa Testowa";"";"tylko księgowość";"obsługiwany";"braki";"NIE";"NIE";"nie dotyczy";"NIE";"NIE";"";"Brak umowy'));
   assert(linie[2].startsWith('"\'=cmd|""/c calc""!A1";'));
-  assertEquals(linie[1].split('";"').length, 15);
+  assertEquals(linie[1].split('";"').length, 16);
   const nikt = { ...K, opiekun: "", kadrowy: "" }, kd = { ...K, opiekun: "", kadrowy: "Kadrowa Testowa" };
   const l2 = csvBraki([{ k: nikt, a: audytKlienta(nikt, [REJ], [], DZIS) }, { k: kd, a: audytKlienta(kd, [REJ], [UM({ obejmuje: ["ksiegowosc"] })], DZIS) }]).trimEnd().split("\r\n");
-  assert(l2[1].includes('"brak opiekunów";"obsługiwany";"uwagi";"nie dotyczy";"nie dotyczy";"nie dotyczy";"nie dotyczy";"nie dotyczy";"";"Brak opiekuna i kadrowej'));
+  assert(l2[1].includes('"brak opiekunów";"obsługiwany";"uwagi";"nie dotyczy";"nie dotyczy";"nie dotyczy";"nie dotyczy";"nie dotyczy";"";"";"Brak opiekuna i kadrowej'));
   assert(l2[2].includes('"tylko kadry";"obsługiwany";"braki";"NIE";"tak (poza zakresem)";"NIE";'));
+});
+
+Deno.test("walidujKlienta: co wolno zapisać jako dane klienta", () => {
+  const W = (x: Record<string, unknown>) => walidujKlienta({ nazwa: "Przykładowa Omega sp. z o.o.", ...x });
+  assertEquals(W({}).bledy, []);
+  // NIP: checksum, tolerant of dashes, spaces and the PL prefix; empty is allowed (a client without one)
+  assertEquals(W({ nip: "PL 999-000-00-1" + N1[9] }).dane.nip, N1); assertEquals(W({ nip: "" }).bledy, []);
+  assert(W({ nip: "1234567890" }).bledy[0].includes("NIP")); assert(W({ nip: "12345" }).bledy[0].includes("NIP")); assert(W({ nip: "abcdefghij" }).bledy[0].includes("NIP"));
+  // name
+  assert(walidujKlienta({ nazwa: " " }).bledy[0].includes("nazwę")); assert(walidujKlienta({}).bledy.length > 0); assert(W({ nazwa: "nazwa:x y" }).bledy.length > 0);
+  assertEquals(W({ nazwa: "  Przykładowa \n Omega\t sp. z o.o. " }).dane.nazwa, "Przykładowa Omega sp. z o.o.");
+  assertEquals(W({ nazwa: "A".repeat(500) }).dane.nazwa.length, 200);
+  // lists
+  assertEquals(W({ forma: "JDG", jezyk: "Ukrainian" }).bledy, []); assert(W({ forma: "s.r.o." }).bledy.length === 1); assert(W({ jezyk: "pl" }).bledy.length === 1);
+  // several e-mail addresses, each checked; stored in one tidy form
+  assertEquals(W({ email: "a@example.test,b@example.test  c@example.test" }).dane.email, "a@example.test; b@example.test; c@example.test");
+  assert(W({ email: "a@example.test; zly" }).bledy[0].includes("zly")); assert(W({ email: "<a@example.test>" }).bledy.length > 0); assert(W({ email: Array(8).fill("a@example.test").join(";") }).bledy.length > 0);
+  // phone, Telegram chat id
+  assertEquals(W({ telefon: "+48 600 000 000; 22 000-00-00" }).bledy, []); assert(W({ telefon: "zadzwoń" }).bledy.length > 0);
+  assertEquals(W({ telegram: "-1001234567890" }).bledy, []); assertEquals(W({ telegram: "" }).bledy, []); assert(W({ telegram: "@grupa" }).bledy.length > 0); assert(W({ telegram: "-12" }).bledy.length > 0);
+  // only the known fields are kept
+  assertEquals(Object.keys(W({ status: "zakonczony", poz: 1, id: "x" }).dane).sort(), ["adres", "email", "forma", "jezyk", "kadrowy", "kontakt", "miasto", "nazwa", "nip", "opiekun", "opodatkowanie", "telefon", "telegram"]);
+});
+Deno.test("zmianyKlienta: tylko to, co się zmieniło, stare -> nowe", () => {
+  const stare = { nazwa: "Przykładowa Omega", nip: "", opiekun: "Testowa K.", kadrowy: "", poz: 7 };
+  const nowe = walidujKlienta({ ...stare, nip: N1, opiekun: "" }).dane;
+  assertEquals(zmianyKlienta(stare, nowe), [{ pole: "NIP", bylo: "—", jest: N1 }, { pole: "opiekun (księgowość)", bylo: "Testowa K.", jest: "—" }]);
+  assertEquals(zmianyKlienta(stare, walidujKlienta(stare).dane), []);
+  assertEquals(zmianyKlienta({}, walidujKlienta({ nazwa: "Nowa Firma" }).dane), [{ pole: "nazwa", bylo: "—", jest: "Nowa Firma" }]);
 });
