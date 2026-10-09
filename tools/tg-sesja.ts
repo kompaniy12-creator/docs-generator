@@ -53,8 +53,9 @@ function dostep(): { id: number; hash: string } {
       const m = l.match(/^(TG_API_ID|TG_API_HASH)=\s*["']?([^"'\s#]+)/); if (m) zPliku[m[1]] = m[2];
     }
   } catch { /* no such file: ask */ }
-  const id = Number(Deno.env.get("TG_API_ID") || zPliku.TG_API_ID || pytaj("api id aplikacji Telegram (my.telegram.org):"));
-  const hash = Deno.env.get("TG_API_HASH") || zPliku.TG_API_HASH || ukryte("api hash (nie będzie widoczny):");
+  const recznie = Deno.args.includes("--pytaj");   // type the api id / api hash by hand instead of taking the stored ones
+  const id = Number((!recznie && (Deno.env.get("TG_API_ID") || zPliku.TG_API_ID)) || pytaj("api id aplikacji Telegram (my.telegram.org):"));
+  const hash = (!recznie && (Deno.env.get("TG_API_HASH") || zPliku.TG_API_HASH)) || ukryte("api hash (nie będzie widoczny):");
   if (!Number.isInteger(id) || id <= 0 || !/^[0-9a-f]{32}$/i.test(hash)) { console.error("Nieprawidłowe api id albo api hash (hash to 32 znaki szesnastkowe)."); Deno.exit(1); }
   return { id, hash };
 }
@@ -64,7 +65,8 @@ async function zaloguj(id: number, hash: string): Promise<TelegramClient> {
   let bledow = 0;
   await tg.start({
     phoneNumber: () => Promise.resolve(pytaj("Numer telefonu konta biura (z +48…):")),
-    phoneCode: () => Promise.resolve(pytaj("Kod logowania z Telegrama:")),
+    phoneCode: (wAplikacji?: boolean) => Promise.resolve(pytaj(wAplikacji === false ? "Kod logowania z SMS-a:" : "Kod logowania — przyszedł w aplikacji Telegram tego konta, w czacie „Telegram” (nie SMS-em):")),
+    forceSMS: Deno.args.includes("--sms"),
     password: () => Promise.resolve(ukryte("Hasło weryfikacji dwuetapowej (nie będzie widoczne):")),
     onError: (e) => { console.error("Telegram odmówił: " + kod(e)); if (++bledow >= 3) { console.error("Za dużo nieudanych prób — przerwano."); Deno.exit(1); } },
   });
