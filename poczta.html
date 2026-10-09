@@ -75,7 +75,30 @@
   .mhead p{margin:0 0 3px}
   .atts{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
   .atts .mini,.atts .pill{max-width:100%;overflow:hidden;text-overflow:ellipsis}
-  .paper{display:block;width:100%;height:62vh;min-height:320px;border:1px solid #d4dbe6;border-radius:10px;background:#fff}
+  .paper{display:block;width:100%;height:68vh;min-height:320px;border:1px solid #d4dbe6;border-radius:10px;background:#fff}
+  .paper.tall{height:2400px;max-height:none}
+  .mtext a{overflow-wrap:anywhere}
+  .fold{margin:6px 0;padding:4px 0 4px 10px;border-left:3px solid rgba(127,127,127,.45)}
+  .fold summary{cursor:pointer;font-size:12.5px;opacity:.8}
+  .bulk{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px;font-size:13px}
+  .row input[type=checkbox]{width:auto;margin:0 6px 0 0;vertical-align:middle}
+  /* compose dialog: a standard block on a dimmed page */
+  .modal{position:fixed;inset:0;z-index:950;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;overflow:auto}
+  .modal[hidden]{display:none}
+  .modal .sheet{width:100%;max-width:860px;margin:0}
+  .cgrid{display:grid;grid-template-columns:70px minmax(0,1fr);gap:8px 10px;align-items:center;margin:0 0 10px}
+  .cgrid label{margin:0}
+  .caddr{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .caddr input{flex:1;min-width:160px}
+  .tbar{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 6px}
+  .tbar .mini{padding:5px 9px;min-width:32px}
+  .tbar .sw{width:22px;height:22px;min-width:22px;padding:0;border-radius:50%}
+  .editor{min-height:220px;max-height:46vh;overflow:auto;padding:12px;border:1px solid #d4dbe6;border-radius:9px;background:rgba(127,127,127,.08);font-size:14.5px;line-height:1.5;overflow-wrap:anywhere}
+  .editor:focus{outline:2px solid var(--brand-green);outline-offset:1px}
+  .editor img{max-width:100%}
+  .editor blockquote{margin:6px 0 6px 6px;padding-left:10px;border-left:3px solid rgba(127,127,127,.5)}
+  #c_sug{margin:-4px 0 8px 80px}
+  @media(max-width:760px){.modal{padding:0}.modal .sheet{border-radius:0;min-height:100vh}.cgrid{grid-template-columns:1fr}#c_sug{margin-left:0}}
   .mtext{max-height:62vh;overflow:auto}
   @media(max-width:900px){.mb{grid-template-columns:1fr}.mb[data-ekran="foldery"] #mbRight,.mb:not([data-ekran="foldery"]) #mbFolders{display:none}.mfilters{grid-template-columns:1fr}}
   @media(max-width:760px){.filters,.prop,.set,.set4{grid-template-columns:1fr}.thead{flex-direction:column;gap:8px}.ttl{width:100%}.pills{justify-content:flex-start;max-width:none}}
@@ -88,7 +111,7 @@
   <h1>Poczta</h1>
   <p class="lead">Wiadomości przychodzące na skrzynki biura: krótki opis, klient, propozycja zadania. Tu decydujesz, co z nich staje się zadaniem.</p>
 
-  <div class="tabs" id="views"><button type="button" data-v="analiza" class="on">Do decyzji</button><button type="button" data-v="skrzynka">Skrzynka — wszystkie wiadomości</button></div>
+  <div class="tabs" id="views"><button type="button" data-v="analiza" class="on">Do decyzji</button><button type="button" data-v="skrzynka">Skrzynka — czytanie i pisanie</button></div>
 
   <div id="vAnaliza">
   <div class="warnbox">Opis i propozycję zadania przygotowuje automat — może się mylić, a nadawca może próbować go zmylić. Zanim utworzysz zadanie, porównaj je z wiadomością. Oryginał (pełna treść i załączniki) zostaje w skrzynce pocztowej — portal niczego w niej nie zmienia i przechowuje tylko początek treści.</div>
@@ -111,7 +134,7 @@
   </div>
 
   <div id="vSkrzynka" hidden>
-    <div class="warnbox">Podgląd tylko do odczytu — wiadomość <b>nie zostaje oznaczona jako przeczytana</b>, nic w skrzynce się nie zmienia. Odpowiadanie, przenoszenie i usuwanie — jak dotąd w programie pocztowym lub webmailu. Każde otwarcie wiadomości i pobranie załącznika jest zapisywane (kto i kiedy).</div>
+    <div class="warnbox">Skrzynka jest wspólna: to, co tu oznaczysz, przeniesiesz albo wyślesz, widzą wszyscy korzystający z niej — także w programie pocztowym. „Kosz” przenosi wiadomość do folderu Kosz (nic nie jest usuwane na stałe). Otwarcia, pobrania załączników, zmiany i wysyłki są zapisywane (kto i kiedy).</div>
     <div class="mb" id="mb" data-ekran="lista">
       <div class="box" id="mbFolders">
         <label for="mbBox">Skrzynka</label><select id="mbBox"></select>
@@ -119,18 +142,50 @@
       </div>
       <div id="mbRight">
         <div class="box" id="mbList">
-          <div class="acts" style="margin:0 0 10px"><button type="button" class="mini" id="mbToFolders">← Foldery</button><strong id="mbTitle"></strong></div>
+          <div class="acts" style="margin:0 0 10px"><button type="button" class="mini" id="mbToFolders">← Foldery</button><button type="button" class="mini ok" id="mbNewMsg">✏️ Nowa wiadomość</button><strong id="mbTitle"></strong><button type="button" class="mini" id="mbHelp" style="margin-left:auto" aria-label="Skróty klawiszowe">⌨ Skróty</button></div>
+          <div class="cm" id="mbKeys" hidden><b>Skróty:</b> c — nowa wiadomość · / — szukaj · ↑ ↓ — po liście · Enter — otwórz · x — zaznacz · w wiadomości: r — odpowiedz · a — odpowiedz wszystkim · f — przekaż · u — przeczytana / nieprzeczytana · s — flaga · e — archiwum · Delete — do Kosza · Esc — wróć · w oknie pisania: Ctrl+Enter — wyślij, Esc — zamknij.</div>
           <div class="mfilters">
-            <div><label for="mbQ">Szukaj w temacie i nadawcy</label><input type="text" id="mbQ" maxlength="100" placeholder="np. nazwa firmy" /></div>
+            <div><label for="mbQ">Szukaj: temat, nadawca, odbiorca</label><input type="text" id="mbQ" maxlength="100" placeholder="np. nazwa firmy" /></div>
             <div><label for="mbOd">Od dnia</label><input type="date" id="mbOd" /></div>
             <div><label for="mbDo">Do dnia</label><input type="date" id="mbDo" /></div>
           </div>
-          <div class="mchk"><label class="chk"><input type="checkbox" id="mbNew" /> nieprzeczytane</label><label class="chk"><input type="checkbox" id="mbAtt" /> z załącznikami</label><button type="button" class="mini" id="mbGo">Szukaj</button><button type="button" class="mini" id="mbClear">Wyczyść</button></div>
+          <div class="mchk"><label class="chk"><input type="checkbox" id="mbNew" /> nieprzeczytane</label><label class="chk"><input type="checkbox" id="mbAtt" /> z załącznikami</label><label class="chk"><input type="checkbox" id="mbStar" /> z flagą</label><label class="chk"><input type="checkbox" id="mbBody2" /> szukaj też w treści</label><button type="button" class="mini" id="mbGo">Szukaj</button><button type="button" class="mini" id="mbClear">Wyczyść</button></div>
+          <div class="bulk" id="mbBulk" hidden></div>
           <div id="mbRows"><div class="empty">Wybierz folder.</div></div>
           <div class="pager"><button type="button" class="mini" id="mbPrev">← Nowsze</button><span class="sub" id="mbInfo"></span><button type="button" class="mini" id="mbNext">Starsze →</button></div>
+          <p class="sub" style="margin:10px 0 0"><label class="chk" style="display:inline-flex;white-space:normal;font-weight:400"><input type="checkbox" id="mbRead" /> Oznaczaj wiadomość jako przeczytaną po otwarciu (moje ustawienie w tej przeglądarce)</label></p>
         </div>
         <div class="box" id="mbMsg" hidden></div>
       </div>
+    </div>
+  </div>
+
+  <div class="modal" id="compose" hidden role="dialog" aria-modal="true" aria-labelledby="c_title">
+    <div class="box sheet">
+      <div class="acts" style="margin:0 0 12px"><h2 id="c_title" style="margin:0;flex:1">Nowa wiadomość</h2><button type="button" class="mini" id="c_close" aria-label="Zamknij">✕ Zamknij</button></div>
+      <div class="cgrid">
+        <label for="c_from">Od</label><select id="c_from"></select>
+        <label for="c_do">Do</label><div class="caddr"><span id="c_do_chips"></span><input type="text" id="c_do" autocomplete="off" placeholder="adres e-mail, Enter" /></div>
+        <label for="c_dw">DW</label><div class="caddr"><span id="c_dw_chips"></span><input type="text" id="c_dw" autocomplete="off" placeholder="do wiadomości" /></div>
+        <label for="c_udw">UDW</label><div class="caddr"><span id="c_udw_chips"></span><input type="text" id="c_udw" autocomplete="off" placeholder="ukryta kopia" /></div>
+        <label for="c_temat">Temat</label><input type="text" id="c_temat" maxlength="250" />
+      </div>
+      <div id="c_sug" hidden></div>
+      <div class="tbar" role="toolbar" aria-label="Formatowanie">
+        <button type="button" class="mini" data-cmd="bold" title="Pogrubienie"><b>B</b></button><button type="button" class="mini" data-cmd="italic" title="Kursywa"><i>I</i></button><button type="button" class="mini" data-cmd="underline" title="Podkreślenie"><u>U</u></button>
+        <button type="button" class="mini" data-cmd="formatBlock" data-val="h3" title="Nagłówek">H</button><button type="button" class="mini" data-cmd="formatBlock" data-val="p" title="Zwykły akapit">¶</button>
+        <button type="button" class="mini" data-cmd="insertUnorderedList" title="Lista punktowana">• lista</button><button type="button" class="mini" data-cmd="insertOrderedList" title="Lista numerowana">1. lista</button>
+        <button type="button" class="mini" data-cmd="formatBlock" data-val="blockquote" title="Cytat">❝</button><button type="button" class="mini" data-cmd="createLink" title="Link">🔗</button>
+        <button type="button" class="mini" data-cmd="justifyLeft" title="Do lewej">⇤</button><button type="button" class="mini" data-cmd="justifyCenter" title="Do środka">↔</button><button type="button" class="mini" data-cmd="justifyRight" title="Do prawej">⇥</button>
+        <button type="button" class="mini sw" data-cmd="foreColor" data-val="#111111" title="Czarny" style="background:#111111"></button><button type="button" class="mini sw" data-cmd="foreColor" data-val="#1B3F7F" title="Granatowy" style="background:#1B3F7F"></button><button type="button" class="mini sw" data-cmd="foreColor" data-val="#1FA84B" title="Zielony" style="background:#1FA84B"></button><button type="button" class="mini sw" data-cmd="foreColor" data-val="#b91c1c" title="Czerwony" style="background:#b91c1c"></button><button type="button" class="mini sw" data-cmd="foreColor" data-val="#b45309" title="Pomarańczowy" style="background:#b45309"></button>
+        <button type="button" class="mini" data-cmd="removeFormat" title="Wyczyść formatowanie">⌫ format</button>
+      </div>
+      <div class="editor" id="c_ed" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Treść wiadomości"></div>
+      <p class="sub" id="c_stopka" style="margin:6px 0 0"></p>
+      <div class="acts" style="margin-top:10px"><label class="mini" style="cursor:pointer">📎 Dodaj załączniki<input type="file" id="c_file" multiple hidden /></label><span id="c_atts"></span></div>
+      <div class="mchk" style="margin:10px 0 0"><label class="chk" id="c_cytat_row"><input type="checkbox" id="c_cytat" /> dołącz treść oryginalnej wiadomości</label><label class="chk"><input type="checkbox" id="c_potw" /> poproś o potwierdzenie przeczytania</label><label class="chk"><input type="checkbox" id="c_pilna" /> pilna</label></div>
+      <div class="acts" style="margin-top:12px"><button type="button" class="btn" id="c_send">Wyślij</button><button type="button" class="mini" id="c_undo" hidden>Cofnij wysyłkę</button><button type="button" class="mini" id="c_draft">Zapisz szkic</button><button type="button" class="mini" id="c_savesig">Zapisz mój podpis</button><button type="button" class="mini" id="c_discard">Odrzuć</button><span class="sub" id="c_msg" role="status"></span></div>
+      <p class="sub" style="margin:8px 0 0">Wiadomość wychodzi z adresu skrzynki. Można przeciągnąć pliki na to okno albo wkleić obraz do treści. Szkic zapisuje się co 20 s w folderze Robocze (bez załączników).</p>
     </div>
   </div>
 
@@ -150,13 +205,17 @@
     </div>
     <label class="chk" style="white-space:normal;margin:0 0 6px"><input type="checkbox" id="lKlienci" /> W trybie automatycznym twórz zadania tylko dla nadawców rozpoznanych w bazie klientów (pozostałe czekają na decyzję pracownika)</label>
     <p class="sub" style="margin:0 0 10px">Każda analiza to płatne zapytanie. Wiadomości ponad limit są na liście, ale bez opisu. Automatyczne odpowiedzi, zwrotki, newslettery i wiadomości z adresów biura nie są analizowane.</p>
+    <h3>Wysłane z portalu</h3>
+    <p class="sub" style="margin:0 0 8px">Każda wysyłka: kto, z której skrzynki, do kogo, temat i wynik (treść i załączniki nie są zapisywane). Limity: 100 wiadomości dziennie na osobę, 300 na skrzynkę, 5 na minutę, 20 odbiorców w wiadomości.</p>
+    <div class="acts" style="margin:0 0 10px"><button type="button" class="mini" id="sentShow">Pokaż ostatnie wysyłki</button></div>
+    <div id="sentRows"></div>
     <h3>Dziennik dostępu do skrzynek</h3>
-    <p class="sub" style="margin:0 0 8px">Kto otworzył którą wiadomość, pobrał załącznik albo zlecił analizę w zakładce „Skrzynka” (bez tematów i treści — sam numer wiadomości w folderze).</p>
+    <p class="sub" style="margin:0 0 8px">Kto otworzył którą wiadomość, pobrał załącznik albo zlecił analizę albo zmienił coś w skrzynce (przeczytane, flaga, przeniesienie) — bez tematów i treści, sam numer wiadomości w folderze.</p>
     <div class="acts" style="margin:0 0 10px"><button type="button" class="mini" id="logShow">Pokaż ostatnie wpisy</button></div>
     <div id="logRows"></div>
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px"><button type="button" class="btn" id="setSave">Zapisz ustawienia</button><button type="button" class="mini" id="setCheck">Sprawdź połączenie</button><span class="sub" id="setMsg"></span></div>
   </div>
 </main>
-<script src="poczta.js?v=2"></script>
+<script src="poczta.js?v=3"></script>
 </body>
 </html>

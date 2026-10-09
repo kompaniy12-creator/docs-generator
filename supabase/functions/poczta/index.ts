@@ -34,7 +34,9 @@
 // IMAP_USER_KSIEGOWOSC. Nothing here sends e-mail, Telegram or SMS.
 
 import { loadKlienciRows } from "../_shared/klienci.ts";
+import nodemailer from "npm:nodemailer@6.9.14";
 import { Imap } from "./imap.ts";
+import { ImapZapis } from "./imapw.ts";
 import { type Deps, handle, type Me, type Row, type Store } from "./core.ts";
 import { normNazwa, type Skrzynka, SKRZYNKI, wiersze } from "./logic.ts";
 
@@ -46,6 +48,9 @@ const MODEL = "claude-opus-4-8";
 // the certificate of the mail server is issued for the hosting name, not for mail.td-group.pl
 const IMAP_HOST = Deno.env.get("IMAP_HOST") ?? "host552333.hostido.net.pl";
 const IMAP_PORT = Number(Deno.env.get("IMAP_PORT") ?? "993");
+// sending goes through the same host with the mailbox's own login (never mail.td-group.pl: the certificate is for the hosting name)
+const SMTP_HOST = Deno.env.get("POCZTA_SMTP_HOST") ?? IMAP_HOST;
+const SMTP_PORT = Number(Deno.env.get("POCZTA_SMTP_PORT") ?? "465");
 const SMTP_USER = (Deno.env.get("SMTP_USER") ?? "kadry@td-group.pl").toLowerCase();
 const KONTA: Record<Skrzynka, { user: string; pass: string }> = {
   kadry: { user: Deno.env.get("IMAP_USER_KADRY") ?? SKRZYNKI.kadry.adres, pass: "" },
@@ -162,8 +167,46 @@ const store: Store = {
   },
   async dziennik(row) { await rows("poczta_dostep", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify(row) }); },
   async dziennikLicz(kto, od) { return await count(`poczta_dostep?select=id&kto=eq.${e(kto)}&at=gte.${e(od)}`); },
-  async dziennikLista(limit) { return await rows(`poczta_dostep?select=at,kto,akcja,skrzynka,folder,uid,msg_hash,czesc,rozmiar&akcja=in.(otwarcie,zalacznik,analiza)&order=at.desc&limit=${limit}`); },
+  async dziennikLista(limit) { return await rows(`poczta_dostep?select=at,kto,akcja,skrzynka,folder,uid,msg_hash,czesc,rozmiar,szczegoly&akcja=in.(otwarcie,zalacznik,analiza,zmiana)&order=at.desc&limit=${limit}`); },
   async dziennikSprzataj(starsze) { await rows(`poczta_dostep?akcja=in.(lista,foldery)&at=lt.${e(starsze)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } }); },
+  async ktoCo(s, hash) {
+    if (!/^[0-9a-f]{32}$/.test(hash)) return [];
+    const a = await rows(`poczta_dostep?select=kto,akcja,at&skrzynka=eq.${s}&msg_hash=eq.${hash}&akcja=in.(otwarcie,zalacznik)&order=at.asc&limit=40`);
+    const b = await rows(`poczta_wyslane?select=kto,odp_tryb,at&skrzynka=eq.${s}&odp_hash=eq.${hash}&wynik=eq.wyslano&order=at.asc&limit=20`);
+    return [...a, ...b.map((x: Any) => ({ kto: x.kto, akcja: x.odp_tryb === "forward" ? "przekazanie" : "odpowiedz", at: x.at }))];
+  },
+  async wyslaneClaim(row) {
+    const r = await db("poczta_wyslane", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(row) });
+    if (r.status === 409) { await r.body?.cancel(); return null; } // unique (klucz): sent already
+    if (!r.ok) throw new Error("poczta_wyslane: " + r.status + " " + (await r.text()).slice(0, 160));
+    return (await r.json())[0]?.id ?? null;
+  },
+  async wyslanePatch(id, p) { await rows(`poczta_wyslane?id=eq.${Number(id)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(p) }); },
+  async wyslaneLicz(f) { return await count(`poczta_wyslane?select=id&at=gte.${e(f.od)}&wynik=neq.blad` + (f.kto ? `&kto=eq.${e(f.kto)}` : "") + (f.skrzynka ? `&skrzynka=eq.${f.skrzynka}` : "")); },
+  async wyslaneLista(limit) { return await rows(`poczta_wyslane?select=at,kto,skrzynka,odbiorcy_do,odbiorcy_dw,odbiorcy_udw,temat,message_id,rozmiar,zalaczniki,wynik,blad,odp_tryb&order=at.desc&limit=${limit}`); },
+  async znaneAdresy(s, adresy) {
+    // only plain addresses go into the filters; anything unusual simply counts as "not known"
+    const a = adresy.filter((x) => /^[a-z0-9._%+-]+@[a-z0-9.-]+$/.test(x)).slice(0, 60);
+    if (!a.length) return [];
+    const out = new Set<string>();
+    for (const r of await rows(`${T}?select=od_adres&skrzynka=eq.${s}&od_adres=in.(${a.map(q).join(",")})&limit=200`)) out.add(r.od_adres);
+    const arr = e("{" + a.join(",") + "}");
+    for (const r of await rows(`poczta_wyslane?select=odbiorcy_do,odbiorcy_dw&skrzynka=eq.${s}&wynik=eq.wyslano&or=(odbiorcy_do.ov.${arr},odbiorcy_dw.ov.${arr})&limit=200`)) for (const x of [...r.odbiorcy_do, ...r.odbiorcy_dw]) if (a.includes(x)) out.add(x);
+    return [...out];
+  },
+  async adresySzukaj(s, qq) {
+    const k = qq.replace(/[^a-z0-9@._-]/g, "");
+    if (k.length < 2) return [];
+    const r = await rows(`${T}?select=od_adres&skrzynka=eq.${s}&od_adres=ilike.${e("*" + k + "*")}&order=created_at.desc&limit=60`);
+    return [...new Set(r.map((x: Any) => String(x.od_adres)))].slice(0, 8) as string[];
+  },
+  async podpis(kto, s) { return (await rows(`poczta_podpisy?select=html&kto=eq.${e(kto)}&skrzynka=eq.${s}`))[0]?.html ?? null; },
+  async podpisZapisz(kto, s, html) { await rows("poczta_podpisy?on_conflict=kto,skrzynka", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ kto, skrzynka: s, html, updated_at: new Date().toISOString() }) }); },
+  async pracownik(email) {
+    const r = await db(`portal_pracownicy?select=imie_nazwisko&email=eq.${e(email)}`).catch(() => null);
+    if (!r?.ok) { await r?.body?.cancel(); return ""; } // the staff profiles may not exist
+    return String((await r.json())[0]?.imie_nazwisko ?? "");
+  },
   async usunStarsze(cutoff) { return (await rows(`${T}?created_at=lt.${e(cutoff)}&select=id`, { method: "DELETE", headers: { Prefer: "return=representation" } })).length; },
 };
 
@@ -208,6 +251,21 @@ const deps: Deps = {
     const im = await Imap.connect(IMAP_HOST, IMAP_PORT, 20000, maxLiteral);
     try { await im.login(KONTA[s].user, KONTA[s].pass); } catch (err) { im.close(); throw err; }
     return im;
+  },
+  async imapw(s, maxLiteral) {
+    const im = await ImapZapis.connect(IMAP_HOST, IMAP_PORT, 20000, maxLiteral) as ImapZapis;
+    try { await im.login(KONTA[s].user, KONTA[s].pass); } catch (err) { im.close(); throw err; }
+    return im;
+  },
+  // the mailbox's own SMTP: the envelope sender is the mailbox, the message is the bytes built in mime.ts
+  async smtp(s, koperta, raw) {
+    const tr = nodemailer.createTransport({ host: SMTP_HOST, port: SMTP_PORT, secure: true, auth: { user: KONTA[s].user, pass: KONTA[s].pass }, connectionTimeout: 20000, socketTimeout: 60000 });
+    try { await tr.sendMail({ envelope: { from: koperta.from, to: koperta.to }, raw: raw as Any }); } finally { tr.close(); }
+  },
+  async smtpSprawdz(s) {
+    if (!KONTA[s].pass) return false;
+    const tr = nodemailer.createTransport({ host: SMTP_HOST, port: SMTP_PORT, secure: true, auth: { user: KONTA[s].user, pass: KONTA[s].pass }, connectionTimeout: 15000 });
+    try { await tr.verify(); return true; } finally { tr.close(); }
   },
   bg(p) { const rt = (globalThis as Any).EdgeRuntime; if (rt?.waitUntil) rt.waitUntil(p); },
 };

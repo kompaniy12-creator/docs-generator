@@ -11,14 +11,17 @@
 //   { action: "dziennik" }                                             admin: the access log
 
 import { analizuj, type Ctx, type Deps, type ImapLike, MAX_RAW, type Me, PARTIAL, przyjmij } from "./core.ts";
-import { dataOk, htmlToText, isSkrzynka, parseMail, poczatekDnia, sha256hex, SKRZYNKI, type Skrzynka } from "./logic.ts";
-import { type Folder, type Meta, withTimeout } from "./imap.ts";
+import { dataOk, isSkrzynka, parseMail, poczatekDnia, sha256hex, SKRZYNKI, type Skrzynka } from "./logic.ts";
+import { type Folder, type Meta, typFolderu, withTimeout } from "./imap.ts";
+export { typFolderu };
+import { daneOdpowiedzi } from "./wysylka.ts";
+import { oczyscWychodzacy } from "./mime.ts";
 import { cidWHtml, czesci, maZalaczniki, naTekst, nazwaPliku, oczyscHtml, odkoduj, ramka, rozmiarPo, tekstCzesc, zalaczniki } from "./widok.ts";
 
 // deno-lint-ignore no-explicit-any
 type Any = any;
 type Out = { status: number; body: Any; raw?: { bytes: Uint8Array; headers: Record<string, string> } };
-export const AKCJE = ["foldery", "lista_imap", "wiadomosc_imap", "zalacznik_imap", "analizuj_imap", "dziennik"];
+export const AKCJE = ["foldery", "liczniki", "lista_imap", "wiadomosc_imap", "zalacznik_imap", "analizuj_imap", "dziennik"];
 export const STRONA = 30;
 export const NA_MINUTE = 40;                    // mailbox requests of one person per minute
 export const MAX_ZALACZNIK = 20 * 1024 * 1024;  // decoded bytes of one download
@@ -27,18 +30,6 @@ const OBRAZY = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
 const moze = (me: Me, s: Skrzynka) => me.admin || me.sekcje === null || me.sekcje.includes(SKRZYNKI[s].sekcja);
 const noselect = (f: Folder) => f.flagi.some((x) => /^\\(noselect|nonexistent)$/i.test(x));
-export function typFolderu(f: Folder): string {
-  if (f.raw.toUpperCase() === "INBOX") return "inbox";
-  const flag = f.flagi.map((x) => x.toLowerCase()).find((x) => ["\\sent", "\\drafts", "\\trash", "\\junk", "\\archive"].includes(x));
-  if (flag) return flag.slice(1);
-  const leaf = f.nazwa.split(f.delim).pop()!.toLowerCase();
-  if (/^(sent|sent items|sent messages|wysłane|wyslane|elementy wysłane)$/.test(leaf)) return "sent";
-  if (/^(drafts?|robocze|szkice|wersje robocze)$/.test(leaf)) return "drafts";
-  if (/^(trash|kosz|deleted|deleted items|deleted messages|elementy usunięte)$/.test(leaf)) return "trash";
-  if (/^(junk|spam|junk e-mail|wiadomości-śmieci)$/.test(leaf)) return "junk";
-  if (/^(archive|archives|archiwum)$/.test(leaf)) return "archive";
-  return "";
-}
 const PORZADEK = ["inbox", "sent", "drafts", "archive", "", "junk", "trash"];
 const b64 = (b: Uint8Array) => { let s = ""; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); };
 const naglowek = (m: Meta) => { const k = Object.keys(m.sekcje).find((x) => x.startsWith("BODY[HEADER")); return k ? m.sekcje[k] : new Uint8Array(0); };
@@ -64,7 +55,7 @@ export async function przegladarka(d: Deps, me: Me, ctx: Ctx, body: Any): Promis
   const zUid = ["wiadomosc_imap", "zalacznik_imap", "analizuj_imap"].includes(body.action);
   if (zUid && !(uid > 0 && uid < 4294967296)) return { status: 400, body: { error: "Nieprawidłowy numer wiadomości." } };
   // list and folder requests are counted at once; opening and downloading are logged with the message's hash below
-  if (!zUid) await log(body.action === "foldery" ? "foldery" : "lista");
+  if (!zUid) await log(body.action === "foldery" || body.action === "liczniki" ? "foldery" : "lista");
 
   let im: ImapLike | null = null;
   const praca = async (): Promise<Out> => {
@@ -82,6 +73,16 @@ export async function przegladarka(d: Deps, me: Me, ctx: Ctx, body: Any): Promis
       return { status: 200, body: { skrzynka: s, adres: SKRZYNKI[s].adres, foldery: out } };
     }
 
+    // a light refresh while the page is open: the inbox and the folder on screen, nothing else
+    if (body.action === "liczniki") {
+      const out: Any = {};
+      for (const name of [...new Set(["INBOX", typeof body.folder === "string" ? body.folder : "INBOX"])].slice(0, 2)) {
+        const f = name === "INBOX" ? { raw: "INBOX" } : await folderZListy(im, name);
+        if (f) { const st = await im.status(f.raw); out[f.raw] = { wiadomosci: st.messages, nieprzeczytane: st.unseen, uidnext: st.uidnext }; }
+      }
+      return { status: 200, body: { liczniki: out } };
+    }
+
     const folder = await folderZListy(im, body.folder);
     if (!folder) return { status: 400, body: { error: "Nie ma takiego folderu w tej skrzynce." } };
     const ex = await im.examine(folder.raw); // read-only or an error
@@ -90,13 +91,13 @@ export async function przegladarka(d: Deps, me: Me, ctx: Ctx, body: Any): Promis
       const strona = Math.max(1, Math.min(100000, Math.floor(Number(body.strona)) || 1));
       const tekst = typeof body.szukaj === "string" ? body.szukaj.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 100) : "";
       for (const k of ["od", "do"]) if (body[k] && !dataOk(body[k])) return { status: 400, body: { error: "Nieprawidłowa data." } };
-      const filtr = !!tekst || body.nieprzeczytane === true || body.zalaczniki === true || !!body.od || !!body.do;
+      const filtr = !!tekst || body.nieprzeczytane === true || body.oflagowane === true || body.zalaczniki === true || !!body.od || !!body.do;
       let metas: Meta[] = [], razem = ex.exists, przeszukano: number | null = null;
       if (!filtr) {
         const hi = ex.exists - (strona - 1) * STRONA;
         if (hi >= 1) metas = await im.meta({ od: Math.max(1, hi - STRONA + 1), do: hi }, false, true);
       } else {
-        let uids = (await im.szukaj({ tekst, nieprzeczytane: body.nieprzeczytane === true, od: body.od || undefined, do: body.do || undefined })).reverse();
+        let uids = (await im.szukaj({ tekst, wTresci: body.w_tresci === true, oflagowane: body.oflagowane === true, nieprzeczytane: body.nieprzeczytane === true, od: body.od || undefined, do: body.do || undefined })).reverse();
         if (body.zalaczniki === true) { // IMAP cannot search for attachments: the newest SKAN matches are looked through
           const scan = uids.slice(0, SKAN), keep = new Set<number>();
           for (let i = 0; i < scan.length; i += 100) for (const m of await im.meta(scan.slice(i, i + 100), true, false)) if (maZalaczniki(czesci(m.bs))) keep.add(m.uid);
@@ -130,7 +131,6 @@ export async function przegladarka(d: Deps, me: Me, ctx: Ctx, body: Any): Promis
       const plain = tekstCzesc(cz, "text/plain"), html = tekstCzesc(cz, "text/html");
       let tekst = plain ? naTekst(plain, (await im.part(uid, plain.id, MAX_TEKST)) ?? new Uint8Array(0)) : "";
       const htmlRaw = html ? naTekst(html, (await im.part(uid, html.id, MAX_HTML)) ?? new Uint8Array(0)) : "";
-      if (!tekst.trim() && htmlRaw) tekst = htmlToText(htmlRaw);
       let srcdoc: string | null = null, zdalne = 0;
       const uzyte = new Set<string>();
       if (htmlRaw) {
@@ -151,12 +151,21 @@ export async function przegladarka(d: Deps, me: Me, ctx: Ctx, body: Any): Promis
       // the access log comes before the content: without the log row the message is not shown
       await log("otwarcie", { uid, msg_hash: hash });
       const wiersz = await d.store.znajdz(s, mail.messageId).catch(() => null);
+      const typ = typFolderu(folder);
+      const szkicId = mail.naglowki["x-portal-szkic"]?.trim() ?? "";
+      const flaga = (f: string) => m.flagi.some((x) => x.toLowerCase() === f);
       const zad = wiersz?.zadanie_id ? (await d.store.zadania([wiersz.zadanie_id]))[0] ?? null : null;
       return { status: 200, body: {
         folder: folder.raw, uid, rozmiar: m.size, przeczytana: m.flagi.some((f) => /^\\seen$/i.test(f)),
         od_nazwa: mail.odNazwa, od_adres: mail.odAdres, do: mail.doAdresy, temat: mail.temat, data: mail.data,
         tekst: tekst.slice(0, 300000), srcdoc, zdalne,
         zalaczniki: zalaczniki(cz, uzyte).map((c) => ({ part: c.id, nazwa: nazwaPliku(c), typ: c.typ, rozmiar: rozmiarPo(c), za_duzy: rozmiarPo(c) > MAX_ZALACZNIK })),
+        odpowiedziano: flaga("\\answered"), przekazano: flaga("$forwarded"), oflagowana: flaga("\\flagged"), typ_folderu: typ,
+        odp: daneOdpowiedzi(mail.naglowki, mail.odAdres, mail.temat, s),
+        // a draft written in the portal can be opened for editing again
+        szkic: typ === "drafts" && /^[0-9a-f-]{36}$/.test(szkicId) ? { id: szkicId, html: oczyscWychodzacy(htmlRaw) } : null,
+        // a shared mailbox: who already opened or answered this message from the portal
+        kto: await d.store.ktoCo(s, hash).catch(() => []),
         analiza: wiersz ? { id: wiersz.id, status: wiersz.status, opisana: !!wiersz.ai, zadanie: zad ? { id: zad.id, status: zad.status, tytul: zad.tytul } : null } : null,
       } };
     }

@@ -10,6 +10,8 @@ import {
 } from "./logic.ts";
 import type { Examined, Fetched, Folder, Meta, Szukaj } from "./imap.ts";
 import { AKCJE, przegladarka, typFolderu } from "./skrzynka.ts";
+import { AKCJE_W, pisanie } from "./wysylka.ts";
+import type { Flaga } from "./imapw.ts";
 
 // deno-lint-ignore no-explicit-any
 type Any = any;
@@ -55,7 +57,18 @@ export interface Store {
   statystyki(s: Skrzynka): Promise<Record<string, number>>;
   usunStarsze(cutoff: string): Promise<number>;
   // access log of the mailbox browser (append-only; also what the per-person rate limit counts)
-  dziennik(row: { kto: string; akcja: string; skrzynka: string; folder?: string | null; uid?: number; msg_hash?: string; czesc?: string; rozmiar?: number }): Promise<void>;
+  dziennik(row: { kto: string; akcja: string; skrzynka: string; folder?: string | null; uid?: number; msg_hash?: string; czesc?: string; rozmiar?: number; szczegoly?: string }): Promise<void>;
+  ktoCo(s: Skrzynka, hash: string): Promise<{ kto: string; akcja: string; at: string }[]>;   // who opened / answered a message (from the logs)
+  // send log (append-only) and what the compose window needs
+  wyslaneClaim(row: Any): Promise<number | null>;       // null: this key was sent already
+  wyslanePatch(id: number, p: Any): Promise<void>;
+  wyslaneLicz(f: { kto?: string; skrzynka?: string; od: string }): Promise<number>;
+  wyslaneLista(limit: number): Promise<Any[]>;
+  znaneAdresy(s: Skrzynka, adresy: string[]): Promise<string[]>;   // which of them this mailbox already wrote with
+  adresySzukaj(s: Skrzynka, q: string): Promise<string[]>;
+  podpis(kto: string, s: Skrzynka): Promise<string | null>;
+  podpisZapisz(kto: string, s: Skrzynka, html: string): Promise<void>;
+  pracownik(email: string): Promise<string>;            // the name from the staff profile, "" when there is none
   dziennikLicz(kto: string, od: string): Promise<number>;
   dziennikLista(limit: number): Promise<Any[]>;
   dziennikSprzataj(starsze: string): Promise<void>;   // drops only the "lista"/"foldery" counter rows, never openings or downloads
@@ -75,13 +88,24 @@ export interface ImapLike {
   meta(set: number[] | { od: number; do: number }, uidMode: boolean, naglowki: boolean, struktura?: boolean): Promise<Meta[]>;
   part(uid: number, id: string, max?: number): Promise<Uint8Array | null>;
 }
+export interface ImapZapisLike extends ImapLike {
+  wybierz(f: Folder): Promise<void>;
+  dopisz(f: Folder, flagi: ("\\Seen" | "\\Draft")[], raw: Uint8Array): Promise<number | null>;
+  flagi(uids: number[], dodaj: boolean, flagi: Flaga[]): Promise<void>;
+  przenies(uids: number[], cel: Folder): Promise<void>;
+  usunSzkic(uid: number): Promise<void>;
+}
 export type Me = { email: string; admin: boolean; sekcje: string[] | null };
 export type Deps = {
   cronKey: string; webhookKey: string; model: string; modelReady: boolean;
   konta: Record<Skrzynka, boolean>;                      // is the mailbox password configured
   store: Store;
   ask(req: unknown): Promise<unknown>;                   // the model: the parsed JSON answer, throws on failure
-  imap(s: Skrzynka, maxLiteral?: number): Promise<ImapLike>;                  // connected and logged in
+  imap(s: Skrzynka, maxLiteral?: number): Promise<ImapLike>;
+  // the controlled write path (imapw.ts) and the mailbox's own SMTP
+  imapw(s: Skrzynka, maxLiteral?: number): Promise<ImapZapisLike>;
+  smtp(s: Skrzynka, koperta: { from: string; to: string[] }, raw: Uint8Array): Promise<void>;
+  smtpSprawdz(s: Skrzynka): Promise<boolean>;                  // connected and logged in
   klienci(): Promise<KlientRow[]>;
   portalUser(req: Request): Promise<Me | null>;
   portalUsers(): Promise<string[]>;
@@ -377,7 +401,7 @@ async function diag(d: Deps): Promise<Any> {
       const im2 = await d.imap(s);
       const st2 = await im2.status();
       await im2.logout();
-      out[s] = { login: true, wiadomosci: ex.exists, uidnext: ex.uidnext, najwyzszy_uid: uids[uids.length - 1] ?? null, nieprzeczytane_przed: przed, nieprzeczytane_po: po, status_przed: st.unseen, status_po_nowej_sesji: st2.unseen, pobrane_naglowki: naglowki, bez_zmian: przed === po && st.unseen === st2.unseen, foldery };
+      out[s] = { login: true, wiadomosci: ex.exists, uidnext: ex.uidnext, najwyzszy_uid: uids[uids.length - 1] ?? null, nieprzeczytane_przed: przed, nieprzeczytane_po: po, status_przed: st.unseen, status_po_nowej_sesji: st2.unseen, pobrane_naglowki: naglowki, bez_zmian: przed === po && st.unseen === st2.unseen, foldery, smtp_logowanie: await d.smtpSprawdz(s).catch(() => false) };
     } catch (e) { out[s] = { login: false, error: err(e) }; }
     finally { if (im) await im.logout().catch(() => {}); }
   }
@@ -419,6 +443,7 @@ export async function handle(d: Deps, req: Request): Promise<{ status: number; b
   const teraz = () => new Date(d.now()).toISOString();
 
   if (AKCJE.includes(body.action)) return await przegladarka(d, me, ctx, body);
+  if (AKCJE_W.includes(body.action)) return await pisanie(d, me, ctx, body);
 
   if (body.action === "lista") {
     const s = isSkrzynka(body.skrzynka) && moje.includes(body.skrzynka) ? body.skrzynka : moje[0];

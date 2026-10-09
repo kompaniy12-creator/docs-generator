@@ -2,7 +2,7 @@
 // The IMAP client against a small fake server (in memory, fictional messages). The fake server records every
 // command and keeps \Seen flags the way a real one does, so "read-only" is checked, not assumed.
 import { assert, assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@1";
-import { type Conn, guard, Imap, quote } from "./imap.ts";
+import { type Conn, guard, Imap, POLA, quote } from "./imap.ts";
 
 const te = new TextEncoder(), td = new TextDecoder();
 export type FakeMsg = { uid: number; raw: string; seen: boolean };
@@ -227,8 +227,8 @@ Deno.test("search: the text travels as UTF-8 literals — quotes, parentheses an
   const im = new Imap(srv, 2000);
   const zly = 'żółć" OR ALL) UID STORE 1:* +FLAGS (\\Deleted';
   assertEquals(await im.szukaj({ tekst: zly, nieprzeczytane: true, od: "2026-10-01", do: "2026-10-09" }), [7, 12, 30]);
-  assertEquals(srv.sent[0].text, "UID SEARCH CHARSET UTF-8 OR SUBJECT {0} FROM {1} UNSEEN SINCE 1-Oct-2026 BEFORE 10-Oct-2026");
-  assertEquals(srv.sent[0].literals.map((b) => td.decode(b)), [zly, zly]);
+  assertEquals(srv.sent[0].text, "UID SEARCH CHARSET UTF-8 OR OR SUBJECT {0} FROM {1} TO {2} UNSEEN SINCE 1-Oct-2026 BEFORE 10-Oct-2026");
+  assertEquals(srv.sent[0].literals.map((b) => td.decode(b)), [zly, zly, zly]);
   assertEquals(await im.szukaj({}), [7, 12, 30]);
   assertEquals(srv.sent[1].text, "UID SEARCH ALL");
   for (const tekst of ["a\r\nb", "a\nb UID STORE", "x".repeat(101)]) await assertRejects(() => im.szukaj({ tekst }));
@@ -244,8 +244,8 @@ Deno.test("meta and part: flags, size, structure and header literal are read; pa
   const head = "From: =?UTF-8?B?xbthbmV0YQ==?= <z@firma-alfa.example>\r\nSubject: Test (z nawiasem) {7}\r\n\r\n";
   const srv = new Skrypt((cmd) => {
     if (cmd.startsWith("UID FETCH 5,9 ")) return [
-      '* 1 FETCH (UID 5 FLAGS (\\Seen \\Answered) INTERNALDATE "08-Oct-2026 09:00:00 +0200" RFC822.SIZE 2300 BODYSTRUCTURE ("text" "plain" ("charset" "utf-8") NIL NIL "8bit" 20 1 NIL NIL NIL NIL) BODY[HEADER.FIELDS (FROM TO CC REPLY-TO SUBJECT DATE MESSAGE-ID)] ', ...lit(head), ")\r\n",
-      '* 2 FETCH (FLAGS () UID 9 RFC822.SIZE 99 INTERNALDATE "09-Oct-2026 09:00:00 +0200" BODYSTRUCTURE (("text" "plain" NIL NIL NIL "7bit" 1 1)("application" "pdf" ("name" ', ...lit('dziwna "nazwa".pdf'), ') NIL NIL "base64" 400 NIL ("attachment" NIL)) "mixed") BODY[HEADER.FIELDS (FROM TO CC REPLY-TO SUBJECT DATE MESSAGE-ID)] ""' + ")\r\n",
+      '* 1 FETCH (UID 5 FLAGS (\\Seen \\Answered) INTERNALDATE "08-Oct-2026 09:00:00 +0200" RFC822.SIZE 2300 BODYSTRUCTURE ("text" "plain" ("charset" "utf-8") NIL NIL "8bit" 20 1 NIL NIL NIL NIL) BODY[HEADER.FIELDS (' + POLA + ')] ', ...lit(head), ")\r\n",
+      '* 2 FETCH (FLAGS () UID 9 RFC822.SIZE 99 INTERNALDATE "09-Oct-2026 09:00:00 +0200" BODYSTRUCTURE (("text" "plain" NIL NIL NIL "7bit" 1 1)("application" "pdf" ("name" ', ...lit('dziwna "nazwa".pdf'), ') NIL NIL "base64" 400 NIL ("attachment" NIL)) "mixed") BODY[HEADER.FIELDS (' + POLA + ')] ""' + ")\r\n",
       "* 3 FETCH (FLAGS (\\Seen))\r\n",
     ];
     if (cmd.startsWith("FETCH 3:4 ")) return ['* 3 FETCH (UID 30 FLAGS () INTERNALDATE "x" RFC822.SIZE 1 BODYSTRUCTURE NIL)\r\n'];
@@ -254,9 +254,9 @@ Deno.test("meta and part: flags, size, structure and header literal are read; pa
   });
   const im = new Imap(srv, 2000);
   const m = await im.meta([5, 9, 0, -3], true, true);
-  assertEquals(srv.sent[0].text, "UID FETCH 5,9 (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (FROM TO CC REPLY-TO SUBJECT DATE MESSAGE-ID)])");
+  assertEquals(srv.sent[0].text, "UID FETCH 5,9 (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (" + POLA + ")])");
   assertEquals(m.map((x) => [x.uid, x.flagi.join(","), x.size, x.internaldate]), [[5, "\\Seen,\\Answered", 2300, "08-Oct-2026 09:00:00 +0200"], [9, "", 99, "09-Oct-2026 09:00:00 +0200"]]);
-  assertEquals(td.decode(m[0].sekcje["BODY[HEADER.FIELDS (FROM TO CC REPLY-TO SUBJECT DATE MESSAGE-ID)]"]), head);
+  assertEquals(td.decode(m[0].sekcje["BODY[HEADER.FIELDS (" + POLA + ")]"]), head);
   const { czesci } = await import("./widok.ts");
   assertEquals(czesci(m[1].bs).map((c) => [c.id, c.typ, c.nazwa, c.zalacznik]), [["1", "text/plain", "", false], ["2", "application/pdf", 'dziwna "nazwa".pdf', true]]);
   assertEquals((await im.meta({ od: 3, do: 4 }, false, false)).map((x) => x.uid), [30]);

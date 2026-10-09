@@ -18,7 +18,9 @@ export type Tryb = typeof TRYBY[number];
 export type Ustawienia = {
   skrzynki: Record<Skrzynka, { tryb: Tryb; domyslny: string }>;
   mapa: Record<string, string>;          // short name from the clients sheet ("buchok t") -> portal user e-mail
-  limity: { naRaz: number; dziennie: number; nadawca: number; autoDziennie: number; pushMinuta: number; pushDziennie: number };
+  limity: { naRaz: number; dziennie: number; nadawca: number; autoDziennie: number; pushMinuta: number; pushDziennie: number; wysUzytkownik: number; wysSkrzynka: number; wysMinuta: number; odbiorcy: number };
+  nadawca: Record<Skrzynka, string>;     // display name in From (the address is always the mailbox itself)
+  stopka: Record<Skrzynka, string>;      // mandatory footer closing every message sent from the mailbox (plain text)
   autoTylkoKlienci: boolean;             // auto mode creates tasks only for senders matched to a client
   pushAlarmGodz: number;                 // warn when push delivered nothing for that many hours while the poll finds mail
 };
@@ -26,6 +28,8 @@ const int = (v: unknown, def: number, min: number, max: number) => { const n = M
 export const normNazwa = (s: unknown) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ł/gi, "l").toLowerCase().replace(/[^a-z0-9а-яіїєґ ]/gi, " ").replace(/\s+/g, " ").trim();
 export const okMail = (s: string) => /^[^@\s<>"]+@[^@\s<>"]+\.[^@\s<>"]+$/.test(s);
 
+const nazwaNadawcy = (x: unknown, def: string) => String(x ?? "").replace(/[\u0000-\u001f\u007f<>"@]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || def;
+const stopkaTekst = (x: unknown) => String(x ?? "").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").trim().slice(0, 1500);
 // Whatever is stored (or sent by the admin page) becomes a complete, bounded settings object.
 // `users`: when given, addresses that are not portal users are dropped.
 // deno-lint-ignore no-explicit-any
@@ -37,7 +41,10 @@ export function ustawienia(v: any, users?: Set<string>): Ustawienia {
   const l = v?.limity ?? {};
   return {
     skrzynki: { kadry: sk("kadry"), ksiegowosc: sk("ksiegowosc") }, mapa,
-    limity: { naRaz: int(l.naRaz, 8, 1, 25), dziennie: int(l.dziennie, 150, 1, 500), nadawca: int(l.nadawca, 15, 1, 100), autoDziennie: int(l.autoDziennie, 30, 0, 200), pushMinuta: int(l.pushMinuta, 30, 1, 120), pushDziennie: int(l.pushDziennie, 600, 1, 5000) },
+    limity: { naRaz: int(l.naRaz, 8, 1, 25), dziennie: int(l.dziennie, 150, 1, 500), nadawca: int(l.nadawca, 15, 1, 100), autoDziennie: int(l.autoDziennie, 30, 0, 200), pushMinuta: int(l.pushMinuta, 30, 1, 120), pushDziennie: int(l.pushDziennie, 600, 1, 5000),
+      wysUzytkownik: int(l.wysUzytkownik, 100, 1, 500), wysSkrzynka: int(l.wysSkrzynka, 300, 1, 2000), wysMinuta: int(l.wysMinuta, 5, 1, 30), odbiorcy: int(l.odbiorcy, 20, 1, 50) },
+    nadawca: { kadry: nazwaNadawcy(v?.nadawca?.kadry, "TD Consulting Group — Kadry"), ksiegowosc: nazwaNadawcy(v?.nadawca?.ksiegowosc, "TD Consulting Group — Księgowość") },
+    stopka: { kadry: stopkaTekst(v?.stopka?.kadry), ksiegowosc: stopkaTekst(v?.stopka?.ksiegowosc) },
     autoTylkoKlienci: v?.autoTylkoKlienci !== false,
     pushAlarmGodz: int(v?.pushAlarmGodz, 6, 1, 72),
   };

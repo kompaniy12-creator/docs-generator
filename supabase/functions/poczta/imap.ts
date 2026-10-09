@@ -88,7 +88,9 @@ export function mutf7(s: string): string {
 }
 export type Folder = { raw: string; nazwa: string; delim: string; flagi: string[] };
 export type Meta = { uid: number; flagi: string[]; size: number; internaldate: string; bs: Node | null; sekcje: Record<string, Uint8Array> };
-export type Szukaj = { tekst?: string; nieprzeczytane?: boolean; od?: string; do?: string };
+export type Szukaj = { tekst?: string; wTresci?: boolean; nieprzeczytane?: boolean; oflagowane?: boolean; od?: string; do?: string };
+// header fields read with every message of a list or a view
+export const POLA = "FROM TO CC REPLY-TO SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES X-PORTAL-SZKIC";
 const MIES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 // 2026-10-09 -> 9-Oct-2026 (throws on anything that is not a real ISO date)
 export function imapData(iso: string): string {
@@ -101,12 +103,13 @@ export function imapData(iso: string): string {
 export class Imap {
   private buf = new Uint8Array(0);
   private n = 0;
-  constructor(private c: Conn, private timeoutMs = 20000, private maxLiteral = 16 * 1024 * 1024) {}
+  // `straz`: the check every command passes before it is sent (read-only here; imapw.ts has the controlled write path)
+  constructor(protected c: Conn, protected timeoutMs = 20000, protected maxLiteral = 16 * 1024 * 1024, protected straz: (cmd: string) => void = guard) {}
 
   static async connect(host: string, port: number, timeoutMs = 20000, maxLiteral?: number): Promise<Imap> {
     // certificate validation stays on (the default); a wrong host name fails here
     const c = await withTimeout(Deno.connectTls({ hostname: host, port }), timeoutMs, "imap: przekroczono czas łączenia");
-    const i = new Imap(c, timeoutMs, maxLiteral);
+    const i = new this(c, timeoutMs, maxLiteral);
     const g = await i.response();
     if (!/^\* (OK|PREAUTH)/i.test(g.text)) { i.close(); throw new Error("imap: nieoczekiwane powitanie serwera"); }
     return i;
@@ -162,9 +165,9 @@ export class Imap {
     }
   }
   // Parts: protocol text (checked by guard) and literals (bytes, sent only after the server's "+" go-ahead).
-  private async cmd(...parts: (string | Uint8Array)[]): Promise<{ untagged: { text: string; literals: Uint8Array[] }[]; done: string }> {
+  protected async cmd(...parts: (string | Uint8Array)[]): Promise<{ untagged: { text: string; literals: Uint8Array[] }[]; done: string }> {
     const command = parts.map((p) => (typeof p === "string" ? p : `{${p.length}}`)).join("");
-    guard(command);
+    this.straz(command);
     const tag = "P" + (++this.n);
     const untagged: { text: string; literals: Uint8Array[] }[] = [];
     const fail = (rest: string) => new Error("imap: " + command.split(" ").slice(0, command.startsWith("UID ") ? 2 : 1).join(" ") + " odrzucone: " + rest.replace(/[^\x20-\x7e]/g, "").slice(0, 120));
@@ -265,9 +268,12 @@ export class Imap {
     if (tekst) {
       if (/[\r\n\0]/.test(tekst) || tekst.length > 100) throw new Error("imap: nieprawidłowy tekst wyszukiwania");
       const lit = enc.encode(tekst);
-      parts.push(" CHARSET UTF-8 OR SUBJECT ", lit, " FROM ", lit);
+      // subject / sender / recipient; with `wTresci` anywhere in the message (headers and text)
+      if (f.wTresci) parts.push(" CHARSET UTF-8 TEXT ", lit);
+      else parts.push(" CHARSET UTF-8 OR OR SUBJECT ", lit, " FROM ", lit, " TO ", lit);
     }
     if (f.nieprzeczytane) parts.push(" UNSEEN");
+    if (f.oflagowane) parts.push(" FLAGGED");
     if (f.od) parts.push(" SINCE " + imapData(f.od));
     if (f.do) parts.push(" BEFORE " + imapData(new Date(Date.parse(f.do + "T00:00:00Z") + 86400000).toISOString().slice(0, 10)));
     if (parts.length === 1) parts.push(" ALL");
@@ -280,7 +286,7 @@ export class Imap {
   async meta(set: number[] | { od: number; do: number }, uidMode: boolean, naglowki: boolean, struktura = true): Promise<Meta[]> {
     const ids = Array.isArray(set) ? set.map((x) => Math.floor(x)).filter((x) => x > 0).join(",") : `${Math.max(1, Math.floor(set.od))}:${Math.max(1, Math.floor(set.do))}`;
     if (!ids) return [];
-    const items = "UID FLAGS INTERNALDATE RFC822.SIZE" + (struktura ? " BODYSTRUCTURE" : "") + (naglowki ? " BODY.PEEK[HEADER.FIELDS (FROM TO CC REPLY-TO SUBJECT DATE MESSAGE-ID)]" : "");
+    const items = "UID FLAGS INTERNALDATE RFC822.SIZE" + (struktura ? " BODYSTRUCTURE" : "") + (naglowki ? ` BODY.PEEK[HEADER.FIELDS (${POLA})]` : "");
     const r = await this.cmd(`${uidMode ? "UID " : ""}FETCH ${ids} (${items})`);
     const out: Meta[] = [];
     for (const u of r.untagged) {
@@ -327,4 +333,25 @@ export function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<
   let t: number | undefined;
   const timer = new Promise<never>((_, rej) => { t = setTimeout(() => rej(new Error(msg)), ms); });
   return Promise.race([p, timer]).finally(() => clearTimeout(t)) as Promise<T>;
+}
+
+// the kind of a folder: from the special-use flag (RFC 6154), else from its usual names; "" = an ordinary folder
+export function typFolderu(f: Folder): string {
+  if (f.raw.toUpperCase() === "INBOX") return "inbox";
+  const flag = f.flagi.map((x) => x.toLowerCase()).find((x) => ["\\sent", "\\drafts", "\\trash", "\\junk", "\\archive"].includes(x));
+  if (flag) return flag.slice(1);
+  const leaf = f.nazwa.split(f.delim).pop()!.toLowerCase();
+  if (/^(sent|sent items|sent messages|wysłane|wyslane|elementy wysłane)$/.test(leaf)) return "sent";
+  if (/^(drafts?|robocze|szkice|wersje robocze)$/.test(leaf)) return "drafts";
+  if (/^(trash|kosz|deleted|deleted items|deleted messages|elementy usunięte)$/.test(leaf)) return "trash";
+  if (/^(junk|spam|junk e-mail|wiadomości-śmieci)$/.test(leaf)) return "junk";
+  if (/^(archive|archives|archiwum)$/.test(leaf)) return "archive";
+  return "";
+}
+export const nieWybieralny = (f: Folder) => f.flagi.some((x) => /^\\(noselect|nonexistent)$/i.test(x));
+// the one folder of a kind: the special-use one first, then the shallowest by name
+export function folderTypu(list: Folder[], typ: string): Folder | null {
+  const c = list.filter((f) => !nieWybieralny(f) && typFolderu(f) === typ);
+  const flagged = c.find((f) => f.flagi.some((x) => x.toLowerCase() === "\\" + typ));
+  return flagged ?? c.sort((a, b) => a.raw.split(a.delim).length - b.raw.split(b.delim).length || a.raw.length - b.raw.length)[0] ?? null;
 }
