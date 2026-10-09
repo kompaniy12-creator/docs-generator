@@ -184,6 +184,13 @@
       (ob.data || []).forEach(function (o) { if (o.nip && o.koniec_od) kon[o.nip] = String(o.koniec_od).slice(0, 7); });
       klienci.forEach(function (c) { c.koniec = kon[c.nip] || ''; });
     } catch (e) {}
+    // Scope of service: the office keeps the books only of clients with an accounting caretaker (opiekun) in
+    // the clients sheet — the others (HR only, or nobody assigned) are not on this board and are not counted.
+    // When no client carries a caretaker at all (the column did not come through), everybody is shown as before.
+    if (klienci.some(function (c) { return c.opiekun; })) {
+      klienci = klienci.filter(function (c) { return c.opiekun; });
+      if (f.op === '—') f.op = ''; // the "Bez opiekuna" group no longer exists
+    }
     wszyscy = klienci;
     naOkres();
   }

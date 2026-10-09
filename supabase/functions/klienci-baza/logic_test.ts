@@ -2,7 +2,7 @@
 // Fictional firms and people only.
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import {
-  audytKlienta, bezDanychOsobowych, csvBraki, csvPole, dopasuj, formaTyp, klientId, nazwaKlucz, nipOk, odcisk, ostrzezeniaRejestru, pewnyKlient,
+  audytKlienta, bezDanychOsobowych, csvBraki, zakres, zakresOpis, csvPole, dopasuj, formaTyp, klientId, nazwaKlucz, nipOk, odcisk, ostrzezeniaRejestru, pewnyKlient,
   planOdswiezenia, roznice, stanFirmy, wyciagGus, wyciagKrs,
 } from "./logic.ts";
 
@@ -160,10 +160,41 @@ Deno.test("audyt: komplet -> ok; podpisujący w aktualnym rejestrze to tylko inf
 });
 Deno.test("audyt: odrębna umowa powierzenia; kadrowy bez umowy kadrowej", () => {
   const a = audytKlienta({ ...K, kadrowy: "Kadrowa Testowa" }, [REJ], [UM({}), UM({ rodzaj: "powierzenie", obejmuje: ["powierzenie"] }), UM({ rodzaj: "upowaznienie", obejmuje: [], podtyp: "KSeF" })], DZIS);
-  assertEquals(stan(a, "powierzenie"), "ok"); assertEquals(stan(a, "kadry"), "uwaga"); assertEquals(a.wynik, "uwagi");
+  assertEquals(stan(a, "powierzenie"), "ok"); assertEquals(stan(a, "kadry"), "brak"); assertEquals(a.wynik, "braki"); assertEquals(a.ma.umowa, false);
   // a contract for payroll only is a service contract too
   const b = audytKlienta({ ...K, opiekun: "" , kadrowy: "Kadrowa Testowa" }, [REJ], [UM({ rodzaj: "kadry", obejmuje: ["kadry", "powierzenie"] })], DZIS);
   assertEquals(b.ma.kadry, true); assertEquals(stan(b, "umowa"), "ok"); assertEquals(stan(b, "kadry"), undefined);
+});
+Deno.test("audyt: zakres obsługi z opiekunów — umowa wymagana tylko na to, co biuro faktycznie prowadzi", () => {
+  const KS = { ...K, opiekun: "Księgowa Testowa", kadrowy: "" }, KD = { ...K, opiekun: "", kadrowy: "Kadrowa Testowa" }, OBA = { ...K, kadrowy: "Kadrowa Testowa" }, NIKT = { ...K, opiekun: " ", kadrowy: "" };
+  const ksieg = UM({ obejmuje: ["ksiegowosc", "powierzenie"] }), kadr = UM({ rodzaj: "kadry", obejmuje: ["kadry", "powierzenie"] });
+  assertEquals([zakres(KS), zakres(KD), zakres(OBA), zakres(NIKT)].map(zakresOpis), ["tylko księgowość", "tylko kadry", "księgowość + kadry", "brak opiekunów"]);
+  // HR only: an HR contract is enough, nothing is asked about accounting
+  let a = audytKlienta(KD, [REJ], [kadr], DZIS);
+  assertEquals([a.zakres, a.ma.umowa, stan(a, "umowa"), stan(a, "ksiegowosc"), stan(a, "kadry"), stan(a, "powierzenie")], [{ ksiegowosc: false, kadry: true }, true, "ok", undefined, undefined, "ok"]);
+  // HR only, nothing on file: one gap, named after what is done
+  a = audytKlienta(KD, [REJ], [], DZIS);
+  assertEquals([stan(a, "umowa"), stan(a, "powierzenie"), a.ma.umowa], ["brak", "brak", false]);
+  assert(a.pozycje.find((p) => p.kod === "umowa")!.tekst.includes("usług kadrowo-płacowych")); assert(!a.pozycje.find((p) => p.kod === "umowa")!.tekst.includes("księgow"));
+  // HR only, but the only contract is for accounting: HR is missing, and the contract disagrees with the sheet
+  a = audytKlienta(KD, [REJ], [ksieg], DZIS);
+  assertEquals([stan(a, "kadry"), stan(a, "ksiegowosc"), a.ma.umowa, a.wynik], ["brak", "uwaga", false, "braki"]);
+  assert(a.pozycje.find((p) => p.kod === "ksiegowosc")!.tekst.includes("Umowa obejmuje księgowość, a klient nie ma opiekuna"));
+  // accounting only: an accounting contract is enough; one that also covers HR is pointed out
+  a = audytKlienta(KS, [REJ], [ksieg], DZIS);
+  assertEquals([a.ma.umowa, stan(a, "kadry"), stan(a, "ksiegowosc")], [true, undefined, undefined]);
+  assertEquals(stan(audytKlienta(KS, [REJ], [UM({ obejmuje: ["ksiegowosc", "kadry", "powierzenie"] })], DZIS), "kadry"), "uwaga");
+  // both: each needs its contract (one document may cover both)
+  a = audytKlienta(OBA, [REJ], [ksieg], DZIS);
+  assertEquals([stan(a, "kadry"), a.ma.umowa, a.ma.ksiegowosc], ["brak", false, true]);
+  assertEquals(audytKlienta(OBA, [REJ], [ksieg, kadr], DZIS).ma.umowa, true);
+  assertEquals(audytKlienta(OBA, [REJ], [UM({ obejmuje: ["ksiegowosc", "kadry", "powierzenie"] })], DZIS).ma, { umowa: true, ksiegowosc: true, kadry: true, powierzenie: true, pelnomocnictwo: false });
+  // nobody: a single warning, no contract gaps — whatever is on file
+  for (const dok of [[], [ksieg, kadr]]) {
+    a = audytKlienta(NIKT, [REJ], dok, DZIS);
+    assertEquals([a.wynik, a.pozycje.length, a.pozycje[0].kod, a.pozycje[0].stan, a.zakres], ["uwagi", 1, "zakres", "uwaga", { ksiegowosc: false, kadry: false }]);
+    assert(a.pozycje[0].tekst.startsWith("Brak opiekuna i kadrowej — zakres obsługi nieokreślony"));
+  }
 });
 Deno.test("audyt: umowa wygasła albo wypowiedziana -> brak obowiązującej", () => {
   const w = audytKlienta(K, [REJ], [UM({ bezterminowa: false, obowiazuje_do: "2026-06-30" })], DZIS);
@@ -256,7 +287,11 @@ Deno.test("csvBraki: nagłówek, wiersz, groźna nazwa klienta", () => {
   const linie = csv.trimEnd().split("\r\n");
   assertEquals(linie.length, 3);
   assert(linie[0].startsWith('"Klient";"NIP";"Forma"'));
-  assert(linie[1].startsWith('"Przykładowa Alfa sp. z o.o.";"' + N1 + '";"spółka z o.o.";"Księgowa Testowa";"";"obsługiwany";"braki";"NIE";"NIE";"NIE";"NIE";"NIE";"Brak umowy'));
+  assert(linie[1].startsWith('"Przykładowa Alfa sp. z o.o.";"' + N1 + '";"spółka z o.o.";"Księgowa Testowa";"";"tylko księgowość";"obsługiwany";"braki";"NIE";"NIE";"nie dotyczy";"NIE";"NIE";"Brak umowy'));
   assert(linie[2].startsWith('"\'=cmd|""/c calc""!A1";'));
-  assertEquals(linie[1].split('";"').length, 14);
+  assertEquals(linie[1].split('";"').length, 15);
+  const nikt = { ...K, opiekun: "", kadrowy: "" }, kd = { ...K, opiekun: "", kadrowy: "Kadrowa Testowa" };
+  const l2 = csvBraki([{ k: nikt, a: audytKlienta(nikt, [REJ], [], DZIS) }, { k: kd, a: audytKlienta(kd, [REJ], [UM({ obejmuje: ["ksiegowosc"] })], DZIS) }]).trimEnd().split("\r\n");
+  assert(l2[1].includes('"brak opiekunów";"obsługiwany";"uwagi";"nie dotyczy";"nie dotyczy";"nie dotyczy";"nie dotyczy";"nie dotyczy";"";"Brak opiekuna i kadrowej'));
+  assert(l2[2].includes('"tylko kadry";"obsługiwany";"braki";"NIE";"tak (poza zakresem)";"NIE";'));
 });

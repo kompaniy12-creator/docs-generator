@@ -172,10 +172,15 @@ Deno.test("lista: synchronizacja z arkusza; pracownik bez uprawnień administrat
   const a = await call("admin", { action: "lista" });
   assertEquals(a.status, 200); assertEquals(a.b.klienci.length, 4); assertEquals(a.b.ja, { email: "admin@example.test", admin: true, kontakty: true });
   const alfa = a.b.klienci.find((k: Any) => k.id === N1);
-  assertEquals(alfa.status, "obslugiwany"); assertEquals(alfa.audyt.wynik, "braki"); assertEquals(alfa.kontakt.email, "biuro@example.test"); assert(Array.isArray(a.b.umowy));
+  assertEquals(alfa.status, "obslugiwany"); assertEquals(alfa.audyt.wynik, "braki"); assertEquals([alfa.ksiegowosc, alfa.kadry, alfa.audyt.zakres], [true, false, { ksiegowosc: true, kadry: false }]); assertEquals(alfa.kontakt.email, "biuro@example.test"); assert(Array.isArray(a.b.umowy));
   assert(a.b.klienci.find((k: Any) => k.id === "nazwa:przykładowa gamma").ostrzezenia[0].includes("NIP"));
 
+  // nobody looks after the client: scope undefined — a single warning for the administrator, visible flags for everybody
+  T.portal_klienci.find((x) => x.id === N2).dane.opiekun = ""; await call("admin", { action: "sync" });
+  const beta = (await call("admin", { action: "lista" })).b.klienci.find((x: Any) => x.id === N2);
+  assertEquals([beta.ksiegowosc, beta.kadry, beta.audyt.wynik, beta.audyt.pozycje.map((p: Any) => p.kod)], [false, false, "uwagi", ["zakres"]]);
   const k = await call("ksieg", { action: "lista" });
+  assertEquals(k.b.klienci.map((x: Any) => [x.ksiegowosc, x.kadry]).filter((x: boolean[]) => x[0]).length, 3); assertEquals(k.b.klienci.find((x: Any) => x.id === N2).ksiegowosc, false);
   assertEquals(k.b.ja, { email: "ksieg@example.test", admin: false, kontakty: false });
   assertEquals(k.b.umowy, undefined);
   for (const x of k.b.klienci) { assertEquals(x.audyt, undefined); assertEquals(x.historia, undefined); assertEquals(x.kontakt, undefined); for (const pole of ["zmienil", "zmieniono_at", "rejestr_blad", "rejestr_at", "arkusz_at", "created_at"]) assert(!(pole in x), pole); }

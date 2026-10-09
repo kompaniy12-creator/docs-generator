@@ -238,7 +238,16 @@ export function ostrzezeniaRejestru(k: Any, rej: Any | null, teraz: number, szcz
 
 // ---------------------------------------------------------------- contracts audit
 export type Poz = { kod: string; stan: "ok" | "uwaga" | "brak" | "info"; tekst: string };
-export type Audyt = { wynik: "ok" | "uwagi" | "braki"; ma: { umowa: boolean; ksiegowosc: boolean; kadry: boolean; powierzenie: boolean; pelnomocnictwo: boolean }; pozycje: Poz[] };
+export type Zakres = { ksiegowosc: boolean; kadry: boolean };
+export type Audyt = { wynik: "ok" | "uwagi" | "braki"; zakres: Zakres; ma: { umowa: boolean; ksiegowosc: boolean; kadry: boolean; powierzenie: boolean; pelnomocnictwo: boolean }; pozycje: Poz[] };
+// What the office does for a client follows from the caretakers in the clients sheet: no accounting
+// caretaker (opiekun) — no accounting; no HR caretaker (kadrowy) — no HR and payroll.
+export function zakres(k: Any): Zakres {
+  return { ksiegowosc: String(k?.opiekun ?? "").trim() !== "", kadry: String(k?.kadrowy ?? "").trim() !== "" };
+}
+export function zakresOpis(z: Zakres): string {
+  return z.ksiegowosc && z.kadry ? "księgowość + kadry" : z.ksiegowosc ? "tylko księgowość" : z.kadry ? "tylko kadry" : "brak opiekunów";
+}
 const pl = (iso: unknown) => { const p = String(iso ?? "").slice(0, 10).split("-"); return p.length === 3 ? `${p[2]}.${p[1]}.${p[0]}` : ""; };
 const obejmuje = (u: Any, co: string) => u.rodzaj === co || (Array.isArray(u.obejmuje) && u.obejmuje.includes(co));
 const wygasla = (u: Any, dzis: string) => u.bezterminowa !== true && isDate(u.obowiazuje_do) && u.obowiazuje_do < dzis;
@@ -251,6 +260,13 @@ const taSamaOsoba = (a: string, b: string) => { const A = osobaKlucz(a), B = oso
 export function audytKlienta(k: Any, rejestry: Any[], wszystkie: Any[], dzis: string): Audyt {
   const poz: Poz[] = [];
   const rej = rejestry[0] ?? null;
+  const z = zakres(k);
+  // nobody looks after the client: what should be on file cannot be told — one warning instead of a list of gaps
+  if (!z.ksiegowosc && !z.kadry) {
+    return { wynik: "uwagi", zakres: z, ma: { umowa: false, ksiegowosc: false, kadry: false, powierzenie: false, pelnomocnictwo: false },
+      pozycje: [{ kod: "zakres", stan: "uwaga", tekst: "Brak opiekuna i kadrowej — zakres obsługi nieokreślony. Uzupełnij opiekunów w arkuszu klientów albo zakończ obsługę." }] };
+  }
+  const czego = z.ksiegowosc && z.kadry ? "księgowych i kadrowo-płacowych" : z.ksiegowosc ? "księgowych" : "kadrowo-płacowych";
   const umowy = wszystkie.filter((u) => !!u.sprawdzil), auto = wszystkie.filter((u) => !u.sprawdzil);
   const AUTO = " — odczyt automatyczny — niepotwierdzony; otwórz dokument i zatwierdź.";
   const autoUsl = auto.filter((u) => u.rodzaj !== "wypowiedzenie" && u.rodzaj !== "aneks" && (obejmuje(u, "ksiegowosc") || obejmuje(u, "kadry")));
@@ -264,7 +280,7 @@ export function audytKlienta(k: Any, rejestry: Any[], wszystkie: Any[], dzis: st
   // 1. a service contract at all
   if (!uslugowe.length) poz.push(autoUsl.length
     ? { kod: "umowa", stan: "uwaga", tekst: "Umowa o świadczenie usług " + opis(autoUsl[0]) + AUTO }
-    : { kod: "umowa", stan: "brak", tekst: "Brak umowy o świadczenie usług (księgowych lub kadrowo-płacowych) w bazie." });
+    : { kod: "umowa", stan: "brak", tekst: "Brak umowy o świadczenie usług " + czego + " w bazie." });
   else if (!czynne.length) {
     const u = uslugowe[0], w = wypowiedziana(u);
     poz.push({ kod: "umowa", stan: "brak", tekst: wygasla(u, dzis) ? "Umowa " + opis(u) + " wygasła " + pl(u.obowiazuje_do) + " — brak obowiązującej umowy." : "Do umowy " + opis(u) + " jest wypowiedzenie" + (w && isDate(w.data_zawarcia) ? " z dnia " + pl(w.data_zawarcia) : "") + " — brak obowiązującej umowy." });
@@ -274,9 +290,12 @@ export function audytKlienta(k: Any, rejestry: Any[], wszystkie: Any[], dzis: st
     for (const u of czynne) if (u.bezterminowa !== true && isDate(u.obowiazuje_do) && Date.parse(u.obowiazuje_do) - Date.parse(dzis) <= 60 * 86400000) poz.push({ kod: "waznosc", stan: "uwaga", tekst: "Umowa " + opis(u) + " obowiązuje tylko do " + pl(u.obowiazuje_do) + "." });
   }
   const maKs = czynne.some((u) => obejmuje(u, "ksiegowosc")), maKd = czynne.some((u) => obejmuje(u, "kadry"));
+  // the contracts in force against the scope of service: required only for what the office actually does
   if (czynne.length) {
-    if (!maKs && String(k.opiekun ?? "").trim()) poz.push({ kod: "ksiegowosc", stan: "uwaga", tekst: "Klient ma opiekuna księgowego, a żadna obowiązująca umowa nie obejmuje usług księgowych." });
-    if (!maKd && String(k.kadrowy ?? "").trim()) poz.push({ kod: "kadry", stan: "uwaga", tekst: "Klient ma przypisanego kadrowego, a żadna obowiązująca umowa nie obejmuje obsługi kadrowo-płacowej." });
+    if (z.ksiegowosc && !maKs) poz.push({ kod: "ksiegowosc", stan: "brak", tekst: "Brak umowy obejmującej usługi księgowe — klient ma opiekuna księgowego, a żadna obowiązująca umowa ich nie obejmuje." });
+    if (z.kadry && !maKd) poz.push({ kod: "kadry", stan: "brak", tekst: "Brak umowy obejmującej obsługę kadrowo-płacową — klient ma kadrową, a żadna obowiązująca umowa jej nie obejmuje." });
+    if (!z.ksiegowosc && maKs) poz.push({ kod: "ksiegowosc", stan: "uwaga", tekst: "Umowa obejmuje księgowość, a klient nie ma opiekuna księgowego — uzupełnij opiekuna w arkuszu albo sprawdź zakres umowy." });
+    if (!z.kadry && maKd) poz.push({ kod: "kadry", stan: "uwaga", tekst: "Umowa obejmuje kadry i płace, a klient nie ma kadrowej — uzupełnij kadrową w arkuszu albo sprawdź zakres umowy." });
   }
 
   // 2. entrusting personal data (art. 28 ust. 3 RODO): a separate contract or a clause in the service contract
@@ -334,7 +353,8 @@ export function audytKlienta(k: Any, rejestry: Any[], wszystkie: Any[], dzis: st
     }
   }
   const wynik = poz.some((p) => p.stan === "brak") ? "braki" : poz.some((p) => p.stan === "uwaga") ? "uwagi" : "ok";
-  return { wynik, ma: { umowa: czynne.length > 0, ksiegowosc: maKs, kadry: maKd, powierzenie: pow.length > 0, pelnomocnictwo: peln.length > 0 }, pozycje: poz };
+  // `umowa`: everything the office does for the client is covered by a contract in force
+  return { wynik, zakres: z, ma: { umowa: (!z.ksiegowosc || maKs) && (!z.kadry || maKd), ksiegowosc: maKs, kadry: maKd, powierzenie: pow.length > 0, pelnomocnictwo: peln.length > 0 }, pozycje: poz };
 }
 
 // ---------------------------------------------------------------- CSV (opens in Excel: ';', UTF-8 with BOM added by the page)
@@ -348,10 +368,13 @@ export const csvWiersz = (pola: unknown[]) => pola.map(csvPole).join(";");
 const STATUS: Any = { obslugiwany: "obsługiwany", wstrzymany: "wstrzymany", zakonczony: "zakończony" };
 export function csvBraki(wiersze: Array<{ k: Any; a: Audyt }>): string {
   const tak = (b: boolean) => (b ? "tak" : "NIE");
-  const out = [csvWiersz(["Klient", "NIP", "Forma", "Opiekun", "Kadrowy", "Status obsługi", "Wynik audytu", "Umowa obowiązująca", "Obejmuje księgowość", "Obejmuje kadry", "Powierzenie danych", "Pełnomocnictwa", "Braki", "Uwagi do sprawdzenia"])];
+  // outside the scope of service a missing contract is not a gap
+  const wZakresie = (w: boolean, b: boolean) => (w ? tak(b) : b ? "tak (poza zakresem)" : "nie dotyczy");
+  const out = [csvWiersz(["Klient", "NIP", "Forma", "Opiekun", "Kadrowy", "Zakres obsługi", "Status obsługi", "Wynik audytu", "Umowy na cały zakres", "Umowa — księgowość", "Umowa — kadry", "Powierzenie danych", "Pełnomocnictwa", "Braki", "Uwagi do sprawdzenia"])];
   for (const { k, a } of wiersze) {
-    out.push(csvWiersz([k.nazwa, k.nip ?? "", k.forma ?? "", k.opiekun ?? "", k.kadrowy ?? "", STATUS[k.status] ?? k.status,
-      a.wynik === "ok" ? "w porządku" : a.wynik, tak(a.ma.umowa), tak(a.ma.ksiegowosc), tak(a.ma.kadry), tak(a.ma.powierzenie), tak(a.ma.pelnomocnictwo),
+    const nikt = !a.zakres.ksiegowosc && !a.zakres.kadry;
+    out.push(csvWiersz([k.nazwa, k.nip ?? "", k.forma ?? "", k.opiekun ?? "", k.kadrowy ?? "", zakresOpis(a.zakres), STATUS[k.status] ?? k.status,
+      a.wynik === "ok" ? "w porządku" : a.wynik, nikt ? "nie dotyczy" : tak(a.ma.umowa), wZakresie(a.zakres.ksiegowosc, a.ma.ksiegowosc), wZakresie(a.zakres.kadry, a.ma.kadry), nikt ? "nie dotyczy" : tak(a.ma.powierzenie), nikt ? "nie dotyczy" : tak(a.ma.pelnomocnictwo),
       a.pozycje.filter((p) => p.stan === "brak").map((p) => p.tekst).join(" | "), a.pozycje.filter((p) => p.stan === "uwaga").map((p) => p.tekst).join(" | ")]));
   }
   return out.join("\r\n") + "\r\n";

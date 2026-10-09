@@ -27,7 +27,7 @@
   var IKONA = { ok: '✓', uwaga: '!', brak: '✕', info: 'i' };
 
   var klienci = [], umowy = [], ja = { admin: false }, cena = 0.05, wczytano = false, blad = '';
-  var f = { q: '', status: 'czynni', opiekun: '', forma: '', umowy: '', rejestr: '', sort: 'nazwa', dir: 1, tab: 'klienci', utab: 'spr' };
+  var f = { q: '', status: 'czynni', opiekun: '', forma: '', zakres: '', umowy: '', rejestr: '', sort: 'nazwa', dir: 1, tab: 'klienci', utab: 'spr' };
   try { var z = JSON.parse(localStorage.getItem(LS) || '{}'); Object.keys(f).forEach(function (k) { if (typeof z[k] === typeof f[k]) f[k] = z[k]; }); } catch (e) {}
   function zapamietaj() { try { localStorage.setItem(LS, JSON.stringify(f)); } catch (e) {} }
   var otwarta = null; // id of the client whose card is open
@@ -58,10 +58,18 @@
 
   // ---------------- client list ----------------
   function ostrz(k) { return (k.ostrzezenia || []).length; }
+  // scope of service, from the caretakers in the clients sheet: 'oba' | 'ks' (accounting only) | 'kd' (HR only) | 'brak'
+  function zakres(k) {
+    var ks = typeof k.ksiegowosc === 'boolean' ? k.ksiegowosc : !!(k.opiekun || '').trim(), kd = typeof k.kadry === 'boolean' ? k.kadry : !!(k.kadrowy || '').trim();
+    return ks && kd ? 'oba' : ks ? 'ks' : kd ? 'kd' : 'brak';
+  }
+  var ZAKRES = { oba: 'księgowość + kadry', ks: 'tylko księgowość', kd: 'tylko kadry', brak: 'brak opiekunów' };
+  function zakresPill(k) { var z = zakres(k); return '<span class="pill ' + (z === 'brak' ? 'p-amber' : 'p-navy') + '">' + ZAKRES[z] + '</span>'; }
   function pasuje(k) {
     if (f.status === 'czynni' ? k.status === 'zakonczony' : f.status !== 'wszyscy' && k.status !== f.status) return false;
     if (f.opiekun && (k.opiekun || '—') !== f.opiekun) return false;
     if (f.forma && (k.forma || '—') !== f.forma) return false;
+    if (f.zakres && zakres(k) !== f.zakres) return false;
     if (f.rejestr === 'ostrz' && !ostrz(k)) return false;
     if (f.rejestr === 'brak' && k.rej) return false;
     if (f.rejestr === 'zmiany' && !(k.rej && (k.rej.zmiany || []).length)) return false;
@@ -69,6 +77,8 @@
     if (f.umowy && ja.admin) {
       var a = k.audyt || { ma: {}, wynik: '' };
       if (f.umowy === 'braki' || f.umowy === 'uwagi' || f.umowy === 'ok') { if (a.wynik !== f.umowy) return false; }
+      // a client nobody looks after has no defined scope: it is a warning of its own, not a missing contract
+      else if (zakres(k) === 'brak') return false;
       else if (f.umowy === 'bez_umowy' && a.ma.umowa) return false;
       else if (f.umowy === 'bez_powierzenia' && a.ma.powierzenie) return false;
       else if (f.umowy === 'bez_pelnomocnictw' && a.ma.pelnomocnictwo) return false;
@@ -92,7 +102,11 @@
   function umPills(k) {
     var a = k.audyt; if (!a) return '';
     if (k.status === 'zakonczony') return '<span class="pill p-grey">dokumentów: ' + umowyKlienta(k.id).length + '</span>';
-    return '<span class="pill ' + (a.ma.umowa ? 'p-ok' : 'p-red') + '">' + (a.ma.umowa ? 'umowa' : 'brak umowy') + '</span>' +
+    var z = zakres(k);
+    if (z === 'brak') return '<span class="pill p-amber">zakres nieokreślony</span>';
+    // a contract is expected only for what the office does for this client
+    var jedna = function (jest, co) { return '<span class="pill ' + (jest ? 'p-ok' : 'p-red') + '">' + (jest ? 'umowa: ' : 'brak umowy: ') + co + '</span>'; };
+    return (z !== 'kd' ? jedna(a.ma.ksiegowosc, 'księgowość') : '') + (z !== 'ks' ? jedna(a.ma.kadry, 'kadry') : '') +
       '<span class="pill ' + (a.ma.powierzenie ? 'p-ok' : 'p-red') + '">' + (a.ma.powierzenie ? 'powierzenie' : 'brak powierzenia') + '</span>' +
       (a.ma.pelnomocnictwo ? '<span class="pill p-ok">pełnomocnictwa</span>' : '') +
       (a.wynik === 'uwagi' ? '<span class="pill p-amber">do sprawdzenia</span>' : '');
@@ -104,18 +118,19 @@
     return low(k.nazwa);
   }
   function rysujKafelki() {
-    var n = { obs: 0, wstrz: 0, zak: 0, bezU: 0, bezP: 0, ostrz: 0, spr: 0 };
+    var n = { obs: 0, wstrz: 0, zak: 0, bezU: 0, bezP: 0, ostrz: 0, spr: 0, nikt: 0 };
     klienci.forEach(function (k) {
       if (k.status === 'obslugiwany') n.obs++; else if (k.status === 'wstrzymany') n.wstrz++; else n.zak++;
-      if (k.status !== 'zakonczony') { if (ostrz(k)) n.ostrz++; if (k.audyt) { if (!k.audyt.ma.umowa) n.bezU++; if (!k.audyt.ma.powierzenie) n.bezP++; } }
+      if (k.status !== 'zakonczony') { if (ostrz(k)) n.ostrz++; if (zakres(k) === 'brak') n.nikt++; else if (k.audyt) { if (!k.audyt.ma.umowa) n.bezU++; if (!k.audyt.ma.powierzenie) n.bezP++; } }
     });
     n.spr = umowy.filter(function (u) { return !gotowy(u); }).length;
-    var na = function (st, um, rj) { return f.tab === 'klienci' && f.status === st && f.umowy === um && f.rejestr === rj; };
+    var na = function (st, um, rj, zk) { return f.tab === 'klienci' && f.status === st && f.umowy === um && f.rejestr === rj && f.zakres === (zk || ''); };
     var t = [
       ['obs', n.obs, 'Obsługiwani', 'green', na('obslugiwany', '', '')], ['wstrz', n.wstrz, 'Wstrzymani', 'amber', na('wstrzymany', '', '')], ['zak', n.zak, 'Obsługa zakończona', '', na('zakonczony', '', '')],
     ];
     if (ja.admin) t.push(['bezU', n.bezU, 'Bez umowy', 'red', na('czynni', 'bez_umowy', '')], ['bezP', n.bezP, 'Bez powierzenia danych', 'red', na('czynni', 'bez_powierzenia', '')]);
     t.push(['ostrz', n.ostrz, 'Ostrzeżenia z rejestru', 'amber', na('czynni', '', 'ostrz')]);
+    if (n.nikt) t.push(['nikt', n.nikt, 'Bez opiekuna i kadrowej', 'amber', na('czynni', '', '', 'brak')]);
     if (ja.admin) t.push(['spr', n.spr, 'Dokumenty do sprawdzenia', 'amber', f.tab === 'umowy']);
     $('tiles').innerHTML = t.map(function (x) {
       return '<button type="button" class="tile ' + (x[1] ? x[3] : 'zero') + (x[4] ? ' on' : '') + '" data-tile="' + x[0] + '"><b>' + x[1] + '</b><span>' + x[2] + '</span></button>';
@@ -129,6 +144,7 @@
     opcje($('fStatus'), [['czynni', 'obsługiwani i wstrzymani'], ['obslugiwany', 'obsługiwani'], ['wstrzymany', 'wstrzymani'], ['zakonczony', 'obsługa zakończona'], ['wszyscy', 'wszyscy']], f.status);
     opcje($('fOpiekun'), [['', 'wszyscy']].concat(uniq(function (k) { return k.opiekun; }).map(function (o) { return [o, o]; })), f.opiekun);
     opcje($('fForma'), [['', 'wszystkie']].concat(uniq(function (k) { return k.forma; }).map(function (o) { return [o, o]; })), f.forma);
+    opcje($('fZakres'), [['', 'wszystkie'], ['oba', 'księgowość + kadry'], ['ks', 'tylko księgowość'], ['kd', 'tylko kadry'], ['brak', 'brak opiekunów']], f.zakres);
     opcje($('fUmowy'), [['', 'wszystkie'], ['braki', 'są braki'], ['uwagi', 'do sprawdzenia'], ['ok', 'w porządku'], ['bez_umowy', 'bez obowiązującej umowy'], ['bez_powierzenia', 'bez powierzenia danych'], ['bez_pelnomocnictw', 'bez pełnomocnictw']], f.umowy);
     opcje($('fRejestr'), [['', 'wszystkie'], ['ostrz', 'z ostrzeżeniami'], ['zmiany', 'zmiana od poprzedniego pobrania'], ['brak', 'dane nie pobrane'], ['poza', 'brak w arkuszu klientów']], f.rejestr);
     $('fUmowyBox').hidden = !ja.admin;
@@ -147,7 +163,7 @@
         return '<tr class="kl" data-k="' + klienci.indexOf(k) + '" tabindex="0"><td class="kn"><b>' + esc(k.nazwa) + '</b><small>' + (k.nip ? 'NIP ' + esc(k.nip) : 'brak NIP') + (k.miasto ? ' · ' + esc(k.miasto) : '') + '</small>' +
           (!k.w_arkuszu ? '<small class="warn">brak w arkuszu klientów od ' + pl(k.brak_od) + '</small>' : '') + '</td>' +
           '<td class="c-forma">' + esc(k.forma || '—') + '</td><td class="c-opiekun">' + esc(k.opiekun || '—') + (k.kadrowy ? '<small>kadry: ' + esc(k.kadrowy) + '</small>' : '') + '</td>' +
-          '<td>' + statusPill(k) + '</td><td>' + rejPill(k) + '</td>' + (ja.admin ? '<td>' + umPills(k) + '</td>' : '') + '</tr>';
+          '<td>' + statusPill(k) + (k.status !== 'zakonczony' ? zakresPill(k) : '') + '</td><td>' + rejPill(k) + '</td>' + (ja.admin ? '<td>' + umPills(k) + '</td>' : '') + '</tr>';
       }).join('');
     $('count').textContent = wczytano && klienci.length ? 'Pokazano ' + l.length + ' z ' + klienci.length + ' klientów' + (blad ? ' · ' + blad : '') : '';
   }
@@ -184,15 +200,18 @@
 
   // ---------------- audit tab ----------------
   function znak(b) { return b ? '<span class="pill p-ok">jest</span>' : '<span class="pill p-red">brak</span>'; }
+  var ND = '<span class="pill p-grey">nie dotyczy</span>';
+  // outside the scope of service a missing contract is not a gap; one that exists there is worth a look
+  function wZakresie(w, jest) { return w ? znak(jest) : jest ? '<span class="pill p-amber">jest, poza zakresem</span>' : ND; }
   function rysujAudyt() {
     var czynni = klienci.filter(function (k) { return k.status !== 'zakonczony' && k.audyt; });
     var l = czynni.filter(function (k) { return k.audyt.wynik !== 'ok'; }).sort(function (a, b) { return (a.audyt.wynik === 'braki' ? 0 : 1) - (b.audyt.wynik === 'braki' ? 0 : 1) || a.nazwa.localeCompare(b.nazwa, 'pl'); });
     $('acount').textContent = czynni.length ? 'Z uwagami: ' + l.length + ' z ' + czynni.length + ' klientów · w porządku: ' + (czynni.length - l.length) : '';
-    $('atbl').innerHTML = '<thead><tr><th>Klient</th><th>Umowa</th><th>Księgowość</th><th>Kadry</th><th>Powierzenie</th><th>Pełnomocnictwa</th><th>Braki i uwagi</th></tr></thead><tbody>' +
+    $('atbl').innerHTML = '<thead><tr><th>Klient</th><th>Zakres obsługi</th><th>Umowa: księgowość</th><th>Umowa: kadry</th><th>Powierzenie</th><th>Pełnomocnictwa</th><th>Braki i uwagi</th></tr></thead><tbody>' +
       (l.length ? l.map(function (k) {
-        var a = k.audyt, braki = a.pozycje.filter(function (p) { return p.stan === 'brak' || p.stan === 'uwaga'; });
+        var a = k.audyt, braki = a.pozycje.filter(function (p) { return p.stan === 'brak' || p.stan === 'uwaga'; }), z = zakres(k), nikt = z === 'brak';
         return '<tr class="kl" data-k="' + klienci.indexOf(k) + '" tabindex="0"><td class="kn"><b>' + esc(k.nazwa) + '</b><small>' + (k.nip ? 'NIP ' + esc(k.nip) : 'brak NIP') + (k.opiekun ? ' · ' + esc(k.opiekun) : '') + '</small></td>' +
-          '<td>' + znak(a.ma.umowa) + '</td><td>' + znak(a.ma.ksiegowosc) + '</td><td>' + (a.ma.kadry ? znak(true) : k.kadrowy ? znak(false) : '<span class="pill p-grey">nie dotyczy</span>') + '</td><td>' + znak(a.ma.powierzenie) + '</td><td>' + (a.ma.pelnomocnictwo ? znak(true) : '<span class="pill p-amber">brak w bazie</span>') + '</td>' +
+          '<td>' + zakresPill(k) + '</td><td>' + wZakresie(z !== 'kd' && !nikt, a.ma.ksiegowosc) + '</td><td>' + wZakresie(z !== 'ks' && !nikt, a.ma.kadry) + '</td><td>' + (nikt ? ND : znak(a.ma.powierzenie)) + '</td><td>' + (nikt ? ND : a.ma.pelnomocnictwo ? znak(true) : '<span class="pill p-amber">brak w bazie</span>') + '</td>' +
           '<td>' + braki.map(function (p) { return '<small' + (p.stan === 'brak' ? ' class="warn"' : '') + '>' + (p.stan === 'brak' ? '✕ ' : '! ') + esc(p.tekst) + '</small>'; }).join('') + '</td></tr>';
       }).join('') : '<tr><td class="empty" colspan="7">' + (czynni.length ? 'Brak uwag — wszyscy obsługiwani klienci mają komplet dokumentów.' : 'Brak klientów.') + '</td></tr>') + '</tbody>';
     var zak = klienci.filter(function (k) { return k.status === 'zakonczony'; }).sort(function (a, b) { return String(b.koniec_od).localeCompare(String(a.koniec_od)); });
@@ -241,7 +260,7 @@
     h += dl([['Forma prawna', k.forma], ['Opodatkowanie', k.opodatkowanie], ['Adres', [k.adres, k.miasto].filter(Boolean).join(', ')], ['Opiekun księgowy', k.opiekun], ['Kadrowy', k.kadrowy],
       ['Osoba kontaktowa', kt.kontakt], ['Telefon', kt.telefon], ['E-mail', kt.email], ['Język', kt.jezyk]]) || '<p class="hint">Brak danych.</p>';
 
-    h += '<h4>Obsługa</h4>' + dl([['Status', statusPill(k), true], ['Obsługa od', pl(k.obsluga_od)], ['Obsługa zakończona od', pl(k.koniec_od)], ['Ostatnia zmiana', k.zmieniono_at ? pl(k.zmieniono_at) + (k.zmienil ? ' — ' + k.zmienil : '') : '']]);
+    h += '<h4>Obsługa</h4>' + dl([['Status', statusPill(k), true], ['Zakres obsługi', zakresPill(k) + (zakres(k) === 'brak' ? ' <span class="sub">w arkuszu klientów nie ma ani opiekuna, ani kadrowej</span>' : ' <span class="sub">według opiekunów w arkuszu klientów</span>'), true], ['Obsługa od', pl(k.obsluga_od)], ['Obsługa zakończona od', pl(k.koniec_od)], ['Ostatnia zmiana', k.zmieniono_at ? pl(k.zmieniono_at) + (k.zmienil ? ' — ' + k.zmienil : '') : '']]);
     if (ja.admin) {
       h += '<div class="acts" style="margin-top:8px">' + (k.status !== 'zakonczony' ? '<button type="button" class="mini del" data-c="st" data-s="zakonczony">Zakończ obsługę…</button>' : '') +
         (k.status === 'obslugiwany' ? '<button type="button" class="mini" data-c="st" data-s="wstrzymany">Wstrzymaj…</button>' : '') +
@@ -527,16 +546,16 @@
     var t = b.getAttribute('data-tile');
     if (t === 'spr') { f.tab = 'umowy'; f.utab = 'spr'; }
     else {
-      f.tab = 'klienci'; f.umowy = ''; f.rejestr = ''; f.status = 'czynni';
+      f.tab = 'klienci'; f.umowy = ''; f.rejestr = ''; f.zakres = ''; f.status = 'czynni';
       if (t === 'obs') f.status = 'obslugiwany'; else if (t === 'wstrz') f.status = 'wstrzymany'; else if (t === 'zak') f.status = 'zakonczony';
-      else if (t === 'bezU') f.umowy = 'bez_umowy'; else if (t === 'bezP') f.umowy = 'bez_powierzenia'; else if (t === 'ostrz') f.rejestr = 'ostrz';
+      else if (t === 'bezU') f.umowy = 'bez_umowy'; else if (t === 'bezP') f.umowy = 'bez_powierzenia'; else if (t === 'ostrz') f.rejestr = 'ostrz'; else if (t === 'nikt') f.zakres = 'brak';
     }
     zapamietaj(); rysuj();
   });
   $('tabs').addEventListener('click', function (e) { var b = e.target.closest('[data-t]'); if (!b) return; f.tab = b.getAttribute('data-t'); zapamietaj(); rysuj(); });
   $('utabs').addEventListener('click', function (e) { var b = e.target.closest('[data-ut]'); if (!b) return; f.utab = b.getAttribute('data-ut'); zapamietaj(); rysujUmowy(); });
   $('fQ').addEventListener('input', function () { f.q = this.value; zapamietaj(); rysujListe(); });
-  [['fStatus', 'status'], ['fOpiekun', 'opiekun'], ['fForma', 'forma'], ['fUmowy', 'umowy'], ['fRejestr', 'rejestr']].forEach(function (p) {
+  [['fStatus', 'status'], ['fOpiekun', 'opiekun'], ['fForma', 'forma'], ['fZakres', 'zakres'], ['fUmowy', 'umowy'], ['fRejestr', 'rejestr']].forEach(function (p) {
     $(p[0]).addEventListener('change', function () { f[p[1]] = this.value; zapamietaj(); rysujKafelki(); rysujListe(); });
   });
   $('tools').addEventListener('click', function (e) { if (e.target.id === 'rejAll') otworzRejestr(); });

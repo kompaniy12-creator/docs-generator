@@ -29,7 +29,7 @@ import { loadKlienciRows } from "../_shared/klienci.ts";
 import { firmaConfigured, getFirma } from "../_shared/firma.ts";
 import {
   audytKlienta, bezDanychOsobowych, CENA_REJESTR_IO, csvBraki, digits, dopasuj, formaTyp, isDate, klientId, nipOk, odcisk, ostrzezeniaRejestru,
-  pewnyKlient, planOdswiezenia, roznice, type Wyciag, wyciagGus, wyciagKrs,
+  pewnyKlient, planOdswiezenia, roznice, type Wyciag, wyciagGus, wyciagKrs, zakres,
 } from "./logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -347,8 +347,10 @@ async function lista(ja: Ja) {
       w_arkuszu: k.w_arkuszu, brak_od: k.brak_od, status: k.status, obsluga_od: k.obsluga_od, koniec_od: k.koniec_od };
     // a sole trader's address is often a home address: Kadry and administrators only (as the contact data)
     if (jdg && !ja.kadry) baza.adres = null;
+    const zk = zakres(k);
     const o: Any = {
-      ...baza, rej: r ? { ...r, odcisk: undefined, adres: (r.zrodlo === "gus" || jdg) && !ja.kadry ? null : r.adres } : null,
+      // scope of service, from the caretakers in the sheet: does the office do this client's accounting / HR
+      ...baza, ksiegowosc: zk.ksiegowosc, kadry: zk.kadry, rej: r ? { ...r, odcisk: undefined, adres: (r.zrodlo === "gus" || jdg) && !ja.kadry ? null : r.adres } : null,
       rej_historia: rs.slice(1, 12).map((x) => ({ fetched_at: x.fetched_at, sprawdzono_at: x.sprawdzono_at, zmiany: x.zmiany, nazwa: x.nazwa })),
       ostrzezenia: ostrzezeniaRejestru(k, r, teraz, ja.admin),
       odpis: r?.krs && odpis.has(String(r.krs).padStart(10, "0")) ? odpis.get(String(r.krs).padStart(10, "0")) : null,
