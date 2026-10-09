@@ -6,7 +6,9 @@
    files (akta.js): the file goes to the private bucket klienci-umowy, a row to klienci_umowy, the
    function reads it; a match on the number and the name is filed at once, the rest wait in
    "Do sprawdzenia". What the machine filed counts in the audit only after a person confirms it.
-   Contracts, the audit and the status history exist only for portal administrators. */
+   Contracts, the audit and the status history exist only for portal administrators.
+   A client's Telegram group is created in the windows of telegram-grupa.js (window.TgGrupa), opened from
+   the client's card and from the list; this file only offers the buttons and reloads afterwards. */
 (function () {
   'use strict';
   var BASE = 'https://dpfxwkxpzqqjtmgqwozw.supabase.co/functions/v1/';
@@ -72,6 +74,14 @@
     return '<span class="pill ' + (s === 'ok' ? 'p-ok' : s === null ? 'p-grey' : s === 'brak_grupy' || s === 'brak_bota' ? 'p-amber' : 'p-red') + '">' + esc(s === 'ok' ? 'OK' : k.tg.opis) + '</span>';
   }
   function tgProblem(k) { return !!(k.tg && k.tg.status && k.tg.status !== 'ok'); }
+  // a group can be created from the portal (administrators) for a client in service that has none
+  function mozeGrupe(k) { return !!(ja.admin && window.TgGrupa && k.tg && k.tg.status === 'brak_grupy' && k.w_arkuszu); }
+  function nowaGrupa(k) {
+    window.TgGrupa.otworz({ id: k.id, nazwa: k.nazwa, nip: k.nip }, { po: async function () {
+      // the group exists and its chat id is in the client's data: read it back and let the audit look at it
+      await api('telegram_sprawdz', { id: k.id }); await wczytaj();
+    } });
+  }
   function zakresPill(k) { var z = zakres(k); return '<span class="pill ' + (z === 'brak' ? 'p-amber' : 'p-navy') + '">' + ZAKRES[z] + '</span>'; }
   function pasuje(k) {
     if (f.status === 'czynni' ? k.status === 'zakonczony' : f.status !== 'wszyscy' && k.status !== f.status) return false;
@@ -163,7 +173,7 @@
     opcje($('fTelegram'), [['', 'wszystkie'], ['problem', 'z problemem'], ['ok', 'w porządku'], ['brak_grupy', 'brak grupy'], ['bot_usuniety', 'bot usunięty z grupy'], ['brak_bota', 'brakuje wymaganego bota'], ['nie', 'nie sprawdzono']], f.telegram);
     $('fUmowyBox').hidden = !ja.admin;
     if ($('fQ').value !== f.q && document.activeElement !== $('fQ')) $('fQ').value = f.q;
-    $('tools').innerHTML = ja.admin ? '<button type="button" class="mini ok" id="klNowy">Dodaj klienta</button><button type="button" class="mini" id="rejAll">Pobierz dane z rejestrów…</button><button type="button" class="mini" id="tgOtw">Telegram — kontrola grup…</button>' : '';
+    $('tools').innerHTML = ja.admin ? '<button type="button" class="mini ok" id="klNowy">Dodaj klienta</button><button type="button" class="mini" id="rejAll">Pobierz dane z rejestrów…</button><button type="button" class="mini" id="tgOtw">Telegram — kontrola grup…</button>' + (window.TgGrupa ? '<button type="button" class="mini" id="tgSzablon">Szablon grupy Telegram…</button>' : '') : '';
   }
   function rysujListe() {
     var l = klienci.filter(pasuje).sort(function (a, b) { return kolumna(a).localeCompare(kolumna(b), 'pl') * f.dir; });
@@ -177,7 +187,7 @@
         return '<tr class="kl" data-k="' + klienci.indexOf(k) + '" tabindex="0"><td class="kn"><b>' + esc(k.nazwa) + '</b><small>' + (k.nip ? 'NIP ' + esc(k.nip) : 'brak NIP') + (k.miasto ? ' · ' + esc(k.miasto) : '') + '</small>' +
           (!k.w_arkuszu ? '<small class="warn">usunięty z listy klientów ' + pl(k.brak_od) + '</small>' : '') + '</td>' +
           '<td class="c-forma">' + esc(k.forma || '—') + '</td><td class="c-opiekun">' + esc(k.opiekun || '—') + (k.kadrowy ? '<small>kadry: ' + esc(k.kadrowy) + '</small>' : '') + '</td>' +
-          '<td>' + statusPill(k) + (k.status !== 'zakonczony' ? zakresPill(k) : '') + '</td><td>' + rejPill(k) + '</td><td class="c-tg">' + tgPill(k) + '</td>' + (ja.admin ? '<td>' + umPills(k) + '</td>' : '') + '</tr>';
+          '<td>' + statusPill(k) + (k.status !== 'zakonczony' ? zakresPill(k) : '') + '</td><td>' + rejPill(k) + '</td><td class="c-tg">' + tgPill(k) + (mozeGrupe(k) ? '<button type="button" class="mini" data-tgn="' + klienci.indexOf(k) + '">Utwórz…</button>' : '') + '</td>' + (ja.admin ? '<td>' + umPills(k) + '</td>' : '') + '</tr>';
       }).join('');
     $('count').textContent = wczytano && klienci.length ? 'Pokazano ' + l.length + ' z ' + klienci.length + ' klientów' + (blad ? ' · ' + blad : '') : '';
   }
@@ -304,7 +314,7 @@
       if (t.blad) h += '<p class="hint warn" style="margin:6px 0 0">' + esc(t.blad) + '</p>';
       if (t.nowe_id) h += '<p class="hint" style="margin:6px 0 0">Nowe id czatu podane przez Telegram: <b>' + esc(t.nowe_id) + '</b> — wpisz je w danych klienta.' + (ja.admin && k.dane ? ' <button type="button" class="mini" data-c="edytuj" data-tg="' + esc(t.nowe_id) + '">Wpisz nowe id…</button>' : '') + '</p>';
       if ((t.uwagi || []).length) h += '<ul class="chk">' + t.uwagi.map(function (o) { return '<li class="s-info"><i>i</i><span>' + esc(o) + '</span></li>'; }).join('') + '</ul>';
-      if (ja.admin) h += '<div class="acts" style="margin-top:8px"><button type="button" class="mini" data-c="tg">Sprawdź teraz</button><span class="sub" id="tgMsg"></span></div>';
+      if (ja.admin) h += '<div class="acts" style="margin-top:8px">' + (mozeGrupe(k) ? '<button type="button" class="mini ok" data-c="tgNowa">Utwórz grupę Telegram…</button>' : '') + '<button type="button" class="mini" data-c="tg">Sprawdź teraz</button><span class="sub" id="tgMsg"></span></div>';
     }
 
     h += '<h4>Rejestr' + (r ? ' — ' + (r.zrodlo === 'krs' ? 'KRS (rejestr.io)' : 'REGON (GUS)') : '') + '</h4>';
@@ -369,6 +379,7 @@
       else if (c === 'st') otworzStatus(k, b.getAttribute('data-s'), !!b.getAttribute('data-od'));
       else if (c === 'odpis') odpis(k, b);
       else if (c === 'edytuj') otworzKlienta(k, b.getAttribute('data-tg'));
+      else if (c === 'tgNowa') nowaGrupa(k);
       else if (c === 'tg') {
         b.disabled = true; b.textContent = 'Sprawdzam…';
         var w = await api('telegram_sprawdz', { id: k.id });
@@ -722,11 +733,12 @@
   [['fStatus', 'status'], ['fOpiekun', 'opiekun'], ['fForma', 'forma'], ['fZakres', 'zakres'], ['fUmowy', 'umowy'], ['fRejestr', 'rejestr'], ['fTelegram', 'telegram']].forEach(function (p) {
     $(p[0]).addEventListener('change', function () { f[p[1]] = this.value; zapamietaj(); rysujKafelki(); rysujListe(); });
   });
-  $('tools').addEventListener('click', function (e) { if (e.target.id === 'rejAll') otworzRejestr(); else if (e.target.id === 'klNowy') otworzKlienta(null); else if (e.target.id === 'tgOtw') otworzTelegram(); });
+  $('tools').addEventListener('click', function (e) { if (e.target.id === 'rejAll') otworzRejestr(); else if (e.target.id === 'klNowy') otworzKlienta(null); else if (e.target.id === 'tgOtw') otworzTelegram(); else if (e.target.id === 'tgSzablon') window.TgGrupa.szablon(); });
   function wiersz(e) {
     if (e.type === 'keydown' && e.key !== 'Enter') return;
     var th = e.target.closest('th[data-sort]');
     if (th) { var c = th.getAttribute('data-sort'); if (f.sort === c) f.dir = -f.dir; else { f.sort = c; f.dir = 1; } zapamietaj(); rysujListe(); return; }
+    var tn = e.target.closest('[data-tgn]'); if (tn) { var kt = klienci[+tn.getAttribute('data-tgn')]; if (kt && e.type === 'click') nowaGrupa(kt); return; }
     var tr = e.target.closest('tr[data-k]'); if (tr) otworz(+tr.getAttribute('data-k'));
   }
   ['tbl', 'atbl', 'ztbl'].forEach(function (id) { $(id).addEventListener('click', wiersz); $(id).addEventListener('keydown', wiersz); });
@@ -741,8 +753,9 @@
   });
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
-    var m = ['diff', 'kl', 'tg', 'edit', 'stat', 'rej', 'karta'].filter(function (id) { return !$(id).hidden; })[0];
+    var m = ['tgg', 'tgs', 'diff', 'kl', 'tg', 'edit', 'stat', 'rej', 'karta'].filter(function (id) { return $(id) && !$(id).hidden; })[0];
     if (!m || (m === 'rej' && rjTrwa) || (m === 'tg' && tgTrwa)) return;
+    if (m === 'tgg' || m === 'tgs') { if (window.TgGrupa) window.TgGrupa.zamknij(m); return; }
     $(m).hidden = true; if (m === 'karta') otwarta = null;
   });
 

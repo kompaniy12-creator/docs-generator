@@ -19,7 +19,7 @@
     ['podpisy_weryfikacja', 'Weryfikuje podpisane dokumenty', ''],
   ];
   var SKRZYNKI = ['kadry@td-group.pl', 'ksiegowosc@td-group.pl'];
-  var POLA = { imie_nazwisko: 'imię i nazwisko', aliasy: 'skróty', stanowisko: 'stanowisko', telefon: 'telefon', telegram_chat: 'Telegram', dzialy: 'działy',
+  var POLA = { imie_nazwisko: 'imię i nazwisko', aliasy: 'skróty', stanowisko: 'stanowisko', telefon: 'telefon', telegram_chat: 'Telegram', telegram_username: 'Telegram (@nazwa)', dzialy: 'działy',
     skrzynki: 'skrzynki', odpowiada: 'odpowiedzialność', aktywny: 'aktywność', nieobecny_od: 'nieobecność od', nieobecny_do: 'nieobecność do', zastepca: 'zastępca', notatki: 'notatki' };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -174,7 +174,7 @@
 
   // ---------------- card ----------------
   function pusty(email) {
-    return { email: email || '', imie_nazwisko: '', aliasy: [], stanowisko: '', telefon: '', telegram_chat: '', dzialy: [], skrzynki: [], odpowiada: {}, aktywny: true, nieobecny_od: '', nieobecny_do: '', zastepca: '', notatki: '' };
+    return { email: email || '', imie_nazwisko: '', aliasy: [], stanowisko: '', telefon: '', telegram_chat: '', telegram_username: '', dzialy: [], skrzynki: [], odpowiada: {}, aktywny: true, nieobecny_od: '', nieobecny_do: '', zastepca: '', notatki: '' };
   }
   // one comparable shape for the stored profile and for the form
   function ksztalt(p) {
@@ -183,10 +183,12 @@
     if ((odp.uwagi || '').trim()) o.uwagi = odp.uwagi.trim();
     return {
       email: p.email, imie_nazwisko: (p.imie_nazwisko || '').trim(), aliasy: (p.aliasy || []).slice().sort(), stanowisko: (p.stanowisko || '').trim(), telefon: (p.telefon || '').trim(),
-      telegram_chat: (p.telegram_chat || '').trim(), dzialy: (p.dzialy || []).slice().sort(), skrzynki: (p.skrzynki || []).slice().sort(), odpowiada: o, aktywny: p.aktywny !== false,
+      telegram_chat: (p.telegram_chat || '').trim(), telegram_username: tgNazwa(p.telegram_username), dzialy: (p.dzialy || []).slice().sort(), skrzynki: (p.skrzynki || []).slice().sort(), odpowiada: o, aktywny: p.aktywny !== false,
       nieobecny_od: p.nieobecny_od || '', nieobecny_do: p.nieobecny_do || '', zastepca: p.zastepca || '', notatki: (p.notatki || '').trim(),
     };
   }
+  // "@nazwa", "t.me/nazwa" or "nazwa" -> "nazwa"
+  function tgNazwa(v) { return String(v || '').trim().replace(/^(https?:\/\/)?t\.me\//i, '').replace(/^@/, ''); }
   function checks(attr, items, on, extra) {
     return items.map(function (i) {
       return '<label><input type="checkbox" ' + attr + '="' + esc(i[0]) + '"' + (on.indexOf(i[0]) !== -1 ? ' checked' : '') + (i[3] ? ' disabled' : '') + ' /> ' + esc(i[1]) + (i[2] ? ' <small>' + esc(i[2]) + '</small>' : '') + '</label>';
@@ -253,6 +255,8 @@
       '<div class="inl"><input type="text" id="kTg" inputmode="numeric" maxlength="21" value="' + esc(start.telegram_chat) + '" placeholder="ID czatu Telegram (same cyfry)" /><button type="button" class="mini" id="kTgTest">Wyślij test</button></div>' +
       '<div class="hint">Na ten czat bot <b>@twojksiegowy_bot</b> wysyła zadania i przypomnienia. Osoba musi najpierw napisać do bota (Start); swoje ID sprawdzi np. w bocie @userinfobot.' + (stary ? ' <b>Wpisano ID zapisane dotąd w ustawieniach Zadań — zapisz kartę, aby je przenieść.</b>' : '') + '</div>' +
       '<div class="hint" id="kTgMsg"></div>' +
+      '<label for="kTgUser">Telegram (@nazwa)</label><input type="text" id="kTgUser" maxlength="40" value="' + esc(start.telegram_username ? '@' + start.telegram_username : '') + '" placeholder="np. @anna_testowa" autocomplete="off" />' +
+      '<div class="hint">Publiczna nazwa tej osoby w Telegramie. Portal wpisuje ją w powitaniu nowej grupy klienta i po niej dodaje opiekuna do grupy (Baza klientów → Utwórz grupę Telegram). Widzi ją tylko administrator.</div>' +
 
       '<h4>Nieobecność i zastępstwo</h4>' +
       '<div class="three"><div><label for="kOd">Nieobecność od</label><input type="date" id="kOd" value="' + esc(start.nieobecny_od) + '" /></div>' +
@@ -289,7 +293,7 @@
     if ($('kUwagi').value.trim()) odp.uwagi = $('kUwagi').value.trim();
     return ksztalt({
       email: $('kEmail').value.trim().toLowerCase(), imie_nazwisko: $('kImie').value, aliasy: uniq(ticked('data-alias').concat(split($('kAliasInne').value))), stanowisko: $('kStan').value,
-      telefon: $('kTel').value, telegram_chat: $('kTg').value, dzialy: ticked('data-dzial'), skrzynki: uniq(ticked('data-skrz').concat(split($('kSkrzInne').value).map(function (s) { return s.toLowerCase(); }))),
+      telefon: $('kTel').value, telegram_chat: $('kTg').value, telegram_username: $('kTgUser').value, dzialy: ticked('data-dzial'), skrzynki: uniq(ticked('data-skrz').concat(split($('kSkrzInne').value).map(function (s) { return s.toLowerCase(); }))),
       odpowiada: odp, aktywny: $('kAkt').checked, nieobecny_od: $('kOd').value, nieobecny_do: $('kDo').value, zastepca: $('kZast').value, notatki: $('kNot').value,
     });
   }
@@ -375,6 +379,7 @@
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(fo.email)) return fail('Wpisz poprawny adres e-mail.');
     if (K.nowy && byEmail(fo.email)) return fail('Ta osoba jest już na liście — otwórz jej kartę.');
     if (fo.telegram_chat && !/^-?\d{4,20}$/.test(fo.telegram_chat)) return fail('ID czatu Telegram to same cyfry (grupa — z minusem na początku).');
+    if (fo.telegram_username && !/^[A-Za-z][A-Za-z0-9_]{3,31}$/.test(fo.telegram_username)) return fail('Nazwa w Telegramie: 4–32 znaki — litery, cyfry i podkreślenie, zaczyna się od litery (np. @anna_testowa).');
     if (fo.nieobecny_od && fo.nieobecny_do && fo.nieobecny_od > fo.nieobecny_do) return fail('Nieobecność: data „od” jest późniejsza niż „do”.');
     var add = d.ops.filter(function (o) { return o.action === 'add'; })[0];
     if (add && K.konto === 'brak' && add.password.length < MIN_PASSWORD) return fail('Hasło startowe musi mieć co najmniej ' + MIN_PASSWORD + ' znaków.');

@@ -114,7 +114,7 @@
   .chk{list-style:none;margin:0;padding:0;font-size:13.5px}
   .chk li{display:flex;gap:8px;padding:4px 0}
   .chk i{flex:0 0 20px;height:20px;border-radius:50%;font-style:normal;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px}
-  .chk .s-ok i{background:#dcfce7;color:#166534}.chk .s-uwaga i{background:#fef3c7;color:#92400e}.chk .s-brak i{background:#fee2e2;color:#991b1b}.chk .s-info i{background:#eef1f6;color:#5a6577}
+  .chk .s-ok i{background:#dcfce7;color:#166534}.chk .s-uwaga i{background:#fef3c7;color:#92400e}.chk .s-brak i{background:#fee2e2;color:#991b1b}.chk .s-info i,.chk .s-czeka i{background:#eef1f6;color:#5a6577}
   .cands{max-height:200px;overflow:auto;border:1px solid #e5e9ef;border-radius:9px;margin-top:6px}
   .cand{display:block;width:100%;text-align:left;border:none;border-top:1px solid #eef1f6;background:#fff;color:#111;padding:8px 10px;font:inherit;font-size:13.5px;cursor:pointer}
   .cand:first-child{border-top:none}.cand:hover,.cand.on{background:var(--brand-tint)}.cand small{color:#7a8699}
@@ -122,6 +122,11 @@
   .checks label{display:flex;align-items:center;gap:6px;margin:0;font-size:13.5px;font-weight:500;color:#111}
   .checks input{width:auto;min-height:0}
   .note{background:var(--brand-tint);border:1px solid #d6e0ee;border-radius:10px;padding:10px 12px;font-size:13px;margin-top:10px}
+  /* Telegram group: a message as it will look in the chat, and its HTML when edited */
+  .note.msg{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:6px}
+  .note.msg mark{background:#fef3c7;color:#92400e;border-radius:4px;padding:0 3px}
+  .sheet textarea.kod{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;min-height:180px;margin-top:6px}
+  .qr{display:inline-block;background:#fff;border-radius:10px;padding:10px;line-height:0;margin-top:10px}
 </style>
 </head>
 <body>
@@ -315,6 +320,59 @@
     <div class="row"><button type="button" id="rjCancel">Zamknij</button><button type="button" class="go" id="rjGo" disabled>Pobierz</button></div>
   </div>
 </div>
-<script src="klienci.js?v=5"></script>
+<div class="modal" id="tgg" hidden>
+  <div class="sheet big">
+    <div class="head"><div><h3>Utwórz grupę Telegram</h3><div class="sub" id="tggKto"></div></div><button type="button" class="x" id="tggX" aria-label="Zamknij">×</button></div>
+    <div class="note" id="tggStan">Ładowanie…</div>
+    <div id="tggForm" hidden>
+      <label for="tggTytul">Nazwa grupy</label><input type="text" id="tggTytul" maxlength="128" autocomplete="off" />
+      <div class="two">
+        <div><label for="tggZus">Indywidualny rachunek ZUS klienta (NRS, 26 cyfr)</label><input type="text" id="tggZus" maxlength="40" inputmode="numeric" placeholder="np. 00 6000 0002 0260 0000 0000 0000" autocomplete="off" /></div>
+        <div><label for="tggMikro">Mikrorachunek podatkowy (wyliczony z NIP)</label><input type="text" id="tggMikro" disabled /></div>
+      </div>
+      <div class="acts" style="margin-top:6px"><button type="button" class="mini" id="tggZusZapisz">Zapisz rachunek ZUS u klienta</button><span class="sub" id="tggZusMsg"></span></div>
+      <h4>Zespół biura w grupie</h4>
+      <div class="checks" id="tggOsoby"></div>
+      <div class="hint" style="margin:6px 0 0" id="tggBoty"></div>
+      <ul class="chk" id="tggUwagi" style="margin-top:10px"></ul>
+      <div id="tggTematy"></div>
+    </div>
+    <div id="tggPostep" hidden><h4>Przebieg</h4><ul class="chk" id="tggKroki"></ul></div>
+    <div id="tggWynik" hidden></div>
+    <div class="err" id="tggMsg"></div>
+    <div class="row"><button type="button" id="tggCancel">Zamknij</button><button type="button" class="go" id="tggGo" disabled>Utwórz grupę</button></div>
+  </div>
+</div>
+
+<div class="modal" id="tgs" hidden>
+  <div class="sheet big">
+    <div class="head"><div><h3>Szablon grupy Telegram</h3><div class="sub">Według tego wzoru portal zakłada grupę każdego nowego klienta: tematy, wiadomości w tematach, boty.</div></div><button type="button" class="x" id="tgsX" aria-label="Zamknij">×</button></div>
+    <div class="note" id="tgsStan">Ładowanie…</div>
+    <div id="tgsForm" hidden>
+      <div class="two">
+        <div><label for="tgsTytul">Wzór nazwy grupy</label><input type="text" id="tgsTytul" maxlength="200" autocomplete="off" /></div>
+        <div><label for="tgsOpis">Opis grupy (opcjonalnie)</label><input type="text" id="tgsOpis" maxlength="255" autocomplete="off" /></div>
+      </div>
+      <div class="two">
+        <div><label for="tgsLimit">Limit nowych grup na dobę</label><input type="number" id="tgsLimit" min="1" max="50" /></div>
+        <div><label for="tgsStawka">Stawka godzinowa w tekstach (puste = z tabeli stawek)</label><input type="text" id="tgsStawka" maxlength="10" inputmode="decimal" autocomplete="off" /></div>
+      </div>
+      <h4>Boty dodawane do grupy</h4>
+      <div id="tgsBoty"></div>
+      <div class="acts" style="margin-top:8px"><button type="button" class="mini" data-s="bot-dodaj">Dodaj bota</button></div>
+      <h4>Pola do wstawienia w treści</h4>
+      <div class="hint" id="tgsZmienne" style="margin:0"></div>
+      <div id="tgsTematy"></div>
+      <div class="acts" style="margin-top:12px"><button type="button" class="mini" data-s="temat-dodaj">Dodaj temat</button></div>
+      <h4>Ostatnio tworzone grupy</h4>
+      <div class="tablewrap" id="tgsLista"></div>
+    </div>
+    <div class="err" id="tgsMsg"></div>
+    <div class="row"><button type="button" id="tgsCancel">Zamknij</button><button type="button" id="tgsDomyslny">Wczytaj domyślny</button><button type="button" class="go" id="tgsSave" disabled>Zapisz szablon</button></div>
+  </div>
+</div>
+<script src="qr-svg.js?v=1"></script>
+<script src="telegram-grupa.js?v=1"></script>
+<script src="klienci.js?v=6"></script>
 </body>
 </html>

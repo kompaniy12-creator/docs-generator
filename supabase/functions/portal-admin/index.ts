@@ -115,6 +115,9 @@ function cleanProfile(p: any): { row?: Record<string, unknown>; error?: string }
   if (telefon && !/^\+?[0-9 ()-]{5,30}$/.test(telefon)) return { error: "Telefon: tylko cyfry, spacje, + ( ) -." };
   const chat = str(p.telegram_chat, 25);
   if (chat && !/^-?\d{4,20}$/.test(chat)) return { error: "ID czatu Telegram to same cyfry (grupa — z minusem na początku)." };
+  // the public @name (for the welcome message of a new client group); a page that does not send the field leaves it as it is
+  const tgNazwa = str(p.telegram_username, 60).replace(/^(https?:\/\/)?t\.me\//i, "").replace(/^@/, "");
+  if (tgNazwa && !/^[A-Za-z][A-Za-z0-9_]{3,31}$/.test(tgNazwa)) return { error: "Nazwa w Telegramie: 4–32 znaki — litery, cyfry i podkreślenie, zaczyna się od litery." };
   const skrzynki = list(p.skrzynki, 10, 200).map((x) => x.toLowerCase());
   if (skrzynki.some((x) => !MAIL.test(x))) return { error: "Skrzynka musi być adresem e-mail." };
   const zastepca = str(p.zastepca, 200).toLowerCase();
@@ -132,6 +135,7 @@ function cleanProfile(p: any): { row?: Record<string, unknown>; error?: string }
       telefon: telefon || null, telegram_chat: chat || null, dzialy: DZIALY.filter((d) => Array.isArray(p.dzialy) && p.dzialy.includes(d)),
       skrzynki, odpowiada: odp, aktywny: p.aktywny !== false, nieobecny_od: od, nieobecny_do: doo, zastepca: zastepca || null,
       notatki: str(p.notatki, 2000) || null,
+      ...(p.telegram_username === undefined ? {} : { telegram_username: tgNazwa || null }),
     },
   };
 }
