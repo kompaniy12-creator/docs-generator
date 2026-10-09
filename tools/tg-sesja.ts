@@ -67,6 +67,23 @@ const GDZIE: Record<string, string> = {
   "auth.SentCodeTypeEmailCode": "e-mailem na adres logowania przypisany do konta", "auth.SentCodeTypeFragmentSms": "na Fragment (numer anonimowy)",
   "auth.SentCodeTypeFirebaseSms": "SMS-em na ten numer", "auth.SentCodeTypeSetUpEmailRequired": "— Telegram wymaga najpierw ustawienia e-maila logowania w aplikacji",
 };
+// Login by QR code: no login code is needed. The owner scans it in the official app of the office account
+// (Ustawienia → Urządzenia → Połącz urządzenie). Default; `--kod` switches to the login-code way.
+async function zalogujQr(id: number, hash: string): Promise<TelegramClient> {
+  const qr = (await import("npm:qrcode-terminal@0.12.0")).default;
+  const tg = new TelegramClient(new StringSession(""), id, hash, { connectionRetries: 3, deviceModel: URZADZENIE, systemVersion: "Supabase Edge", appVersion: "telegram-grupa" });
+  tg.setLogLevel("none" as never);
+  await tg.connect();
+  console.log("W aplikacji Telegram na telefonie, na koncie biura (@twojaksiegowa_admin): Ustawienia → Urządzenia → Połącz urządzenie — i zeskanuj kod poniżej.");
+  try {
+    await tg.signInUserWithQrCode({ apiId: id, apiHash: hash }, {
+      qrCode: (k) => { console.log("\nKod QR (odświeża się co ok. 30 s — skanuj najnowszy, na dole):"); qr.generate("tg://login?token=" + k.token.toString("base64url"), { small: true }); return Promise.resolve(); },
+      password: () => Promise.resolve(ukryte("Hasło weryfikacji dwuetapowej (nie będzie widoczne):")),
+      onError: (e) => { console.error("Telegram odmówił: " + kod(e)); return Promise.resolve(true); },
+    });
+  } catch (e) { console.error("Logowanie kodem QR nieudane: " + kod(e)); Deno.exit(1); }
+  return tg;
+}
 async function zaloguj(id: number, hash: string): Promise<TelegramClient> {
   const tg = new TelegramClient(new StringSession(""), id, hash, { connectionRetries: 3, deviceModel: URZADZENIE, systemVersion: "Supabase Edge", appVersion: "telegram-grupa" });
   tg.setLogLevel("none" as never);
@@ -140,7 +157,7 @@ if (Deno.args.includes("--wyloguj")) {
   // a short-lived login finds the portal's session among the devices by its name and resets it.
   console.log("Zakończenie sesji portalu. Zaloguj konto biura jeszcze raz — ta pomocnicza sesja zostanie zaraz wylogowana.");
   const d = dostep();
-  const tg = await zaloguj(d.id, d.hash);
+  const tg = await (Deno.args.includes("--kod") ? zaloguj : zalogujQr)(d.id, d.hash);
   let zakonczone = 0, odmowa = "";
   try {
     const lista = await tg.invoke(new Api.account.GetAuthorizations());
@@ -162,7 +179,7 @@ if (Deno.args.includes("--wyloguj")) {
 
 console.log("Logowanie konta Telegram biura dla portalu. Powstanie nowa, osobna sesja „" + URZADZENIE + "” — pozostałe sesje konta zostają bez zmian.");
 const d = dostep();
-const tg = await zaloguj(d.id, d.hash);
+const tg = await (Deno.args.includes("--kod") ? zaloguj : zalogujQr)(d.id, d.hash);
 let nazwa = "";
 let ok = false;
 try {
