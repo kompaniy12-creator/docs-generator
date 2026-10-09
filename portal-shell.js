@@ -273,6 +273,7 @@
       (user.admin ? '<a class="ps-top" href="pulpit.html" data-top="pulpit.html">' + ico('📊') + ' Pulpit</a>' : '') +
       '<a class="ps-top" href="' + CRM_URL + '" target="_blank" rel="noopener" title="CRM — leady, sprawy, klienci (otwiera się w nowej karcie)">' + ico('📇') + ' CRM ↗</a>' +
       '<a class="ps-top" href="zadania.html" data-top="zadania.html">' + ico('✅') + ' Zadania<span class="ps-badge" data-tbadge hidden></span></a>' +
+      (acc.has('kadry') || acc.has('onboarding') ? '<a class="ps-top" href="poczta.html" data-top="poczta.html">' + ico('✉️') + ' Poczta</a>' : '') +
       (acc.has('kadry') ? '<a class="ps-top" href="zatrudnienie.html" data-top="zatrudnienie.html" title="Nowe zgłoszenia pracowników">' + ico('📥') + '<span class="ps-badge" data-badge hidden></span></a>' : '') +
       (user.admin ? '<a class="ps-top" href="dostep.html" data-top="dostep.html">' + ico('🔑') + ' Dostęp do portalu</a>' : '') +
       '<button type="button" class="ps-top" data-pt-open title="Wygląd — motywy, tło i kolory">' + ico('🎨') + '</button>' +
