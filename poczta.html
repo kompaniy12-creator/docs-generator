@@ -75,8 +75,24 @@
   .mhead p{margin:0 0 3px}
   .atts{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
   .atts .mini,.atts .pill{max-width:100%;overflow:hidden;text-overflow:ellipsis}
-  .paper{display:block;width:100%;height:68vh;min-height:320px;border:1px solid #d4dbe6;border-radius:10px;background:#fff}
-  .paper.tall{height:2400px;max-height:none}
+  /* the message is a white sheet in a frame that cannot run scripts; the frame fills the window and can be dragged taller */
+  .paperwrap{height:calc(100vh - 170px);min-height:340px;resize:vertical;overflow:hidden;border:1px solid #d4dbe6;border-radius:10px;background:#fff}
+  .paperwrap.tall{height:2400px}
+  .paperwrap:active .paper{pointer-events:none}
+  .paper{display:block;width:100%;height:100%;border:0;background:#fff}
+  .row.subrow{padding-left:34px;font-size:13px}
+  .row.drag{opacity:.5}
+  .frow.drop{outline:2px dashed var(--brand-green);outline-offset:-2px}
+  .conv{padding:1px 7px;font-size:11.5px;border-radius:999px;margin-right:4px}
+  .tools{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .tools .mini{flex:1 1 auto;text-align:center}
+  .src{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;max-height:64vh;overflow:auto;margin:0}
+  .prev{display:block;max-width:100%;max-height:72vh;margin:0 auto;border-radius:8px;background:#fff}
+  iframe.prev{width:100%;height:72vh;border:1px solid #d4dbe6}
+  .kgrid{display:grid;grid-template-columns:1.3fr 1fr 1fr 1.2fr auto;gap:8px;align-items:end;margin:0 0 10px}
+  .krow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:8px 4px;border-bottom:1px solid #eef1f6;font-size:13.5px;overflow-wrap:anywhere}
+  #dlg{z-index:960}
+  @media(max-width:760px){.kgrid,.krow{grid-template-columns:1fr}.paperwrap{height:calc(100vh - 120px)}}
   .mtext a{overflow-wrap:anywhere}
   .fold{margin:6px 0;padding:4px 0 4px 10px;border-left:3px solid rgba(127,127,127,.45)}
   .fold summary{cursor:pointer;font-size:12.5px;opacity:.8}
@@ -93,7 +109,14 @@
   .tbar{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 6px}
   .tbar .mini{padding:5px 9px;min-width:32px}
   .tbar .sw{width:22px;height:22px;min-width:22px;padding:0;border-radius:50%}
-  .editor{min-height:220px;max-height:46vh;overflow:auto;padding:12px;border:1px solid #d4dbe6;border-radius:9px;background:rgba(127,127,127,.08);font-size:14.5px;line-height:1.5;overflow-wrap:anywhere}
+  /* what is written is seen as the recipient will see it: dark text on a white sheet, on every theme */
+  .editor{min-height:220px;max-height:46vh;overflow:auto;padding:12px;border:1px solid #d4dbe6;border-radius:9px;background:#fff;color:#111;font-size:14.5px;line-height:1.5;overflow-wrap:anywhere}
+  /* (ids, so that the themes' own text colour for blocks does not win; the palette colours are added by poczta.js) */
+  :is(#c_ed,#mg_ed){background:#fff!important;color:#111!important;text-shadow:none!important}
+  :is(#c_ed,#mg_ed) *{color:inherit!important;text-shadow:none!important;background-color:transparent!important}
+  :is(#c_ed,#mg_ed) a{color:#1B3F7F!important;text-decoration:underline}
+  .acts select,.bulk select{max-width:240px}
+  .editor.small{min-height:110px;max-height:30vh}
   .editor:focus{outline:2px solid var(--brand-green);outline-offset:1px}
   .editor img{max-width:100%}
   .editor blockquote{margin:6px 0 6px 6px;padding-left:10px;border-left:3px solid rgba(127,127,127,.5)}
@@ -139,6 +162,11 @@
       <div class="box" id="mbFolders">
         <label for="mbBox">Skrzynka</label><select id="mbBox"></select>
         <div id="mbTree" style="margin-top:10px"><div class="sub">Ładowanie…</div></div>
+        <div class="tools" id="mbFAct"></div>
+        <div class="tools"><button type="button" class="mini" id="mbContacts">📇 Kontakty</button><button type="button" class="mini" id="mbQueue">🕒 Zaplanowane</button><button type="button" class="mini" id="mbSigs">✍️ Podpisy i szablony</button></div>
+        <p class="sub" style="margin:10px 0 0"><label class="chk" style="white-space:normal;font-weight:400"><input type="checkbox" id="mbNotify" /> Powiadomienia na pulpicie o nowej poczcie (gdy ta strona jest otwarta)</label></p>
+        <p class="sub" style="margin:8px 0 0">Przeciągnij wiadomość na folder, aby ją przenieść (z klawiszem Ctrl / Alt — skopiować).</p>
+        <p class="sub" style="margin:8px 0 0"><b>Autoodpowiedź na czas urlopu i filtry antyspamowe</b> ustawia się na serwerze poczty, nie tutaj: panel hostingu (DirectAdmin) → Zarządzanie pocztą e-mail → „Wiadomości urlopowe”, „Autorespondery”, „Filtry SPAMu”. Dostęp do panelu ma administrator.</p>
       </div>
       <div id="mbRight">
         <div class="box" id="mbList">
@@ -149,11 +177,11 @@
             <div><label for="mbOd">Od dnia</label><input type="date" id="mbOd" /></div>
             <div><label for="mbDo">Do dnia</label><input type="date" id="mbDo" /></div>
           </div>
-          <div class="mchk"><label class="chk"><input type="checkbox" id="mbNew" /> nieprzeczytane</label><label class="chk"><input type="checkbox" id="mbAtt" /> z załącznikami</label><label class="chk"><input type="checkbox" id="mbStar" /> z flagą</label><label class="chk"><input type="checkbox" id="mbBody2" /> szukaj też w treści</label><button type="button" class="mini" id="mbGo">Szukaj</button><button type="button" class="mini" id="mbClear">Wyczyść</button></div>
+          <div class="mchk"><label class="chk"><input type="checkbox" id="mbNew" /> nieprzeczytane</label><label class="chk"><input type="checkbox" id="mbAtt" /> z załącznikami</label><label class="chk"><input type="checkbox" id="mbStar" /> z flagą</label><label class="chk"><input type="checkbox" id="mbBody2" /> szukaj też w treści</label><label class="chk"><input type="checkbox" id="mbAll" /> we wszystkich folderach</label><button type="button" class="mini" id="mbGo">Szukaj</button><button type="button" class="mini" id="mbClear">Wyczyść</button></div>
           <div class="bulk" id="mbBulk" hidden></div>
           <div id="mbRows"><div class="empty">Wybierz folder.</div></div>
           <div class="pager"><button type="button" class="mini" id="mbPrev">← Nowsze</button><span class="sub" id="mbInfo"></span><button type="button" class="mini" id="mbNext">Starsze →</button></div>
-          <p class="sub" style="margin:10px 0 0"><label class="chk" style="display:inline-flex;white-space:normal;font-weight:400"><input type="checkbox" id="mbRead" /> Oznaczaj wiadomość jako przeczytaną po otwarciu (moje ustawienie w tej przeglądarce)</label></p>
+          <p class="sub" style="margin:10px 0 0;display:flex;gap:6px 18px;flex-wrap:wrap"><label class="chk" style="white-space:normal;font-weight:400"><input type="checkbox" id="mbConv" /> Grupuj wiadomości w rozmowy</label><label class="chk" style="white-space:normal;font-weight:400"><input type="checkbox" id="mbRead" /> Oznaczaj jako przeczytaną po otwarciu</label><label class="chk" style="white-space:normal;font-weight:400"><input type="checkbox" id="mbAhead" /> Wczytuj z wyprzedzeniem następną wiadomość</label><span>(moje ustawienia w tej przeglądarce)</span></p>
         </div>
         <div class="box" id="mbMsg" hidden></div>
       </div>
@@ -169,6 +197,7 @@
         <label for="c_dw">DW</label><div class="caddr"><span id="c_dw_chips"></span><input type="text" id="c_dw" autocomplete="off" placeholder="do wiadomości" /></div>
         <label for="c_udw">UDW</label><div class="caddr"><span id="c_udw_chips"></span><input type="text" id="c_udw" autocomplete="off" placeholder="ukryta kopia" /></div>
         <label for="c_temat">Temat</label><input type="text" id="c_temat" maxlength="250" />
+        <label for="c_tpl">Wstaw</label><div class="caddr"><select id="c_tpl" style="width:auto;flex:1;min-width:150px"><option value="">Szablon…</option></select><select id="c_sig" style="width:auto;flex:1;min-width:150px" aria-label="Podpis"><option value="">Podpis…</option></select><button type="button" class="mini" id="c_book">📇 Kontakty</button><button type="button" class="mini" id="c_savetpl">Zapisz treść jako szablon</button></div>
       </div>
       <div id="c_sug" hidden></div>
       <div class="tbar" role="toolbar" aria-label="Formatowanie">
@@ -184,8 +213,16 @@
       <p class="sub" id="c_stopka" style="margin:6px 0 0"></p>
       <div class="acts" style="margin-top:10px"><label class="mini" style="cursor:pointer">📎 Dodaj załączniki<input type="file" id="c_file" multiple hidden /></label><span id="c_atts"></span></div>
       <div class="mchk" style="margin:10px 0 0"><label class="chk" id="c_cytat_row"><input type="checkbox" id="c_cytat" /> dołącz treść oryginalnej wiadomości</label><label class="chk"><input type="checkbox" id="c_potw" /> poproś o potwierdzenie przeczytania</label><label class="chk"><input type="checkbox" id="c_pilna" /> pilna</label></div>
-      <div class="acts" style="margin-top:12px"><button type="button" class="btn" id="c_send">Wyślij</button><button type="button" class="mini" id="c_undo" hidden>Cofnij wysyłkę</button><button type="button" class="mini" id="c_draft">Zapisz szkic</button><button type="button" class="mini" id="c_savesig">Zapisz mój podpis</button><button type="button" class="mini" id="c_discard">Odrzuć</button><span class="sub" id="c_msg" role="status"></span></div>
-      <p class="sub" style="margin:8px 0 0">Wiadomość wychodzi z adresu skrzynki. Można przeciągnąć pliki na to okno albo wkleić obraz do treści. Szkic zapisuje się co 20 s w folderze Robocze (bez załączników).</p>
+      <div class="acts" style="margin-top:12px"><button type="button" class="btn" id="c_send">Wyślij</button><button type="button" class="mini" id="c_undo" hidden>Cofnij wysyłkę</button><button type="button" class="mini" id="c_later">🕒 Wyślij później</button><button type="button" class="mini" id="c_draft">Zapisz szkic</button><button type="button" class="mini" id="c_discard">Odrzuć</button><span class="sub" id="c_msg" role="status"></span></div>
+      <div class="acts" id="c_when_row" hidden style="margin-top:8px"><label for="c_when" style="margin:0">Wyślij dnia (czas polski)</label><input type="datetime-local" id="c_when" style="width:auto" /><button type="button" class="mini ok" id="c_plan">Zaplanuj wysyłkę</button><span class="sub">Wiadomość poczeka w folderze Robocze; do tego czasu można ją anulować albo zmienić (zmiana wymaga ponownego zaplanowania).</span></div>
+      <p class="sub" style="margin:8px 0 0">Wiadomość wychodzi z adresu skrzynki. Można przeciągnąć pliki na to okno albo wkleić obraz do treści. Szkic zapisuje się co 20 s w folderze Robocze — razem z załącznikami — i można go dokończyć na innym urządzeniu. W szablonach pola {klient} i {imie} wypełniają się z adresata.</p>
+    </div>
+  </div>
+
+  <div class="modal" id="dlg" hidden role="dialog" aria-modal="true" aria-labelledby="dlg_t">
+    <div class="box sheet">
+      <div class="acts" style="margin:0 0 12px"><h2 id="dlg_t" style="margin:0;flex:1"></h2><button type="button" class="mini" id="dlg_x" aria-label="Zamknij">✕ Zamknij</button></div>
+      <div id="dlg_b"></div>
     </div>
   </div>
 
@@ -212,12 +249,12 @@
     <div class="acts" style="margin:0 0 10px"><button type="button" class="mini" id="sentShow">Pokaż ostatnie wysyłki</button></div>
     <div id="sentRows"></div>
     <h3>Dziennik dostępu do skrzynek</h3>
-    <p class="sub" style="margin:0 0 8px">Kto otworzył którą wiadomość, pobrał załącznik albo zlecił analizę albo zmienił coś w skrzynce (przeczytane, flaga, przeniesienie) — bez tematów i treści, sam numer wiadomości w folderze.</p>
+    <p class="sub" style="margin:0 0 8px">Kto otworzył którą wiadomość, pobrał załącznik albo zlecił analizę albo zmienił coś w skrzynce (przeczytane, flaga, przeniesienie) — bez tematów i treści, sam numer wiadomości w folderze. Zmiany folderów i opróżnianie Kosza / Spamu też tu trafiają; „wczytanie z wyprzedzeniem” to następna wiadomość pobrana przez przeglądarkę, zanim ktoś ją otworzył.</p>
     <div class="acts" style="margin:0 0 10px"><button type="button" class="mini" id="logShow">Pokaż ostatnie wpisy</button></div>
     <div id="logRows"></div>
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px"><button type="button" class="btn" id="setSave">Zapisz ustawienia</button><button type="button" class="mini" id="setCheck">Sprawdź połączenie</button><span class="sub" id="setMsg"></span></div>
   </div>
 </main>
-<script src="poczta.js?v=4"></script>
+<script src="poczta.js?v=5"></script>
 </body>
 </html>

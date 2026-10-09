@@ -25,7 +25,9 @@ const ODP = (o: Any = {}) => ({
 export function swiat(o: { ust?: Any; box?: FakeMsg[]; uidvalidity?: number; odp?: (req: Any) => unknown; me?: Me | null; now?: number; profil?: (s: Skrzynka, a: string) => { alias: string; domyslny: string } } = {}) {
   const rows: Row[] = [], tasks: Any[] = [], stan: Record<string, Any> = {};
   let ust: Any = o.ust ?? {}, seq = 0, locked = false;
-  const w = { rows, tasks, stan, asks: [] as Any[], log: [] as Any[], sent: [] as Any[], podpisy: {} as Record<string, string>, smtp: [] as { s: string; koperta: Any; raw: Uint8Array }[], bg: [] as Promise<unknown>[], now: o.now ?? Date.parse("2026-10-09T09:30:00Z"), servers: [] as FakeServer[], box: o.box ?? [], uidvalidity: o.uidvalidity ?? 7, me: o.me === undefined ? { email: "szef@td.example", admin: true, sekcje: null } as Me : o.me, get ust() { return ust; } };
+  const tab: Record<string, Any[]> = {};
+  const pasuje = (r: Any, f: Record<string, string>) => Object.entries(f).every(([k, v]) => String(r[k]) === String(v));
+  const w = { tab, rows, tasks, stan, asks: [] as Any[], log: [] as Any[], sent: [] as Any[], podpisy: {} as Record<string, string>, smtp: [] as { s: string; koperta: Any; raw: Uint8Array }[], bg: [] as Promise<unknown>[], now: o.now ?? Date.parse("2026-10-09T09:30:00Z"), servers: [] as FakeServer[], box: o.box ?? [], uidvalidity: o.uidvalidity ?? 7, me: o.me === undefined ? { email: "szef@td.example", admin: true, sekcje: null } as Me : o.me, get ust() { return ust; } };
   const id = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`;
   const store: Store = {
     ustawienia: () => Promise.resolve(ust),
@@ -70,6 +72,17 @@ export function swiat(o: { ust?: Any; box?: FakeMsg[]; uidvalidity?: number; odp
     podpis: (kto, s) => Promise.resolve(w.podpisy[kto + s] ?? null),
     podpisZapisz: (kto, s, html) => { w.podpisy[kto + s] = html; return Promise.resolve(); },
     pracownik: (e) => Promise.resolve(e === "hr@td.example" ? "Halina Testowa" : ""),
+    rekordy: (t, f, o = {}) => Promise.resolve((tab[t] ?? []).filter((r) => pasuje(r, f) && (!o.doKiedy || r.kiedy <= o.doKiedy)).slice(0, o.limit ?? 500).map((r) => ({ ...r }))),
+    rekordZapisz: (t, row) => {
+      const l = (tab[t] ??= []);
+      if (l.some((r) => r.id !== row.id && ((t === "poczta_kontakty" && r.skrzynka === row.skrzynka && r.adres === row.adres) || (t === "poczta_kolejka" && r.klucz === row.klucz)))) return Promise.resolve(null);
+      const i = l.findIndex((r) => r.id === row.id);
+      if (i >= 0) l[i] = { ...l[i], ...row }; else l.push({ ...row });
+      return Promise.resolve({ ...row });
+    },
+    rekordZmien: (t, f, p) => { const hit = (tab[t] ?? []).filter((r) => pasuje(r, f)); hit.forEach((r) => Object.assign(r, p)); return Promise.resolve(hit.length); },
+    rekordUsun: (t, f) => { const l = tab[t] ?? [], n = l.filter((r) => pasuje(r, f)).length; tab[t] = l.filter((r) => !pasuje(r, f)); return Promise.resolve(n); },
+    profilPracownika: (e) => Promise.resolve(e === "hr@td.example" ? { imie: "Halina Testowa", stanowisko: "Specjalistka ds. kadr", telefon: "+48 000 000 000" } : { imie: "", stanowisko: "", telefon: "" }),
     usunStarsze: (c) => { const n = rows.filter((r) => r.created_at < c).length; for (let i = rows.length - 1; i >= 0; i--) if (rows[i].created_at < c) rows.splice(i, 1); return Promise.resolve(n); },
   };
   const d: Deps = {
@@ -439,7 +452,7 @@ Deno.test("database answers without a body (201/204 after return=minimal) are an
 import { MAX_ZALACZNIK, NA_MINUTE } from "./skrzynka.ts";
 import type { Folder, Meta, Node } from "./imap.ts";
 const te = new TextEncoder();
-type BMsg = { uid: number; flagi: string[]; head: string; bs: Node; parts: Record<string, Uint8Array>; raw?: string; size?: number };
+type BMsg = { uid: number; flagi: string[]; head: string; bs: Node; parts: Record<string, Uint8Array>; raw?: string | Uint8Array; size?: number };
 // what a server would hold: folders (raw names as LIST gives them) with messages; every call is recorded
 function skrzynkaStub(folders: Record<string, BMsg[]>, extra: Folder[] = []) {
   const calls: string[] = [];
@@ -450,22 +463,36 @@ function skrzynkaStub(folders: Record<string, BMsg[]>, extra: Folder[] = []) {
   const im = {
     calls, closed: 0,
     list: () => { calls.push("LIST"); return Promise.resolve([...Object.keys(folders).map((raw) => ({ raw, nazwa: raw.replace("&AUE-", "ł"), delim: ".", flagi: raw === "INBOX.Sent" ? ["\\Sent"] : [] })), ...extra]); },
+    folders, nastepny: null as null | { bs: Node; parts: Record<string, Uint8Array> },
+    szkice: (id: string) => { calls.push("SZKICE " + id); return Promise.resolve(box().filter((m) => m.head.includes("X-Portal-Szkic: " + id)).map((m) => m.uid)); },
+    kopiuj: (uids: number[], cel: Folder) => { im.zmiany.push(`COPY ${im.wybrany} ${uids.join(",")} -> ${cel.raw}`); return Promise.resolve(); },
+    oproznij: (uids: number[]) => { im.zmiany.push(`OPROZNIJ ${im.wybrany} ${uids.join(",")}`); folders[im.wybrany] = (folders[im.wybrany] ?? []).filter((m) => !uids.includes(m.uid)); return Promise.resolve(); },
+    utworz: (raw: string) => { im.zmiany.push("CREATE " + raw); folders[raw] = []; return Promise.resolve(); },
+    zmienNazwe: (f: Folder, nowy: string) => { im.zmiany.push(`RENAME ${f.raw} -> ${nowy}`); folders[nowy] = folders[f.raw]; delete folders[f.raw]; return Promise.resolve(); },
+    usunFolder: (f: Folder) => { if ((folders[f.raw] ?? []).length) return Promise.reject(new Error("imap: folder nie jest pusty")); im.zmiany.push("DELETE " + f.raw); delete folders[f.raw]; return Promise.resolve(); },
     status: (b = "INBOX") => { calls.push("STATUS " + b); const l = folders[b] ?? []; return Promise.resolve({ messages: l.length, unseen: l.filter((m) => !m.flagi.includes("\\Seen")).length, uidnext: 1, uidvalidity: 7 }); },
     examine: (b = "INBOX") => { calls.push("EXAMINE " + b); cur = b; return Promise.resolve({ exists: (folders[b] ?? []).length, uidvalidity: 7, uidnext: 999 }); },
     szukaj: (f: Any) => { calls.push("SEARCH " + JSON.stringify(f)); return Promise.resolve(box().filter((m) => (!f.nieprzeczytane || !m.flagi.includes("\\Seen")) && (!f.tekst || m.head.toLowerCase().includes(f.tekst.toLowerCase()))).map((m) => m.uid)); },
     meta: (set: Any, uidMode: boolean, h: boolean) => { calls.push("META"); const l = box(); return Promise.resolve((Array.isArray(set) ? l.filter((m) => set.includes(m.uid)) : uidMode ? [] : l.slice(set.od - 1, set.do)).map((m) => meta(m, h))); },
     part: (uid: number, id: string, max?: number) => { calls.push(`PART ${uid} ${id}`); const b = box().find((m) => m.uid === uid)?.parts[id] ?? null; return Promise.resolve(b && max ? b.slice(0, max) : b); },
-    fetch: (uid: number) => { calls.push("FETCH " + uid); const m = box().find((x) => x.uid === uid); return Promise.resolve(m ? { uid, size: 1000, internaldate: "", body: te.encode(m.raw ?? m.head.replace(/\r?\n/g, "\r\n") + "\r\n\r\nTreść wiadomości.\r\n") } : null); },
+    fetch: (uid: number, _sec?: string, max?: number) => { calls.push("FETCH " + uid); const m = box().find((x) => x.uid === uid); const b = m ? (m.raw instanceof Uint8Array ? m.raw : te.encode(m.raw ?? m.head.replace(/\r?\n/g, "\r\n") + "\r\n\r\nTreść wiadomości.\r\n")) : null; return Promise.resolve(b ? { uid, size: 1000, internaldate: "", body: max ? b.slice(0, max) : b } : null); },
     logout: () => { im.closed++; return Promise.resolve(); },
     // the controlled write path, recorded
     zmiany: [] as string[], dopisane: [] as { folder: string; flagi: string[]; raw: Uint8Array }[], wybrany: "",
     wybierz: (f: Folder) => { calls.push("SELECT " + f.raw); im.wybrany = f.raw; cur = f.raw; return Promise.resolve(); },
-    dopisz: (f: Folder, flagi: string[], raw: Uint8Array) => { im.dopisane.push({ folder: f.raw, flagi, raw }); im.zmiany.push("APPEND " + f.raw); return Promise.resolve(900 + im.dopisane.length); },
+    // what is appended can be read back: its headers as they went, its structure as the test says (`nastepny`)
+    dopisz: (f: Folder, flagi: string[], raw: Uint8Array) => {
+      im.dopisane.push({ folder: f.raw, flagi, raw }); im.zmiany.push("APPEND " + f.raw);
+      const uid = 900 + im.dopisane.length, t = new TextDecoder().decode(raw);
+      (folders[f.raw] ??= []).push({ uid, flagi, head: t.slice(0, t.indexOf("\r\n\r\n")).replace(/\r\n[ \t]+/g, " "), bs: im.nastepny?.bs ?? txt(), parts: im.nastepny?.parts ?? {}, raw });
+      return Promise.resolve(uid);
+    },
     flagi: (uids: number[], dodaj: boolean, fl: string[]) => { im.zmiany.push(`STORE ${im.wybrany} ${uids.join(",")} ${dodaj ? "+" : "-"}${fl.join(" ")}`); return Promise.resolve(); },
-    przenies: (uids: number[], cel: Folder) => { im.zmiany.push(`MOVE ${im.wybrany} ${uids.join(",")} -> ${cel.raw}`); return Promise.resolve(); },
-    usunSzkic: (uid: number) => { im.zmiany.push(`USUN-SZKIC ${im.wybrany} ${uid}`); return Promise.resolve(); },
+    przenies: (uids: number[], cel: Folder) => { im.zmiany.push(`MOVE ${im.wybrany} ${uids.join(",")} -> ${cel.raw}`); if (im.rusza) { (folders[cel.raw] ??= []).push(...(folders[im.wybrany] ?? []).filter((m) => uids.includes(m.uid))); folders[im.wybrany] = (folders[im.wybrany] ?? []).filter((m) => !uids.includes(m.uid)); } return Promise.resolve(); },
+    usunSzkic: (uid: number) => { im.zmiany.push(`USUN-SZKIC ${im.wybrany} ${uid}`); if (im.rusza) folders[im.wybrany] = (folders[im.wybrany] ?? []).filter((m) => m.uid !== uid); return Promise.resolve(); },
+    rusza: false,   // true: moves and removals really change the folders
     wWatku: (id: string) => { calls.push("WATEK " + id); return Promise.resolve(box().filter((m) => m.head.includes(id)).map((m) => m.uid)); },
-    uidsAfter: () => Promise.resolve([]), uidsUnseen: () => Promise.resolve([]), uidsByMessageId: () => Promise.resolve([]), newestUids: () => Promise.resolve([]),
+    uidsAfter: (last: number) => Promise.resolve(box().filter((m) => m.uid > last).map((m) => m.uid)), uidsUnseen: () => Promise.resolve([]), uidsByMessageId: () => Promise.resolve([]), newestUids: () => Promise.resolve([]),
   };
   return im;
 }
@@ -809,7 +836,7 @@ Deno.test("drafts live in the mailbox's Drafts folder; a newer copy replaces the
 Deno.test("signature, suggestions, sender name and footer settings", async () => {
   const { post, w } = pisz();
   const p = await post({ action: "podpis", skrzynka: "kadry" });
-  assertEquals([p.body.wlasny, p.body.html, p.body.nadawca, p.body.stopka], [false, "<p>Pozdrawiam<br>Halina Testowa<br>TD Consulting Group — Kadry</p>", "TD Consulting Group — Kadry", ""]);
+  assertEquals([p.body.wlasny, p.body.html, p.body.nadawca, p.body.stopka], [false, "<p>Pozdrawiam<br><b>Halina Testowa</b><br>Specjalistka ds. kadr<br>tel. +48 000 000 000<br>TD Consulting Group — Kadry<br>kadry@td-group.pl</p>", "TD Consulting Group — Kadry", ""]);
   await post({ action: "podpis", skrzynka: "kadry", html: '<p>Z poważaniem<br><b>Halina</b><script>x</script><img src="https://zly.example/p.gif"></p>' });
   assertEquals((await post({ action: "podpis", skrzynka: "kadry" })).body.html, "<p>Z poważaniem<br /><b>Halina</b><span></span></p>");
   w.rows.push({ id: "r1", skrzynka: "kadry", od_adres: "anna@inna-firma.example", created_at: "2026-10-01T00:00:00Z" } as Row);
@@ -886,4 +913,234 @@ Deno.test("conversation, 'zajmuję się tym' and internal notes: one task per me
   w.me = { email: "szef@td.example", admin: true, sekcje: null };
   assert(/zajmuje się już hr/.test((await post({ action: "biore_imap", skrzynka: "kadry", folder: "INBOX", uid: 1 })).body.error));
   assertEquals([w.tasks.length, w.smtp.length, im.zmiany.length], [1, 0, 0]); // nothing was sent, nothing changed in the mailbox
+});
+
+// ================================================================ the mail client proper (narzedzia.ts)
+import { chwilaWarszawa, nazwaFolderu, zapomnijLiczniki } from "./narzedzia.ts";
+import { odpZNaglowka } from "./mime.ts";
+import { mutf7, naMutf7 } from "./imap.ts";
+const SZEF: Me = { email: "szef@td.example", admin: true, sekcje: null };
+const PDF_BS: Node = [txt(), ["APPLICATION", "PDF", ["NAME", "umowa.pdf"], null, null, "BASE64", "900", null, ["ATTACHMENT", ["FILENAME", "umowa.pdf"]], null, null], "MIXED"];
+const zmien = (m: BMsg, s: string, na: string): BMsg => ({ ...m, head: m.head.replace(s, na) });
+
+Deno.test("list rows name their conversation; the cached list is refreshed by what changed; search runs through every folder within its time budget", async () => {
+  const odp = bmsg(2, { head: bmsg(2).head + "\nIn-Reply-To: <b1@firma-alfa.example>\nReferences: <b1@firma-alfa.example>" });
+  const { post, w, im } = pisz({}, { ...FOLDERY, INBOX: [bmsg(1), odp, bmsg(3)], "INBOX.Klienci": [zmien(bmsg(7), "Sprawa 7", "Umowa Alfa")], "INBOX.Sent": [zmien(bmsg(9), "Sprawa 9", "Re: umowa alfa")], "INBOX.Trash": [zmien(bmsg(4), "Sprawa 4", "Umowa do kosza")] });
+  const l = await post({ action: "lista_imap", skrzynka: "kadry", folder: "INBOX" });
+  const r = l.body.wiadomosci;
+  assertEquals([r.map((x: Any) => x.uid), r[1].watek === r[2].watek, r[0].watek !== r[1].watek, /^[0-9a-f]{12}$/.test(r[0].watek), "mid" in r[0], l.body.uidvalidity, l.body.uidnext], [[3, 2, 1], true, true, true, false, 7, 999]);
+  // refresh: a new message, a flag changed elsewhere, a message that is gone
+  im.folders.INBOX = [{ ...bmsg(1), flagi: ["\\Seen", "\\Flagged"] }, odp, bmsg(5)];
+  const o = await post({ action: "odswiez_imap", skrzynka: "kadry", folder: "INBOX", uidvalidity: 7, po_uid: 3, uids: [1, 2, 3, "x", -1] });
+  assertEquals([o.body.nowe.map((x: Any) => x.uid), o.body.flagi, o.body.razem], [[5], [{ uid: 1, przeczytana: true, odpowiedziano: false, oflagowana: true }, { uid: 2, przeczytana: false, odpowiedziano: false, oflagowana: false }], 3]);
+  assertEquals((await post({ action: "odswiez_imap", skrzynka: "kadry", folder: "INBOX", uidvalidity: 8, po_uid: 3, uids: [1] })).body, { pelne: true });
+  assertEquals((await post({ action: "odswiez_imap", skrzynka: "kadry", folder: "Nie-ma", uidvalidity: 7, po_uid: 3 })).status, 400);
+  // search everywhere: every folder is opened read-only, results say where they are, newest first
+  const od = im.calls.length;
+  const sz = await post({ action: "szukaj_wszedzie", skrzynka: "kadry", szukaj: "umowa" });
+  assertEquals(sz.body.wiadomosci.map((x: Any) => [x.folder, x.uid, x.folder_nazwa, x.typ_folderu]), [["INBOX.Sent", 9, "Wysłane (Sent)", "sent"], ["INBOX.Klienci", 7, "Klienci", ""], ["INBOX.Trash", 4, "Kosz (Trash)", "trash"]]);
+  assertEquals([sz.body.przeszukane, sz.body.foldery, sz.body.pominiete], [7, 7, []]);
+  assert(im.calls.slice(od).every((c) => /^(LIST|EXAMINE|SEARCH|META)/.test(c)) && im.zmiany.length === 0);
+  assert((await post({ action: "szukaj_wszedzie", skrzynka: "kadry", szukaj: "u" })).body.error);
+  assertEquals((await post({ action: "szukaj_wszedzie", skrzynka: "ksiegowosc", szukaj: "umowa" })).status, 403);
+  // a slow server: the folders that did not fit are named
+  const ex = im.examine;
+  im.examine = (b?: string) => { w.now += 16000; return ex(b); };
+  const wolno = await post({ action: "szukaj_wszedzie", skrzynka: "kadry", szukaj: "umowa" });
+  assertEquals([wolno.body.przeszukane, wolno.body.pominiete.length], [2, 5]);
+});
+
+Deno.test("folders: people create, rename and delete only their own folders; a folder with messages needs the count confirmed and its messages go to Trash", async () => {
+  assertEquals([naMutf7("Żółte & inne"), mutf7(naMutf7("Żółte & inne")), nazwaFolderu(" Klienci  2026 ", "."), nazwaFolderu("a.b", "."), nazwaFolderu("a/b", "."), nazwaFolderu("inbox", "."), nazwaFolderu("x".repeat(61), ".")], ["&AXsA8wFC-te &- inne", "Żółte & inne", "Klienci 2026", null, null, null, null]);
+  const { post, w, im } = pisz({}, { ...FOLDERY, "INBOX.Klienci": [bmsg(1), bmsg(2)], "INBOX.Trash": [bmsg(5)] });
+  im.rusza = true;
+  const f = (action: string, o: Any = {}) => post({ action, skrzynka: "kadry", ...o });
+  assertEquals((await f("folder_utworz", { nazwa: "Żółte teczki" })).body, { ok: true, folder: "INBOX.&AXsA8wFC-te teczki" });
+  assertEquals((await f("folder_utworz", { nazwa: "Alfa", rodzic: "INBOX.Klienci" })).body.folder, "INBOX.Klienci.Alfa");
+  const n = im.zmiany.length;
+  for (const o of [{ nazwa: "" }, { nazwa: "a.b" }, { nazwa: "a/b" }, { nazwa: 'x"y' }, { nazwa: "x%" }, { nazwa: "INBOX" }, { nazwa: "x".repeat(61) }, { nazwa: "Moje", rodzic: "INBOX.Trash" }, { nazwa: "Moje", rodzic: "INBOX" }, { nazwa: "Moje", rodzic: "Nie-ma" }]) assert((await f("folder_utworz", o)).body.error, JSON.stringify(o));
+  // system folders and folders with subfolders stay as they are
+  for (const folder of ["INBOX", "INBOX.Sent", "INBOX.Drafts", "INBOX.Trash", "INBOX.spam", "INBOX.Archive", "INBOX.Klienci", "Nie-ma", 'INBOX.Klienci"\r\nx DELETE "INBOX']) {
+    for (const a of ["folder_zmien", "folder_usun"]) { const r = await f(a, { folder, nazwa: "Nowa", potwierdzenie: 2 }); assert(r.status === 400 || r.body.error, a + folder); }
+  }
+  assertEquals(im.zmiany.length, n);
+  assertEquals((await f("folder_zmien", { folder: "INBOX.Klienci.Alfa", nazwa: "Beta" })).body.folder, "INBOX.Klienci.Beta");
+  assert((await f("folder_zmien", { folder: "INBOX.Klienci.Beta", nazwa: "a.b" })).body.error);
+  assertEquals((await f("folder_usun", { folder: "INBOX.Klienci.Beta" })).body, { ok: true, przeniesiono: 0 });
+  // two messages inside: nothing happens until exactly that number is confirmed
+  const p = await f("folder_usun", { folder: "INBOX.Klienci" });
+  assertEquals([p.body.potwierdz, /zawiera 2 wiadomości/.test(p.body.pytanie), (await f("folder_usun", { folder: "INBOX.Klienci", potwierdzenie: 3 })).body.potwierdz, "INBOX.Klienci" in im.folders], [2, true, 2, true]);
+  assertEquals((await f("folder_usun", { folder: "INBOX.Klienci", potwierdzenie: 2 })).body, { ok: true, przeniesiono: 2 });
+  assertEquals([im.zmiany.slice(n), im.folders["INBOX.Trash"].map((m) => m.uid), "INBOX.Klienci" in im.folders],
+    [["RENAME INBOX.Klienci.Alfa -> INBOX.Klienci.Beta", "DELETE INBOX.Klienci.Beta", "MOVE INBOX.Klienci 1,2 -> INBOX.Trash", "DELETE INBOX.Klienci"], [5, 1, 2], false]);
+  assertEquals(w.log.filter((x) => x.akcja === "zmiana").map((x) => x.szczegoly), ["folder: utworzono", "folder: utworzono", "folder: nowa nazwa -> INBOX.Klienci.Beta", "folder: usunięto", "folder usuwany: 2 wiadomości -> INBOX.Trash", "folder: usunięto"]);
+  // copy keeps the original where it is
+  assertEquals((await f("akcja_imap", { folder: "INBOX.Trash", uids: [5], co: "kopiuj", cel: "INBOX.Archive" })).body.cel, "INBOX.Archive");
+  assertEquals(im.zmiany.slice(-1), ["COPY INBOX.Trash 5 -> INBOX.Archive"]);
+  assert((await f("akcja_imap", { folder: "INBOX.Trash", uids: [5], co: "kopiuj", cel: "INBOX.Trash" })).body.error);
+  assertEquals((await post({ action: "folder_utworz", skrzynka: "ksiegowosc", nazwa: "X" })).status, 403);
+});
+
+Deno.test("'Opróżnij kosz / spam': administrators only, the portal's chosen folder only, the exact count confirmed, each batch logged", async () => {
+  const folders = { ...FOLDERY, INBOX: [bmsg(1)], "INBOX.Trash": [bmsg(5), bmsg(6)], "INBOX.Kosz": [bmsg(7)], "INBOX.spam": [bmsg(8)] };
+  const hr = pisz({}, folders);
+  assertEquals((await hr.post({ action: "oproznij", skrzynka: "kadry", typ: "trash", potwierdzenie: 2 })).status, 403);
+  assertEquals(hr.im.zmiany.length, 0);
+  const { post, w, im } = pisz({ me: SZEF, ust: { foldery: { kadry: { trash: "INBOX.Trash" } } } }, folders);
+  // whatever the browser names, only the kind counts: INBOX or an ordinary folder can never be emptied
+  for (const o of [{ typ: "inbox" }, { typ: "sent" }, { typ: "" }, { typ: "INBOX" }, {}]) assertEquals((await post({ action: "oproznij", skrzynka: "kadry", folder: "INBOX", ...o })).status, 400);
+  const p = await post({ action: "oproznij", skrzynka: "kadry", typ: "trash", folder: "INBOX" });
+  assertEquals([p.body.potwierdz, p.body.folder, /NA STAŁE/.test(p.body.pytanie)], [2, "INBOX.Trash", true]);
+  assertEquals((await post({ action: "oproznij", skrzynka: "kadry", typ: "trash", potwierdzenie: 3 })).body.potwierdz, 2);
+  assertEquals(im.zmiany.length, 0);
+  assertEquals((await post({ action: "oproznij", skrzynka: "kadry", typ: "trash", potwierdzenie: 2 })).body, { ok: true, usunieto: 2, zostalo: 0 });
+  assertEquals((await post({ action: "oproznij", skrzynka: "kadry", typ: "junk", potwierdzenie: 1 })).body.usunieto, 1);
+  assertEquals([im.zmiany, im.folders.INBOX.length, im.folders["INBOX.Kosz"].length], [["OPROZNIJ INBOX.Trash 5,6", "OPROZNIJ INBOX.spam 8"], 1, 1]);
+  assertEquals(w.log.filter((x) => x.akcja === "zmiana").map((x) => [x.kto, x.folder, x.szczegoly]), [["szef@td.example", "INBOX.Trash", "opróżnianie (Kosz): usuwam na stałe 2"], ["szef@td.example", "INBOX.spam", "opróżnianie (Spam): usuwam na stałe 1"]]);
+  assertEquals((await post({ action: "oproznij", skrzynka: "kadry", typ: "trash" })).body, { ok: true, usunieto: 0, zostalo: 0 });
+});
+
+Deno.test("drafts keep their files and what they answer; a kept file is read from the previous copy of the same draft, never from another message", async () => {
+  const obcy = bmsg(56, { head: "From: kadry@td-group.pl\nSubject: Cudzy szkic\nMessage-ID: <d56@td-group.pl>\nX-Portal-Szkic: " + KL(99), bs: PDF_BS, parts: { "2": te.encode(btoa("%PDF-1.4 cudzy" + "y".repeat(300))) } });
+  const { post, w, im } = pisz({}, { ...FOLDERY, "INBOX.Drafts": [obcy] });
+  im.rusza = true;
+  im.nastepny = { bs: PDF_BS, parts: { "1": te.encode("Dzień dobry"), "2": te.encode(PDFB) } };
+  const s1 = await post({ action: "szkic_zapisz", skrzynka: "kadry", szkic_id: KL(70), ...LIST, dw: ["n11@firma-alfa.example"], udw: ["hr@td.example"], zalaczniki: [{ nazwa: "umowa.pdf", b64: PDFB }], odp: { folder: "INBOX", uid: 3, tryb: "reply" } });
+  assertEquals([s1.body.ok, s1.body.uid, s1.body.pliki], [true, 901, [{ part: "2", nazwa: "umowa.pdf", rozmiar: 666, cid: null }]]);
+  // deno-lint-ignore no-explicit-any
+  const m1: any = await PostalMime.parse(im.dopisane[0].raw);
+  assertEquals([m1.attachments.length, m1.attachments[0].filename, odpZNaglowka(m1.headers.find((h: Any) => h.key === "x-portal-odp").value)], [1, "umowa.pdf", { tryb: "reply", uid: 3, folder: "INBOX" }]);
+  // saved again (another device): the file is not uploaded again, it is taken from the previous copy
+  const s2 = await post({ action: "szkic_zapisz", skrzynka: "kadry", szkic_id: KL(70), poprzedni_uid: 901, ...LIST, html: "<p>Dalej</p>", zachowaj: ["2", "9", "1"] });
+  // deno-lint-ignore no-explicit-any
+  const m2: any = await PostalMime.parse(im.dopisane[1].raw);
+  assertEquals([s2.body.uid, m2.attachments.length, new TextDecoder().decode(new Uint8Array(m2.attachments[0].content)).slice(0, 8), im.zmiany.slice(-1)], [902, 1, "%PDF-1.4", ["USUN-SZKIC INBOX.Drafts 901"]]);
+  // a UID of somebody else's draft gives nothing; programs are refused in a draft as in a send
+  await post({ action: "szkic_zapisz", skrzynka: "kadry", szkic_id: KL(70), poprzedni_uid: 56, ...LIST, zachowaj: ["2"] });
+  // deno-lint-ignore no-explicit-any
+  assertEquals(((await PostalMime.parse(im.dopisane[2].raw)) as any).attachments.length, 0);
+  assert(/nie można wysłać/.test((await post({ action: "szkic_zapisz", skrzynka: "kadry", szkic_id: KL(70), ...LIST, zalaczniki: [{ nazwa: "x.exe", b64: btoa("MZ" + "x".repeat(50)) }] })).body.error));
+  // opened on another device: recipients, files and the answered message come from the draft itself
+  const o = await post({ action: "wiadomosc_imap", skrzynka: "kadry", folder: "INBOX.Drafts", uid: 902 });
+  assertEquals([o.body.szkic.id, o.body.szkic.do, o.body.szkic.pliki.map((p: Any) => p.nazwa), o.body.szkic.zaplanowana], [KL(70), ["zaneta@firma-alfa.example"], ["umowa.pdf"], null]);
+  assertEquals([w.smtp.length, w.sent.length], [0, 0]);
+  // sent from that other device: the file goes from the draft itself — and only from this draft
+  assertEquals((await post({ action: "wyslij", skrzynka: "kadry", klucz: KL(61), ...LIST, szkic_id: KL(70), szkic_uid: 56, szkic_pliki: ["2"] })).body.ok, true);
+  assertEquals((await post({ action: "wyslij", skrzynka: "kadry", klucz: KL(62), ...LIST, szkic_id: KL(70), szkic_uid: 902, szkic_pliki: ["2", "7"] })).body.ok, true);
+  // deno-lint-ignore no-explicit-any
+  const wys: any[] = await Promise.all(w.smtp.map((x) => PostalMime.parse(x.raw)));
+  assertEquals(wys.map((x) => x.attachments.map((a: Any) => a.filename)), [[], ["umowa.pdf"]]);
+});
+
+Deno.test("'Wyślij później': the draft waits in the mailbox, the cron call sends it through the ordinary send; changing or cancelling stops it", async () => {
+  assertEquals([chwilaWarszawa("2026-10-09T12:00"), chwilaWarszawa("2026-12-01T08:30"), chwilaWarszawa("2026-03-29T02:30"), chwilaWarszawa("2026-13-01T08:30"), chwilaWarszawa("jutro"), chwilaWarszawa(5)],
+    [Date.parse("2026-10-09T10:00:00Z"), Date.parse("2026-12-01T07:30:00Z"), null, null, null, null]);
+  const { post, w, im } = pisz({}, FOLDERY);
+  im.rusza = true;
+  const cron = (h: Record<string, string> = { "x-cron-key": CRONKEY }) => post({ action: "wyslij_zaplanowane" }, h);
+  const plan = (szkic: number, klucz: number, o: Any = {}) => post({ action: "zaplanuj", skrzynka: "kadry", szkic_id: KL(szkic), klucz: KL(klucz), kiedy: "2026-10-09T12:00", ...o });
+  assert(/Najpierw zapisz/.test((await plan(71, 72)).body.error));
+  await post({ action: "szkic_zapisz", skrzynka: "kadry", szkic_id: KL(71), ...LIST, zalaczniki: [{ nazwa: "umowa.pdf", b64: PDFB }] });
+  for (const kiedy of ["2026-10-09T11:00", "2026-10-09T11:30", "2027-06-01T08:00", "kiedyś", ""]) assert((await plan(71, 72, { kiedy })).body.error, kiedy);
+  const z = await plan(71, 72, { pilna: true });
+  assertEquals([z.body.ok, z.body.kiedy, w.tab.poczta_kolejka.map((r) => [r.kto, r.stan, r.temat, r.odbiorcy, r.opcje.pilna])], [true, "2026-10-09T10:00:00.000Z", [["hr@td.example", "czeka", "Dokumenty do podpisu", ["zaneta@firma-alfa.example"], true]]]);
+  // nobody but the scheduler runs the queue; before its time nothing goes
+  assertEquals([(await cron({})).status, (await cron({ "x-cron-key": "x".repeat(40) })).status, (await cron()).body.kolejka.wyslane, w.smtp.length], [403, 403, 0, 0]);
+  w.now += 3600000;
+  assertEquals((await cron()).body.kolejka, { wyslane: 1, bledy: 0, odlozone: 0, pominiete: 0 });
+  // deno-lint-ignore no-explicit-any
+  const m: any = await PostalMime.parse(w.smtp[0].raw);
+  assertEquals([w.smtp.length, m.from.address, m.to[0].address, m.subject, m.attachments.map((a: Any) => a.filename), m.headers.some((h: Any) => h.key === "x-portal-szkic"), w.sent.map((r) => [r.kto, r.klucz, r.wynik]), w.tab.poczta_kolejka[0].stan],
+    [1, "kadry@td-group.pl", "zaneta@firma-alfa.example", "Dokumenty do podpisu", ["umowa.pdf"], false, [["hr@td.example", KL(72), "wyslano"]], "wyslano"]);
+  assertEquals([im.zmiany.slice(-2), im.folders["INBOX.Drafts"].length, (await cron()).body.kolejka.wyslane, w.smtp.length], [["APPEND INBOX.Sent", "USUN-SZKIC INBOX.Drafts 901"], 0, 0, 1]);
+  // a first message to a stranger is confirmed when it is scheduled; scheduling again replaces the time
+  await post({ action: "szkic_zapisz", skrzynka: "kadry", szkic_id: KL(73), ...LIST, do: ["ktos@nieznana.example"] });
+  const pyt = await plan(73, 74, { kiedy: "2026-10-10T09:00" });
+  assertEquals([pyt.body.potwierdz, w.tab.poczta_kolejka.length], [["ktos@nieznana.example"], 1]);
+  assertEquals([(await plan(73, 74, { kiedy: "2026-10-10T09:00", potwierdzone: true })).body.ok, (await plan(73, 75, { kiedy: "2026-10-10T10:00", potwierdzone: true })).body.ok, w.tab.poczta_kolejka.map((r) => r.stan)], [true, true, ["wyslano", "anulowano", "czeka"]]);
+  // the list for the mailbox; only the person who scheduled (or an administrator) cancels
+  const lista = await post({ action: "zaplanowane", skrzynka: "kadry" });
+  assertEquals(lista.body.zaplanowane.filter((r: Any) => r.stan === "czeka").map((r: Any) => [r.temat, r.moje]), [["Dokumenty do podpisu", true]]);
+  const id = w.tab.poczta_kolejka[2].id;
+  w.me = { email: "rejestracja@td.example", admin: false, sekcje: ["kadry"] };
+  assertEquals((await post({ action: "zaplanowane_anuluj", skrzynka: "kadry", id })).status, 403);
+  w.me = HR;
+  // changing the draft stops the send; so does cancelling; a cancelled or removed draft is never sent
+  assertEquals((await post({ action: "szkic_zapisz", skrzynka: "kadry", szkic_id: KL(73), poprzedni_uid: 903, ...LIST, do: ["ktos@nieznana.example"] })).body.wysylka_anulowana, true);
+  assertEquals([(await post({ action: "zaplanowane_anuluj", skrzynka: "kadry", id })).body.error !== undefined, (await plan(73, 76, { kiedy: "2026-10-10T10:00", potwierdzone: true })).body.ok], [true, true]);
+  assertEquals((await post({ action: "zaplanowane_anuluj", skrzynka: "kadry", id: w.tab.poczta_kolejka[3].id })).body.ok, true);
+  await plan(73, 77, { kiedy: "2026-10-10T10:00", potwierdzone: true });
+  im.folders["INBOX.Drafts"] = [];
+  w.now += 2 * 86400000;
+  assertEquals([(await cron()).body.kolejka, w.smtp.length, /szkic .* usunięty/.test(w.tab.poczta_kolejka[4].blad), w.tab.poczta_kolejka.map((r) => r.stan)], [{ wyslane: 0, bledy: 1, odlozone: 0, pominiete: 0 }, 1, true, ["wyslano", "anulowano", "anulowano", "anulowano", "blad"]]);
+  assertEquals((await post({ action: "zaplanuj", skrzynka: "ksiegowosc", szkic_id: KL(71), klucz: KL(80), kiedy: "2026-10-20T12:00" })).status, 403);
+});
+
+Deno.test("signatures (several, a default per mailbox, role and phone from the staff profile), shared templates and the address book", async () => {
+  const { post, w } = pisz({});
+  const f = (action: string, o: Any = {}) => post({ action, skrzynka: "kadry", ...o });
+  const p0 = await f("podpisy");
+  assertEquals([p0.body.lista, p0.body.profil.stanowisko, /Halina Testowa.*Specjalistka ds\. kadr.*tel\. \+48 000 000 000/.test(p0.body.wzor)], [[], "Specjalistka ds. kadr", true]);
+  const a = await f("podpis_zapisz", { nazwa: "Pełny", html: "<p>Pozdrawiam<script>x</script><br>Halina <img src=x onerror=alert(1)></p>", domyslna: true });
+  const b = await f("podpis_zapisz", { nazwa: "Krótki", html: "<p>H.T.</p>", domyslna: true });
+  const l = (await f("podpisy")).body.lista;
+  assertEquals([l.map((x: Any) => [x.nazwa, x.domyslna]), /script|onerror|<img/.test(l[1].html), (await f("podpis")).body.html, (await f("podpis")).body.wlasny], [[["Krótki", true], ["Pełny", false]], false, "<p>H.T.</p>", true]);
+  assertEquals((await f("podpis_zapisz", { id: a.body.id, nazwa: "Pełny 2", html: "<p>Halina Testowa</p>", domyslna: false })).body.ok, true);
+  for (const o of [{ nazwa: "", html: "<p>x</p>" }, { nazwa: "Pusty", html: "<p> </p>" }, { id: "x", nazwa: "a", html: "<p>x</p>" }, { id: KL(999), nazwa: "a", html: "<p>x</p>" }]) { const r = await f("podpis_zapisz", o); assert(r.status >= 400 || r.body.error, JSON.stringify(o)); }
+  // somebody else's signature cannot be read, changed or removed
+  w.me = { email: "rejestracja@td.example", admin: false, sekcje: ["kadry"] };
+  assertEquals([(await f("podpisy")).body.lista, (await f("podpis_zapisz", { id: a.body.id, nazwa: "Mój", html: "<p>x</p>" })).status, (await f("podpis_usun", { id: b.body.id })).status, w.tab.poczta_sygnatury.length], [[], 404, 404, 2]);
+  // templates belong to the mailbox: the colleague sees and edits them; the other section does not
+  const t = await f("szablon_zapisz", { nazwa: "Prośba o dokumenty", temat: "Dokumenty — {klient}", html: "<p>Dzień dobry {imie},</p><p>prosimy o dokumenty firmy {klient}.</p><iframe src=x></iframe>" });
+  w.me = HR;
+  const sz = (await f("szablony")).body.szablony;
+  assertEquals([sz.length, sz[0].temat, sz[0].html, sz[0].kto], [1, "Dokumenty — {klient}", "<p>Dzień dobry {imie},</p><p>prosimy o dokumenty firmy {klient}.</p>", "rejestracja@td.example"]);
+  assertEquals([(await f("szablon_zapisz", { id: t.body.id, nazwa: "Prośba", html: "<p>x {imie}</p>" })).body.ok, (await f("szablony")).body.szablony[0].kto, (await post({ action: "szablony", skrzynka: "ksiegowosc" })).status, (await post({ action: "szablon_usun", skrzynka: "ksiegowosc", id: t.body.id })).status], [true, "hr@td.example", 403, 403]);
+  assert((await f("szablon_zapisz", { nazwa: "", html: "<p>x</p>" })).body.error);
+  assertEquals([(await f("szablon_usun", { id: t.body.id })).body.ok, w.tab.poczta_szablony.length], [true, 0]);
+  w.me = SZEF;
+  assertEquals((await f("podpis_usun", { id: b.body.id })).status, 404); // not even an administrator: a signature is personal
+  w.me = HR;
+  assertEquals([(await f("podpis_usun", { id: b.body.id })).body.ok, w.tab.poczta_sygnatury.length], [true, 1]);
+  // contacts
+  const k = await f("kontakt_zapisz", { adres: " Jan.Testowy@Firma-Przyklad.example ", nazwa: "Jan Testowy", firma: "Przykładowa Firma Testowa Sp. z o.o.", notatka: "TEST" });
+  assertEquals([k.body.ok, w.tab.poczta_kontakty[0].adres], [true, "jan.testowy@firma-przyklad.example"]);
+  for (const o of [{ adres: "jan.testowy@firma-przyklad.example" }, { adres: "zly adres" }, { adres: "a@b.example\r\nBcc: x@y.example" }, { id: KL(999), adres: "x@y.example" }]) { const r = await f("kontakt_zapisz", o); assert(r.status >= 400 || r.body.error, JSON.stringify(o)); }
+  const ks = await f("kontakty", { q: "testow", zrodla: true });
+  assertEquals([ks.body.kontakty.map((x: Any) => x.nazwa), ks.body.razem, (await f("kontakty", { q: "alfa", zrodla: true })).body.propozycje.map((x: Any) => [x.adres, x.firma, x.zrodlo])],
+    [["Jan Testowy"], 1, [["n11@firma-alfa.example", "Alfa Sp. z o.o.", "baza klientów"], ["zaneta@firma-alfa.example", "Alfa Sp. z o.o.", "baza klientów"]]]);
+  assertEquals([(await f("kto_to", { adres: "jan.testowy@firma-przyklad.example" })).body, (await f("kto_to", { adres: "zaneta@firma-alfa.example" })).body, (await f("kto_to", { adres: "x" })).body],
+    [{ klient: "Przykładowa Firma Testowa Sp. z o.o.", imie: "Jan" }, { klient: "Alfa Sp. z o.o.", imie: "" }, { klient: "", imie: "" }]);
+  assertEquals((await f("podpowiedzi", { q: "testow" })).body.adresy[0], { adres: "jan.testowy@firma-przyklad.example", opis: "Jan Testowy · Przykładowa Firma Testowa Sp. z o.o." });
+  // a saved contact is not "a first message to an unknown address"
+  assertEquals((await f("wyslij", { klucz: KL(60), ...LIST, do: ["jan.testowy@firma-przyklad.example"] })).body.ok, true);
+  assertEquals([(await post({ action: "kontakty", skrzynka: "ksiegowosc" })).status, (await f("kontakt_usun", { id: k.body.id })).body.ok, w.tab.poczta_kontakty.length], [403, true, 0]);
+});
+
+Deno.test("message tools: a message fetched ahead is logged as such and its real opening separately; .eml and source are downloads / text; unread counters for the badge", async () => {
+  const { post, w, im } = pisz({}, { ...FOLDERY, INBOX: [bmsg(1), bmsg(2, { flagi: ["\\Seen"] })], "INBOX.Klienci": [bmsg(3)] });
+  const f = (action: string, o: Any = {}) => post({ action, skrzynka: "kadry", folder: "INBOX", ...o });
+  const pre = await f("wiadomosc_imap", { uid: 1, wstepnie: true });
+  assertEquals([pre.body.temat, pre.body.kto, w.log.slice(-1)[0].akcja], ["Sprawa 1", [], "wstepne"]);
+  const otw = await f("otwarto_imap", { uid: 1 });
+  assertEquals([otw.body.ok, otw.body.kto.map((x: Any) => [x.kto, x.akcja]), w.log.slice(-1)[0].akcja, w.log.slice(-1)[0].msg_hash === w.log.slice(-2)[0].msg_hash], [true, [["hr@td.example", "otwarcie"]], "otwarcie", true]);
+  const eml = await f("eml_imap", { uid: 1 });
+  assertEquals([eml.raw!.headers["Content-Type"], /^attachment; filename="Sprawa 1\.eml"/.test(eml.raw!.headers["Content-Disposition"]), new TextDecoder().decode(eml.raw!.bytes).includes("Message-ID: <b1@firma-alfa.example>"), w.log.slice(-1)[0].akcja, w.log.slice(-1)[0].czesc],
+    ["application/octet-stream", true, true, "zalacznik", "0"]);
+  const zr = await f("zrodlo_imap", { uid: 1 });
+  assertEquals([typeof zr.body.zrodlo, zr.body.zrodlo.startsWith("From: Nadawca 1"), w.log.slice(-1)[0].akcja], ["string", true, "otwarcie"]);
+  for (const a of ["otwarto_imap", "eml_imap", "zrodlo_imap"]) { assertEquals((await f(a, { uid: 99 })).status, 404, a); assertEquals((await f(a, { uid: "1:*" })).status, 400, a); assertEquals((await f(a, { uid: 1, folder: "Nie-ma" })).status, 400, a); assertEquals((await post({ action: a, skrzynka: "ksiegowosc", folder: "INBOX", uid: 1 })).status, 403, a); }
+  assertEquals(im.zmiany.length, 0);
+  // the badge: only the caller's mailboxes, one login per minute however many portals are open
+  zapomnijLiczniki();
+  const n1 = await post({ action: "nieprzeczytane" });
+  assertEquals([n1.body, im.calls.filter((c) => c === "STATUS INBOX").length], [{ skrzynki: { kadry: { adres: "kadry@td-group.pl", nieprzeczytane: 1, wiadomosci: 2, uidnext: 1 } }, razem: 1 }, 1]);
+  await post({ action: "nieprzeczytane" });
+  assertEquals(im.calls.filter((c) => c === "STATUS INBOX").length, 1);
+  w.now += 61000;
+  w.me = SZEF;
+  assertEquals([Object.keys((await post({ action: "nieprzeczytane" })).body.skrzynki), im.calls.filter((c) => c === "STATUS INBOX").length], [["kadry", "ksiegowosc"], 3]);
+  w.me = null;
+  assertEquals((await post({ action: "nieprzeczytane" })).status, 403);
+  zapomnijLiczniki();
 });

@@ -86,11 +86,24 @@ export function mutf7(s: string): string {
     } catch { return "&" + b + "-"; }
   });
 }
+// the reverse: a name typed by a person becomes the form the server stores ("Żółte" -> "&AXsA8wFC-te", "&" -> "&-")
+export function naMutf7(s: string): string {
+  let out = "", buf = "";
+  const flush = () => {
+    if (!buf) return;
+    let bin = "";
+    for (let i = 0; i < buf.length; i++) { const c = buf.charCodeAt(i); bin += String.fromCharCode(c >> 8, c & 255); }
+    out += "&" + btoa(bin).replace(/=+$/, "").replace(/\//g, ",") + "-"; buf = "";
+  };
+  for (const ch of s) { if (/^[\x20-\x7e]$/.test(ch)) { flush(); out += ch === "&" ? "&-" : ch; } else buf += ch; }
+  flush();
+  return out;
+}
 export type Folder = { raw: string; nazwa: string; delim: string; flagi: string[] };
 export type Meta = { uid: number; flagi: string[]; size: number; internaldate: string; bs: Node | null; sekcje: Record<string, Uint8Array> };
 export type Szukaj = { tekst?: string; wTresci?: boolean; nieprzeczytane?: boolean; oflagowane?: boolean; od?: string; do?: string };
 // header fields read with every message of a list or a view
-export const POLA = "FROM TO CC REPLY-TO SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES X-PORTAL-SZKIC";
+export const POLA = "FROM TO CC BCC REPLY-TO SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES X-PORTAL-SZKIC X-PORTAL-ODP";
 const MIES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 // 2026-10-09 -> 9-Oct-2026 (throws on anything that is not a real ISO date)
 export function imapData(iso: string): string {
@@ -290,6 +303,14 @@ export class Imap {
     for (const u of r.untagged) { const m = u.text.match(/^\* SEARCH(.*)$/i); if (m) for (const x of m[1].trim().split(/\s+/)) if (/^\d+$/.test(x)) out.push(Number(x)); }
     return out.sort((a, b) => a - b);
   }
+  // the portal's own drafts are found by their X-Portal-Szkic header (the UID changes with every save)
+  async szkice(id: string): Promise<number[]> {
+    if (!/^[0-9a-f-]{36}$/.test(id)) throw new Error("imap: nieprawidłowy szkic");
+    const r = await this.cmd(`UID SEARCH HEADER X-Portal-Szkic ${quote(id)}`);
+    const out: number[] = [];
+    for (const u of r.untagged) { const m = u.text.match(/^\* SEARCH(.*)$/i); if (m) for (const x of m[1].trim().split(/\s+/)) if (/^\d+$/.test(x)) out.push(Number(x)); }
+    return out.sort((a, b) => a - b);
+  }
   // Flags, size, date, structure and (optionally) chosen headers of many messages; `set` is a list of numbers or a range.
   async meta(set: number[] | { od: number; do: number }, uidMode: boolean, naglowki: boolean, struktura = true): Promise<Meta[]> {
     const ids = Array.isArray(set) ? set.map((x) => Math.floor(x)).filter((x) => x > 0).join(",") : `${Math.max(1, Math.floor(set.od))}:${Math.max(1, Math.floor(set.do))}`;
@@ -356,6 +377,10 @@ export function typFolderu(f: Folder): string {
   if (/^(archive|archives|archiwum)$/.test(leaf)) return "archive";
   return "";
 }
+// A folder made by people: not INBOX, not of a standard kind (by flag or by its usual name), without any special-use
+// flag, and one that can be opened. Only such folders may be renamed or deleted from the portal.
+export const folderUzytkownika = (f: Folder) => f.raw.toUpperCase() !== "INBOX" && typFolderu(f) === "" && !nieWybieralny(f)
+  && !f.flagi.some((x) => /^\\(all|archive|drafts|flagged|junk|sent|trash|important)$/i.test(x));
 export const nieWybieralny = (f: Folder) => f.flagi.some((x) => /^\\(noselect|nonexistent)$/i.test(x));
 // the one folder of a kind: the special-use one first, then the shallowest by name
 export function folderTypu(list: Folder[], typ: string): Folder | null {

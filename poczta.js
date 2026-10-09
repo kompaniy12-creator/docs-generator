@@ -138,7 +138,12 @@
   });
 
   // ---------------- mailbox: reading, writing, changes ----------------
-  var mb = { box: '', folders: [], folder: '', page: 1, total: 0, rows: [], msg: null, loaded: false, images: false, plain: false, tall: false, sel: {}, uidnext: 0 };
+  var mb = { box: '', folders: [], folder: '', page: 1, total: 0, rows: [], msg: null, loaded: false, images: false, plain: false, tall: false, sel: {}, uidnext: 0, all: false, allInfo: '', exp: {}, tok: 0 };
+  // The first page of each folder is kept for this browser tab (sessionStorage — gone when the tab closes), keyed by the
+  // folder's UIDVALIDITY and next UID: a folder opens at once and the server is asked only for what changed.
+  var env = {}, pre = {};
+  try { env = JSON.parse(sessionStorage.getItem('tdcg_poczta_env') || '{}') || {}; } catch (e) { env = {}; }
+  function envSave() { try { var k = Object.keys(env); while (k.length > 12) delete env[k.shift()]; sessionStorage.setItem('tdcg_poczta_env', JSON.stringify(env)); } catch (e) {} }
   var FOLD = { inbox: '📥 Odebrane', sent: '📤 Wysłane', drafts: '📝 Robocze', trash: '🗑 Kosz', junk: '🚫 Spam', archive: '🗄 Archiwum' };
   function pref(k, def) { try { var v = localStorage.getItem('tdcg_poczta_' + k); return v == null ? def : JSON.parse(v); } catch (e) { return def; } }
   function setPref(k, v) { try { localStorage.setItem('tdcg_poczta_' + k, JSON.stringify(v)); } catch (e) {} }
@@ -162,7 +167,48 @@
       return '<div class="frow' + (f.id === mb.folder ? ' on' : '') + (f.wybieralny ? '' : ' off') + '"' + (f.wybieralny ? ' role="button" tabindex="0" data-f="' + esc(f.id) + '"' : '') + ' style="margin-left:' + (f.typ ? 0 : Math.min(4, f.poziom) * 12) + 'px" title="' + esc(f.sciezka) + (f.portal ? ' — tego folderu używa portal' : '') + '">' +
         '<span>' + esc(name) + (f.portal && f.duplikat ? ' <span class="sub">· portal</span>' : '') + '</span>' + (f.wybieralny ? '<span class="sub">' + (f.nieprzeczytane ? '<b>' + f.nieprzeczytane + '</b> / ' : '') + (f.wiadomosci == null ? '' : f.wiadomosci) + '</span>' : '') + '</div>';
     }).join('') : '<div class="sub">Brak folderów.</div>';
+    var f = curFolder(), acts = '<button type="button" class="mini" data-fa="nowy">＋ Nowy folder</button>';
+    if (f.wlasny) acts += '<button type="button" class="mini" data-fa="nazwa">✎ Zmień nazwę</button><button type="button" class="mini" data-fa="usun">Usuń folder</button>';
+    if (admin && f.portal && (f.typ === 'trash' || f.typ === 'junk')) acts += '<button type="button" class="mini" data-fa="oproznij">' + (f.typ === 'trash' ? 'Opróżnij kosz' : 'Opróżnij spam') + '</button>';
+    $('mbFAct').innerHTML = acts;
   }
+  // folders of people: create, rename, delete (system folders are refused by the server); emptying is the administrator's
+  $('mbFAct').addEventListener('click', async function (e) {
+    var b = e.target.closest('[data-fa]'); if (!b) return;
+    var co = b.getAttribute('data-fa'), f = curFolder(), body = null, nazwa;
+    if (co === 'nowy') {
+      nazwa = prompt('Nazwa nowego folderu:'); if (!nazwa || !nazwa.trim()) return;
+      body = { action: 'folder_utworz', nazwa: nazwa.trim() };
+      if (f.wlasny && confirm('Utworzyć „' + nazwa.trim() + '” jako podfolder w „' + f.nazwa + '”?\n\nOK — podfolder, Anuluj — folder główny.')) body.rodzic = f.id;
+    } else if (co === 'nazwa') {
+      nazwa = prompt('Nowa nazwa folderu „' + f.nazwa + '”:', f.nazwa); if (!nazwa || !nazwa.trim() || nazwa.trim() === f.nazwa) return;
+      body = { action: 'folder_zmien', folder: f.id, nazwa: nazwa.trim() };
+    } else if (co === 'usun') {
+      if (!confirm('Usunąć folder „' + f.nazwa + '”?')) return;
+      body = { action: 'folder_usun', folder: f.id };
+    } else if (co === 'oproznij') body = { action: 'oproznij', typ: f.typ };
+    if (!body) return;
+    body.skrzynka = mb.box; b.disabled = true;
+    try {
+      var out = await call('poczta', body);
+      if (out.potwierdz != null) {
+        // an explicit confirmation naming the count; emptying asks for the number itself
+        if (co === 'oproznij') { if (prompt(out.pytanie + '\n\nAby potwierdzić, wpisz liczbę wiadomości (' + out.potwierdz + '):') !== String(out.potwierdz)) { b.disabled = false; return; } }
+        else if (!confirm(out.pytanie + '\n\nKontynuować?')) { b.disabled = false; return; }
+        body.potwierdzenie = out.potwierdz;
+        out = await call('poczta', body);
+      }
+      if (out.error) alert(out.error);
+      else if (out.potwierdz != null) alert('Liczba wiadomości zmieniła się w międzyczasie — spróbuj ponownie.');
+      else {
+        if (co === 'oproznij') alert('Usunięto na stałe: ' + out.usunieto + (out.zostalo ? '. Zostało: ' + out.zostalo + ' — uruchom ponownie.' : '.'));
+        delete env[mb.box + '|' + f.id];
+        if (co === 'usun' || co === 'nazwa') { mb.folder = ''; await loadFolders(mb.box, true); var go = co === 'nazwa' ? out.folder : (folderBy('inbox') || {}).id; if (go) openFolder(go, true); }
+        else { await loadFolders(mb.box, true); if (co === 'oproznij') openFolder(mb.folder, true); }
+      }
+    } catch (err) { alert(err.message); }
+    b.disabled = false;
+  });
   async function loadFolders(box, keep) {
     mb.box = box || mb.box || skrzynka;
     if (!keep) { mb.folders = []; mb.folder = ''; mb.rows = []; mb.msg = null; mb.sel = {}; $('mbTree').innerHTML = '<div class="sub">Ładowanie…</div>'; $('mbRows').innerHTML = ''; $('mbMsg').hidden = true; $('mbList').hidden = false; }
@@ -177,37 +223,83 @@
   function filters() { return { szukaj: $('mbQ').value.trim() || undefined, w_tresci: $('mbBody2').checked || undefined, od: $('mbOd').value || undefined, do: $('mbDo').value || undefined, nieprzeczytane: $('mbNew').checked || undefined, oflagowane: $('mbStar').checked || undefined, zalaczniki: $('mbAtt').checked || undefined }; }
   function hasFilters() { var f = filters(); return Object.keys(f).some(function (k) { return f[k]; }); }
   function selected() { return Object.keys(mb.sel).filter(function (u) { return mb.sel[u]; }).map(Number); }
-  function moveOptions() { return '<option value="">Przenieś do…</option>' + mb.folders.filter(function (f) { return f.wybieralny && f.id !== mb.folder; }).map(function (f) { return '<option value="' + esc(f.id) + '">' + esc(f.sciezka) + '</option>'; }).join(''); }
+  function moveOptions(label) { return '<option value="">' + (label || 'Przenieś do…') + '</option>' + mb.folders.filter(function (f) { return f.wybieralny && f.id !== mb.folder; }).map(function (f) { return '<option value="' + esc(f.id) + '">' + esc(f.sciezka) + '</option>'; }).join(''); }
   function renderBulk() {
     var n = selected().length;
     $('mbBulk').hidden = !n;
-    if (n) $('mbBulk').innerHTML = '<b>Zaznaczone: ' + n + '</b> <button type="button" class="mini" data-b="przeczytane">Przeczytane</button><button type="button" class="mini" data-b="nieprzeczytane">Nieprzeczytane</button><button type="button" class="mini" data-b="flaga">⚑ Flaga</button><button type="button" class="mini" data-b="archiwum">Archiwum</button><button type="button" class="mini" data-b="spam">Spam</button><button type="button" class="mini" data-b="kosz">🗑 Kosz</button><select data-bmove style="width:auto">' + moveOptions() + '</select><button type="button" class="mini" data-b="none">Odznacz</button>';
+    if (n) $('mbBulk').innerHTML = '<b>Zaznaczone: ' + n + '</b> <button type="button" class="mini" data-b="przeczytane">Przeczytane</button><button type="button" class="mini" data-b="nieprzeczytane">Nieprzeczytane</button><button type="button" class="mini" data-b="flaga">⚑ Flaga</button><button type="button" class="mini" data-b="archiwum">Archiwum</button><button type="button" class="mini" data-b="spam">Spam</button><button type="button" class="mini" data-b="kosz">🗑 Kosz</button><select data-bmove style="width:auto">' + moveOptions() + '</select><select data-bcopy style="width:auto">' + moveOptions('Kopiuj do…') + '</select><button type="button" class="mini" data-b="none">Odznacz</button>';
+  }
+  // conversations: messages of the loaded page that belong to one thread stand together, under the newest of them
+  function groups() {
+    if (mb.all || !pref('rozmowy', true)) return mb.rows.map(function (r) { return [r]; });
+    var by = {}, out = [];
+    mb.rows.forEach(function (r) { if (!r.watek) return out.push([r]); if (by[r.watek]) by[r.watek].push(r); else { by[r.watek] = [r]; out.push(by[r.watek]); } });
+    return out;
+  }
+  function rowHtml(r, g, sub, sent) {
+    var kto = sent ? 'Do: ' + (r.do || []).join(', ') : (r.od_nazwa || r.od_adres || '(nieznany nadawca)'), n = g.length, head = !sub && n > 1;
+    if (head && !sent) { var names = []; g.forEach(function (x) { var nm = x.od_nazwa || x.od_adres; if (nm && names.indexOf(nm) < 0) names.push(nm); }); kto = names.slice(0, 3).join(', ') + (names.length > 3 ? '…' : ''); }
+    var unread = head ? g.some(function (x) { return !x.przeczytana; }) : !r.przeczytana, any = function (k) { return head ? g.some(function (x) { return x[k]; }) : r[k]; };
+    return '<div class="row' + (unread ? ' new' : '') + (sub ? ' subrow' : '') + '" role="button" tabindex="0"' + (mb.all ? '' : ' draggable="true"') + ' data-u="' + r.uid + '"' + (r.folder ? ' data-uf="' + esc(r.folder) + '"' : '') + '><span class="who">' +
+      (mb.all ? '' : '<input type="checkbox" data-sel="' + r.uid + '"' + (mb.sel[r.uid] ? ' checked' : '') + ' aria-label="Zaznacz wiadomość" /> ') +
+      (head ? '<button type="button" class="mini conv" data-exp="' + esc(r.watek) + '" aria-expanded="' + (mb.exp[r.watek] ? 'true' : 'false') + '" title="Rozmowa: ' + n + ' wiadomości — pokaż / ukryj">' + (mb.exp[r.watek] ? '▾ ' : '▸ ') + n + '</button>' : '') + esc(kto) + '</span><span class="d">' +
+      (r.folder_nazwa ? '<span class="pill p-grey">' + esc(r.folder_nazwa) + '</span> ' : '') + (r.przypisany ? '<span class="pill p-navy">' + esc(who(r.przypisany)) + '</span> ' : '') + (any('oflagowana') ? '⚑ ' : '') + (any('zalaczniki') ? '📎 ' : '') + (any('odpowiedziano') ? '↩ ' : '') + esc(when(r.data)) + '</span>' +
+      '<span class="subj">' + esc(r.temat || '(bez tematu)') + '</span></div>';
   }
   function renderRows(info) {
     var f = curFolder();
-    $('mbTitle').textContent = f.sciezka || '';
-    var sent = f.typ === 'sent' || f.typ === 'drafts';
-    $('mbRows').innerHTML = mb.rows.length ? mb.rows.map(function (r) {
-      var kto = sent ? 'Do: ' + (r.do || []).join(', ') : (r.od_nazwa || r.od_adres || '(nieznany nadawca)');
-      return '<div class="row' + (r.przeczytana ? '' : ' new') + '" role="button" tabindex="0" data-u="' + r.uid + '"><span class="who"><input type="checkbox" data-sel="' + r.uid + '"' + (mb.sel[r.uid] ? ' checked' : '') + ' aria-label="Zaznacz wiadomość" /> ' + esc(kto) + '</span><span class="d">' + (r.przypisany ? '<span class="pill p-navy">' + esc(who(r.przypisany)) + '</span> ' : '') + (r.oflagowana ? '⚑ ' : '') + (r.zalaczniki ? '📎 ' : '') + (r.odpowiedziano ? '↩ ' : '') + esc(when(r.data)) + '</span>' +
-        '<span class="subj">' + esc(r.temat || '(bez tematu)') + '</span></div>';
+    $('mbTitle').textContent = mb.all ? 'Wyniki ze wszystkich folderów' : (f.sciezka || '');
+    var sent = !mb.all && (f.typ === 'sent' || f.typ === 'drafts');
+    $('mbRows').innerHTML = mb.rows.length ? groups().map(function (g) {
+      return rowHtml(g[0], g, false, sent) + (g.length > 1 && mb.exp[g[0].watek] ? g.slice(1).map(function (r) { return rowHtml(r, g, true, sent); }).join('') : '');
     }).join('') : '<div class="empty">Brak wiadomości w tym widoku.</div>';
     var pages = Math.max(1, Math.ceil(mb.total / 30));
-    $('mbInfo').textContent = 'Strona ' + mb.page + ' z ' + pages + ' · wiadomości: ' + mb.total + (info && info.przeszukano != null ? ' (z załącznikami wśród ' + info.przeszukano + ' najnowszych pasujących)' : '');
-    $('mbPrev').disabled = mb.page <= 1; $('mbNext').disabled = mb.page >= pages;
+    $('mbInfo').textContent = mb.all ? 'Znaleziono: ' + mb.rows.length + '. ' + mb.allInfo : 'Strona ' + mb.page + ' z ' + pages + ' · wiadomości: ' + mb.total + (info && info.przeszukano != null ? ' (z załącznikami wśród ' + info.przeszukano + ' najnowszych pasujących)' : '');
+    $('mbPrev').disabled = mb.all || mb.page <= 1; $('mbNext').disabled = mb.all || mb.page >= pages;
     renderBulk();
   }
   async function openFolder(id, quiet, silent) {
-    if (id !== mb.folder) { mb.page = 1; mb.sel = {}; }
-    mb.folder = id; renderFolders();
+    if (id !== mb.folder || mb.all) { mb.page = 1; mb.sel = {}; mb.exp = {}; }
+    mb.folder = id; mb.all = false; renderFolders();
+    var tok = ++mb.tok, plain = mb.page === 1 && !hasFilters(), key = mb.box + '|' + id, c = plain ? env[key] : null, shown = false;
     if (!silent) { mb.msg = null; $('mbMsg').hidden = true; $('mbList').hidden = false; if (!quiet) ekran('lista'); $('mbRows').innerHTML = '<div class="empty">Ładowanie…</div>'; }
     try {
+      if (c && c.rows && c.rows.length) {
+        // at once from what this tab already knows; then only the difference is asked for
+        if (!silent) { mb.rows = c.rows; mb.total = c.total; renderRows(); shown = true; }
+        var d = await call('poczta', { action: 'odswiez_imap', skrzynka: mb.box, folder: id, uidvalidity: c.uv, po_uid: c.uidnext - 1, uids: c.rows.map(function (r) { return r.uid; }) });
+        if (tok !== mb.tok) return;
+        if (!d.error && !d.pelne) {
+          var fl = {}; (d.flagi || []).forEach(function (x) { fl[x.uid] = x; });
+          var rows = (d.nowe || []).concat(c.rows.filter(function (r) { return fl[r.uid]; }).map(function (r) { r.przeczytana = fl[r.uid].przeczytana; r.odpowiedziano = fl[r.uid].odpowiedziano; r.oflagowana = fl[r.uid].oflagowana; return r; }));
+          if (rows.length >= Math.min(30, d.razem)) {
+            rows = rows.slice(0, 30); env[key] = { uv: d.uidvalidity, uidnext: d.uidnext, rows: rows, total: d.razem }; envSave();
+            mb.rows = rows; mb.total = d.razem; renderRows(); return;
+          }
+        }
+      }
       var body = filters(); body.action = 'lista_imap'; body.skrzynka = mb.box; body.folder = id; body.strona = mb.page;
       var out = await call('poczta', body);
+      if (tok !== mb.tok) return;
       if (out.error) throw new Error(out.error);
       mb.rows = out.wiadomosci; mb.total = out.razem;
+      if (plain && out.uidnext) { delete env[key]; env[key] = { uv: out.uidvalidity, uidnext: out.uidnext, rows: out.wiadomosci, total: out.razem }; envSave(); }
       renderRows(out);
-    } catch (e) { if (!silent) { mbErr($('mbRows'), e); $('mbInfo').textContent = ''; } }
+    } catch (e) { if (tok === mb.tok && !silent && !shown) { mbErr($('mbRows'), e); $('mbInfo').textContent = ''; } }
+  }
+  // every folder of the mailbox, one after another (the server stops at its time budget and says what it skipped)
+  async function searchAll() {
+    var body = filters(); delete body.zalaczniki; body.action = 'szukaj_wszedzie'; body.skrzynka = mb.box;
+    var tok = ++mb.tok;
+    mb.sel = {}; mb.msg = null; $('mbMsg').hidden = true; $('mbList').hidden = false; ekran('lista'); $('mbRows').innerHTML = '<div class="empty">Przeszukuję wszystkie foldery…</div>'; $('mbInfo').textContent = '';
+    try {
+      var out = await call('poczta', body);
+      if (tok !== mb.tok) return;
+      if (out.error) throw new Error(out.error);
+      mb.all = true; mb.rows = out.wiadomosci; mb.total = out.wiadomosci.length; mb.page = 1;
+      mb.allInfo = 'Przeszukano folderów: ' + out.przeszukane + ' z ' + out.foldery + ' (do ' + out.na_folder + ' najnowszych trafień z każdego).' + (out.pominiete.length ? ' Nie zdążono przeszukać: ' + out.pominiete.join(', ') + ' — zawęź zapytanie albo przeszukaj te foldery osobno.' : '');
+      renderRows();
+    } catch (e) { if (tok === mb.tok) { mbErr($('mbRows'), e); $('mbInfo').textContent = ''; } }
   }
   // changes in the mailbox (flags, moves); the list and counters follow
   async function akcja(co, uids, cel) {
@@ -215,14 +307,36 @@
     try {
       var out = await call('poczta', { action: 'akcja_imap', skrzynka: mb.box, folder: mb.folder, uids: uids, co: co, cel: cel });
       if (out.error) { alert(out.error); return false; }
-      var moved = !/^(przeczytane|nieprzeczytane|flaga|bez_flagi)$/.test(co);
+      var moved = !/^(przeczytane|nieprzeczytane|flaga|bez_flagi|kopiuj)$/.test(co);
+      if (window.PortalShell && window.PortalShell.refreshMail && (moved || /przeczytane/.test(co))) window.PortalShell.refreshMail();
+      if (co === 'kopiuj') { loadFolders(mb.box, true); return true; }
+      if (mb.all) { if (moved) mb.rows = mb.rows.filter(function (r) { return r.folder !== mb.folder || uids.indexOf(r.uid) < 0; }); else mb.rows.forEach(function (r) { if (r.folder === mb.folder && uids.indexOf(r.uid) >= 0) { if (/przeczytane/.test(co)) r.przeczytana = co === 'przeczytane'; if (/flag/.test(co)) r.oflagowana = co === 'flaga'; } }); renderRows(); loadFolders(mb.box, true); return true; }
       mb.rows.forEach(function (r) { if (uids.indexOf(r.uid) < 0) return; if (co === 'przeczytane') r.przeczytana = true; if (co === 'nieprzeczytane') r.przeczytana = false; if (co === 'flaga') r.oflagowana = true; if (co === 'bez_flagi') r.oflagowana = false; });
       if (moved) { uids.forEach(function (u) { delete mb.sel[u]; }); await openFolder(mb.folder, true, true); loadFolders(mb.box, true); } else { renderRows(); if (/przeczytane/.test(co)) loadFolders(mb.box, true); }
       return true;
     } catch (e) { alert(e.message); return false; }
   }
   $('mbBulk').addEventListener('click', function (e) { var b = e.target.closest('[data-b]'); if (!b) return; var co = b.getAttribute('data-b'); if (co === 'none') { mb.sel = {}; return renderRows(); } if (co === 'kosz' && !confirm('Przenieść zaznaczone wiadomości do Kosza?')) return; akcja(co, selected()); });
-  $('mbBulk').addEventListener('change', function (e) { var s = e.target.closest('[data-bmove]'); if (s && s.value) akcja('przenies', selected(), s.value); });
+  $('mbBulk').addEventListener('change', function (e) { var s = e.target.closest('[data-bmove]'), c = e.target.closest('[data-bcopy]'); if (s && s.value) akcja('przenies', selected(), s.value); if (c && c.value) akcja('kopiuj', selected(), c.value).then(function (ok) { if (ok) { mb.sel = {}; renderRows(); } }); });
+  // drag a message (or the selected ones) onto a folder: move; with Ctrl / Alt: copy
+  $('mbRows').addEventListener('dragstart', function (e) {
+    var r = e.target.closest && e.target.closest('.row[data-u]'); if (!r || mb.all) return;
+    var u = Number(r.getAttribute('data-u')), sel = selected(), uids = sel.indexOf(u) >= 0 ? sel : [u];
+    e.dataTransfer.setData('text/x-poczta', JSON.stringify(uids)); e.dataTransfer.effectAllowed = 'copyMove'; r.classList.add('drag');
+  });
+  $('mbRows').addEventListener('dragend', function (e) { var r = e.target.closest && e.target.closest('.row'); if (r) r.classList.remove('drag'); document.querySelectorAll('.frow.drop').forEach(function (x) { x.classList.remove('drop'); }); });
+  ['dragover', 'dragleave', 'drop'].forEach(function (ev) {
+    $('mbTree').addEventListener(ev, function (e) {
+      var f = e.target.closest('[data-f]');
+      if (!f || [].indexOf.call(e.dataTransfer.types || [], 'text/x-poczta') < 0 || f.getAttribute('data-f') === mb.folder) return;
+      if (ev === 'dragleave') return f.classList.remove('drop');
+      e.preventDefault(); e.dataTransfer.dropEffect = e.ctrlKey || e.altKey ? 'copy' : 'move';
+      if (ev === 'dragover') return f.classList.add('drop');
+      f.classList.remove('drop');
+      var uids = []; try { uids = JSON.parse(e.dataTransfer.getData('text/x-poczta')) || []; } catch (er) {}
+      if (uids.length) akcja(e.ctrlKey || e.altKey ? 'kopiuj' : 'przenies', uids, f.getAttribute('data-f'));
+    });
+  });
 
   // ----- reading
   function frame(srcdoc) {
@@ -231,9 +345,16 @@
     f.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox');
     f.setAttribute('referrerpolicy', 'no-referrer');
     f.setAttribute('title', 'Treść wiadomości');
-    f.className = 'paper' + (mb.tall ? ' tall' : '');
+    f.className = 'paper';
     f.srcdoc = srcdoc;
-    return f;
+    // the frame cannot report its own height (no scripts, no access): it fills the window, scrolls inside, and the
+    // reader may drag its lower edge — the chosen height is remembered in this browser
+    var w = document.createElement('div'), h = pref('wysokosc', 0);
+    w.className = 'paperwrap' + (mb.tall ? ' tall' : '');
+    if (h > 200 && !mb.tall) w.style.height = h + 'px';
+    w.appendChild(f);
+    w.addEventListener('mouseup', function () { if (!mb.tall && w.style.height) setPref('wysokosc', parseInt(w.style.height, 10) || 0); });
+    return w;
   }
   // plain text shown properly: links are links, quoted lines fold away, a long signature too — all built from text nodes
   function linkify(parent, text) {
@@ -272,19 +393,22 @@
         '<button type="button" class="mini" data-m="' + (m.przeczytana ? 'unread' : 'read') + '">' + (m.przeczytana ? 'Nieprzeczytana' : 'Przeczytana') + '</button>' +
         '<button type="button" class="mini" data-m="' + (m.oflagowana ? 'unflag' : 'flag') + '">' + (m.oflagowana ? '⚑ Zdejmij flagę' : '⚑ Flaga') + '</button>' +
         (m.typ_folderu !== 'archive' ? '<button type="button" class="mini" data-m="archive">Archiwum</button>' : '') + (m.typ_folderu !== 'junk' ? '<button type="button" class="mini" data-m="spam">Spam</button>' : '') +
-        (m.typ_folderu !== 'trash' ? '<button type="button" class="mini" data-m="trash">🗑 Kosz</button>' : '') + '<select data-mmove style="width:auto">' + moveOptions() + '</select></div>' +
+        (m.typ_folderu !== 'trash' ? '<button type="button" class="mini" data-m="trash">🗑 Kosz</button>' : '') + '<select data-mmove style="width:auto">' + moveOptions() + '</select><select data-mcopy style="width:auto">' + moveOptions('Kopiuj do…') + '</select></div>' +
+      (m.szkic && m.szkic.zaplanowana ? '<div class="warnbox">🕒 Ta wiadomość jest zaplanowana do wysłania ' + esc(when(m.szkic.zaplanowana.kiedy)) + ' (' + esc(who(m.szkic.zaplanowana.kto)) + '). <button type="button" class="mini" data-m="unplan">Anuluj wysyłkę</button></div>' : '') +
       '<div class="mhead"><h2>' + esc(m.temat || '(bez tematu)') + '</h2>' +
-        '<p><b>Od:</b> ' + esc(m.od_nazwa || '') + ' &lt;' + esc(m.od_adres || 'nieznany') + '&gt;</p>' +
+        '<p><b>Od:</b> ' + esc(m.od_nazwa || '') + ' &lt;' + esc(m.od_adres || 'nieznany') + '&gt;' + (m.od_adres && !m.szkic ? ' <a href="#" data-m="addc" class="sub">＋ do kontaktów</a>' : '') + '</p>' +
         '<p><b>Do:</b> ' + esc((m.do || []).join(', ')) + '</p><p class="sub">' + esc(when(m.data)) + ' · ' + kb(m.rozmiar) + (m.odpowiedziano ? ' · ↩ odpowiedziano' : '') + (m.przekazano ? ' · przekazano' : '') + '</p>' +
         (Object.keys(kto).length ? '<p class="sub">W portalu: ' + Object.keys(kto).map(function (k) { return esc(KTO[kto[k].akcja] || kto[k].akcja) + ' ' + esc(who(kto[k].kto)) + ' (' + esc(when(kto[k].at)) + ')'; }).join(' · ') + '</p>' : '') + '</div>' +
       (m.zalaczniki.length ? '<div class="atts">' + m.zalaczniki.map(function (z) {
         return z.za_duzy ? '<span class="pill p-grey" title="Ponad 20 MB — otwórz w programie pocztowym">' + attIco(z.nazwa) + ' ' + esc(z.nazwa) + ' (' + kb(z.rozmiar) + ', za duży)</span>'
-          : '<button type="button" class="mini" data-part="' + esc(z.part) + '" data-name="' + esc(z.nazwa) + '">' + attIco(z.nazwa) + ' ' + esc(z.nazwa) + ' (' + kb(z.rozmiar) + ')</button>';
-      }).join('') + '</div>' : '') +
+          : '<button type="button" class="mini" data-part="' + esc(z.part) + '" data-name="' + esc(z.nazwa) + '" title="Pobierz">' + attIco(z.nazwa) + ' ' + esc(z.nazwa) + ' (' + kb(z.rozmiar) + ')</button>' +
+            (/\.(png|jpe?g|gif|webp|pdf)$/i.test(z.nazwa) ? '<button type="button" class="mini" data-prev="' + esc(z.part) + '" data-name="' + esc(z.nazwa) + '" title="Podgląd" aria-label="Podgląd: ' + esc(z.nazwa) + '">👁</button>' : '');
+      }).join('') + (m.zalaczniki.filter(function (z) { return !z.za_duzy; }).length > 1 ? '<button type="button" class="mini" data-m="zip">⬇ Pobierz wszystkie (ZIP)</button>' : '') + '</div>' : '') +
       '<div class="acts" style="margin:0 0 8px">' + (m.srcdoc && m.tekst ? '<button type="button" class="mini" data-m="view">' + (mb.plain ? 'Widok sformatowany' : 'Tylko tekst') + '</button>' : '') +
         (html ? '<button type="button" class="mini" data-m="tall">' + (mb.tall ? 'Zwiń' : 'Rozwiń') + '</button>' : '') +
         (html && m.zdalne && !mb.images ? '<button type="button" class="mini" data-m="img">Pokaż obrazy z internetu (' + m.zdalne + ')</button><button type="button" class="mini" data-m="imgalways">Zawsze od tego nadawcy</button>' : '') +
-        (html && m.zdalne && always ? '<button type="button" class="mini" data-m="imgnever">Nie pokazuj automatycznie od tego nadawcy</button>' : '') + '</div>' +
+        (html && m.zdalne && always ? '<button type="button" class="mini" data-m="imgnever">Nie pokazuj automatycznie od tego nadawcy</button>' : '') +
+        '<button type="button" class="mini" data-m="print">🖨 Drukuj</button><button type="button" class="mini" data-m="eml">⬇ Pobierz .eml</button><button type="button" class="mini" data-m="src">Pokaż źródło</button></div>' +
       '<div id="mbWatek"></div><div id="mbBody"></div>' +
       (a && a.zadanie && /^(nowe|w_toku)$/.test(a.zadanie.status) ? '<div class="cm" style="margin-top:12px;white-space:normal"><b>Zajmuje się: ' + esc(who(a.zadanie.assignee)) + '</b> <span class="sub">— notatki wewnętrzne (nie są wysyłane, widoczne w zadaniu)</span>' +
           (a.zadanie.notatki || []).map(function (n) { return '<p style="margin:6px 0 0"><small>' + esc(who(n.by)) + ' · ' + esc(when(n.at)) + '</small><br>' + esc(n.text) + '</p>'; }).join('') +
@@ -300,20 +424,45 @@
     else if (m.tekst) body.appendChild(plainView(m.tekst));
     else { var t = document.createElement('div'); t.className = 'cm mtext'; t.textContent = '(wiadomość bez treści)'; body.appendChild(t); }
   }
-  async function openMsg(uid) {
+  async function fetchMsg(folder, uid, ahead) {
+    var out = await call('poczta', { action: 'wiadomosc_imap', skrzynka: mb.box, folder: folder, uid: uid, wstepnie: ahead || undefined });
+    if (out.error) throw new Error(out.error);
+    return out;
+  }
+  // the next message of the list is fetched while this one is being read (logged as fetched ahead; its real opening
+  // is reported when the person opens it)
+  function prefetch(uid) {
+    if (!pref('wstepnie', true) || mb.all) return;
+    var i = mb.rows.map(function (r) { return r.uid; }).indexOf(uid), n = mb.rows[i + 1], folder = mb.folder, box = mb.box;
+    if (i < 0 || !n || pre[box + '|' + folder + '|' + n.uid]) return;
+    setTimeout(function () {
+      var k = box + '|' + folder + '|' + n.uid;
+      if (!mb.msg || mb.msg.uid !== uid || mb.box !== box || mb.folder !== folder || document.hidden || cmp || pre[k]) return;
+      Object.keys(pre).forEach(function (x) { if (Date.now() - pre[x].at > 300000) delete pre[x]; });
+      pre[k] = { at: Date.now(), p: fetchMsg(folder, n.uid, true).catch(function () { delete pre[k]; return null; }) };
+    }, 1500);
+  }
+  async function openMsg(uid, folder) {
     var el = $('mbMsg');
+    if (folder && folder !== mb.folder) { mb.folder = folder; mb.sel = {}; renderFolders(); }
     $('mbList').hidden = true; el.hidden = false; ekran('wiadomosc');
     el.innerHTML = '<div class="empty">Ładowanie…</div>';
+    bytesOf = {};
     try {
-      var out = await call('poczta', { action: 'wiadomosc_imap', skrzynka: mb.box, folder: mb.folder, uid: uid });
-      if (out.error) throw new Error(out.error);
+      var k = mb.box + '|' + mb.folder + '|' + uid, hit = pre[k], out = null, f0 = mb.folder;
+      if (hit && Date.now() - hit.at < 300000) {
+        out = await hit.p; delete pre[k];
+        if (out) call('poczta', { action: 'otwarto_imap', skrzynka: mb.box, folder: f0, uid: uid }).then(function (o) { if (o.error) throw new Error(o.error); })
+          .catch(function (e) { if (mb.msg === out) { mb.msg = null; el.innerHTML = '<div class="acts" style="margin:0 0 10px"><button type="button" class="mini" data-m="back">← Lista</button></div><div class="empty">' + esc(e.message) + '</div>'; } });
+      }
+      if (!out) out = await fetchMsg(mb.folder, uid);
       mb.msg = out; mb.plain = false; mb.tall = false;
       mb.images = pref('obrazy', []).indexOf(out.od_adres) >= 0; // remote pictures only on request, or for senders this person chose
       renderMsg();
       // a shared mailbox worked from the portal: opening marks the message read (a personal setting, on by default)
       if (!out.przeczytana && pref('czytaj', true) && out.typ_folderu !== 'drafts') akcja('przeczytane', [uid]).then(function (ok) { if (ok && mb.msg && mb.msg.uid === uid) mb.msg.przeczytana = true; });
       var back = el.querySelector('[data-m="back"]'); if (back) back.focus();
-      loadThread(uid);
+      loadThread(uid); prefetch(uid);
     } catch (e) { el.innerHTML = '<div class="acts" style="margin:0 0 10px"><button type="button" class="mini" data-m="back">← Lista</button></div><div class="empty">' + esc(e.message) + '</div>'; }
   }
   // other messages of the same conversation (this folder and the portal's Sent folder)
@@ -348,30 +497,116 @@
     openMsg(u);
   }
   $('mbMsg').addEventListener('click', threadGo); $('mbMsg').addEventListener('keydown', threadGo);
-  $('mbMsg').addEventListener('change', async function (e) { var s = e.target.closest('[data-mmove]'); if (s && s.value && mb.msg) { if (await akcja('przenies', [mb.msg.uid], s.value)) backToList(); } });
+  $('mbMsg').addEventListener('change', async function (e) { var s = e.target.closest('[data-mmove]'), c = e.target.closest('[data-mcopy]'); if (s && s.value && mb.msg) { if (await akcja('przenies', [mb.msg.uid], s.value)) backToList(); } if (c && c.value && mb.msg) { var cel = c.value; c.value = ''; if (await akcja('kopiuj', [mb.msg.uid], cel)) { var mm = $('mbMsg').querySelector('[data-mmsg]'); if (mm) mm.textContent = 'Skopiowano.'; } } });
+  // ---- message tools: files, preview, print, source
+  var bytesOf = {};
+  async function partBytes(part) { if (!bytesOf[part]) bytesOf[part] = await callFile({ action: 'zalacznik_imap', skrzynka: mb.box, folder: mb.folder, uid: mb.msg.uid, part: part }); return bytesOf[part]; }
+  // always saved as a file of an inert type — never opened as a page
+  function saveBlob(blob, name) { var url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = name || 'plik'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(url); }, 30000); }
+  function fname(s, def) { return String(s || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/^\.+/, '').trim().slice(0, 80) || def; }
+  // what a file really is — by its first bytes, never by what the message says; only these kinds are ever shown
+  function sniff(b) {
+    if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png';
+    if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+    if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return 'image/gif';
+    if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
+    if (b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46) return 'application/pdf';
+    return '';
+  }
+  async function preview(part, name) {
+    var buf = await partBytes(part), type = sniff(new Uint8Array(buf.slice(0, 16)));
+    if (!type) throw new Error('Podgląd jest dostępny tylko dla obrazów (PNG, JPG, GIF, WebP) i plików PDF — ten plik pobierz.');
+    var url = URL.createObjectURL(new Blob([buf], { type: type }));
+    dlg(name, (type === 'application/pdf' ? '<iframe class="prev" src="' + url + '" title="Podgląd pliku PDF"></iframe>' : '<img class="prev" src="' + url + '" alt="" />') +
+      '<div class="acts"><button type="button" class="mini" data-dl>⬇ Pobierz plik</button><span class="sub">Podgląd pobranego pliku. Jeśli PDF się nie wyświetla (np. w telefonie) — pobierz go.</span></div>', function () { URL.revokeObjectURL(url); });
+    $('dlg_b').querySelector('[data-dl]').addEventListener('click', function () { saveBlob(new Blob([buf], { type: 'application/octet-stream' }), name); });
+  }
+  var CRC = null;
+  function crc32(b) { if (!CRC) { CRC = []; for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; CRC[n] = c >>> 0; } } var crc = 0xFFFFFFFF; for (var i = 0; i < b.length; i++) crc = CRC[(crc ^ b[i]) & 255] ^ (crc >>> 8); return (crc ^ 0xFFFFFFFF) >>> 0; }
+  // a plain ZIP (files stored as they are) built in the browser from the downloaded attachments
+  function zipStore(files) {
+    var enc = new TextEncoder(), parts = [], central = [], off = 0, d = new Date(), time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    files.forEach(function (f) {
+      var name = enc.encode(f.name), crc = crc32(f.bytes), len = f.bytes.length, h = new DataView(new ArrayBuffer(30)), c = new DataView(new ArrayBuffer(46));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(10, time, true); h.setUint16(12, date, true); h.setUint32(14, crc, true); h.setUint32(18, len, true); h.setUint32(22, len, true); h.setUint16(26, name.length, true);
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(12, time, true); c.setUint16(14, date, true); c.setUint32(16, crc, true); c.setUint32(20, len, true); c.setUint32(24, len, true); c.setUint16(28, name.length, true); c.setUint32(42, off, true);
+      parts.push(h.buffer, name, f.bytes); central.push(c.buffer, name); off += 30 + name.length + len;
+    });
+    var csize = central.reduce(function (s, x) { return s + x.byteLength; }, 0), e = new DataView(new ArrayBuffer(22));
+    e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, csize, true); e.setUint32(16, off, true);
+    return new Blob(parts.concat(central, [e.buffer]), { type: 'application/zip' });
+  }
+  async function downloadAll(msg) {
+    var m = mb.msg, list = m.zalaczniki.filter(function (z) { return !z.za_duzy; }), files = [], used = {};
+    for (var i = 0; i < list.length; i++) {
+      if (msg) msg.textContent = 'Pobieram ' + (i + 1) + ' z ' + list.length + '…';
+      var buf = await partBytes(list[i].part), name = fname(list[i].nazwa, 'zalacznik-' + (i + 1)), base = name, n = 1;
+      if (mb.msg !== m) return;
+      while (used[name.toLowerCase()]) { n++; name = base.replace(/(\.[^.]*)?$/, ' (' + n + ')$1'); }
+      used[name.toLowerCase()] = true; files.push({ name: name, bytes: new Uint8Array(buf) });
+    }
+    saveBlob(zipStore(files), fname(m.temat, 'zalaczniki') + ' — załączniki.zip');
+    if (msg) msg.textContent = 'Pobrano ' + files.length + ' plików w jednym archiwum ZIP.';
+  }
+  // A clean printable page: the same cleaned message under the same Content-Security-Policy, with its headers on top.
+  // Only for printing the frame is same-origin (the page must call the frame's own print()) — it still has no
+  // allow-scripts, so nothing of the mail can run; it is removed afterwards.
+  function printMsg() {
+    var m = mb.msg, line = function (k, v) { return v ? '<div><b>' + k + ':</b> ' + esc(v) + '</div>' : ''; };
+    var head = '<div style="font:13px/1.5 Arial,Helvetica,sans-serif;color:#111;border-bottom:1px solid #999;margin:0 0 14px;padding:0 0 10px"><div style="font-size:17px;font-weight:bold;margin:0 0 6px">' + esc(m.temat || '(bez tematu)') + '</div>' +
+      line('Od', (m.od_nazwa ? m.od_nazwa + ' ' : '') + '<' + (m.od_adres || 'nieznany') + '>') + line('Do', (m.do || []).join(', ')) + line('Data', when(m.data)) + line('Załączniki', m.zalaczniki.map(function (z) { return z.nazwa; }).join(', ')) + '</div>';
+    var doc = m.srcdoc && !mb.plain ? (mb.images ? m.srcdoc.replace('img-src data:;', 'img-src data: https:;').replace(/ data-zdalne="/g, ' src="') : m.srcdoc).replace('<body>', '<body>' + head)
+      : '<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'"></head><body style="margin:14px">' + head + '<pre style="white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.5 Arial,Helvetica,sans-serif;margin:0">' + esc(m.tekst || '') + '</pre></body></html>';
+    var f = document.createElement('iframe');
+    f.setAttribute('sandbox', 'allow-same-origin allow-modals'); f.setAttribute('aria-hidden', 'true'); f.setAttribute('tabindex', '-1');
+    f.style.cssText = 'position:fixed;left:-10000px;top:0;width:800px;height:600px;border:0';
+    f.onload = function () { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) { alert('Nie udało się otworzyć drukowania: ' + e.message); } setTimeout(function () { f.remove(); }, 60000); };
+    f.srcdoc = doc; document.body.appendChild(f);
+  }
   $('mbMsg').addEventListener('click', async function (e) {
-    var part = e.target.closest('[data-part]'), b = e.target.closest('[data-m]'), msg = $('mbMsg').querySelector('[data-mmsg]');
-    if (part) {
-      part.disabled = true;
+    var part = e.target.closest('[data-part]'), pv = e.target.closest('[data-prev]'), b = e.target.closest('[data-m]'), msg = $('mbMsg').querySelector('[data-mmsg]');
+    if (part || pv) {
+      var el = part || pv; el.disabled = true;
       try {
-        var buf = await callFile({ action: 'zalacznik_imap', skrzynka: mb.box, folder: mb.folder, uid: mb.msg.uid, part: part.getAttribute('data-part') });
-        // always saved as a file of an inert type — never opened inside the portal
-        var url = URL.createObjectURL(new Blob([buf], { type: 'application/octet-stream' })), a = document.createElement('a');
-        a.href = url; a.download = part.getAttribute('data-name') || 'zalacznik'; document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+        if (pv) await preview(pv.getAttribute('data-prev'), pv.getAttribute('data-name') || 'załącznik');
+        else saveBlob(new Blob([await partBytes(part.getAttribute('data-part'))], { type: 'application/octet-stream' }), part.getAttribute('data-name') || 'zalacznik');
       } catch (err) { if (msg) msg.textContent = err.message; }
-      part.disabled = false;
+      el.disabled = false;
       return;
     }
     if (!b) return;
     var act = b.getAttribute('data-m'), m = mb.msg;
     if (act === 'back') return backToList();
+    if (act === 'print') return printMsg();
+    if (act === 'addc') { e.preventDefault(); return openContacts({ adres: m.od_adres, nazwa: m.od_nazwa }); }
+    if (act === 'zip' || act === 'eml' || act === 'src' || act === 'unplan') {
+      b.disabled = true;
+      try {
+        if (act === 'zip') await downloadAll(msg);
+        else if (act === 'eml') saveBlob(new Blob([await callFile({ action: 'eml_imap', skrzynka: mb.box, folder: mb.folder, uid: m.uid })], { type: 'application/octet-stream' }), fname(m.temat, 'wiadomosc') + '.eml');
+        else if (act === 'src') {
+          var zr = await call('poczta', { action: 'zrodlo_imap', skrzynka: mb.box, folder: mb.folder, uid: m.uid });
+          if (zr.error) throw new Error(zr.error);
+          dlg('Źródło wiadomości', '<p class="sub" style="margin:0 0 8px">Nagłówki i surowa treść jako zwykły tekst' + (zr.obciete ? ' — pokazano początek (' + kb(zr.zrodlo.length) + ' z ' + kb(zr.rozmiar) + '); całość: „Pobierz .eml”' : '') + '.</p><pre class="src cm" id="dlg_src"></pre>');
+          $('dlg_src').textContent = zr.zrodlo;
+        } else {
+          var un = await call('poczta', { action: 'zaplanowane_anuluj', skrzynka: mb.box, id: m.szkic.zaplanowana.id });
+          if (un.error) throw new Error(un.error);
+          return openMsg(m.uid);
+        }
+      } catch (err) { if (msg) msg.textContent = err.message; }
+      b.disabled = false;
+      return;
+    }
     if (act === 'view') { mb.plain = !mb.plain; return renderMsg(); }
     if (act === 'tall') { mb.tall = !mb.tall; return renderMsg(); }
     if (act === 'img') { mb.images = true; return renderMsg(); }
     if (act === 'imgalways' || act === 'imgnever') { var l = pref('obrazy', []).filter(function (x) { return x !== m.od_adres; }); if (act === 'imgalways' && m.od_adres) l.push(m.od_adres); setPref('obrazy', l.slice(-300)); mb.images = act === 'imgalways'; return renderMsg(); }
     if (act === 'reply' || act === 'replyall' || act === 'forward') return compose(act);
-    if (act === 'edit') return compose('draft');
+    if (act === 'edit') {
+      if (m.szkic.zaplanowana && !confirm('Ta wiadomość jest zaplanowana na ' + when(m.szkic.zaplanowana.kiedy) + '. Zapisanie zmian wstrzyma wysyłkę — po edycji zaplanuj ją ponownie. Edytować?')) return;
+      return compose('draft');
+    }
     if (/^(read|unread|flag|unflag|archive|spam|trash)$/.test(act)) return msgAct(act);
     if (act === 'triage') return toTriage(m.analiza.id);
     if (act === 'take' || act === 'note') {
@@ -400,6 +635,11 @@
   var TAGS = { P: 1, BR: 1, DIV: 1, B: 1, STRONG: 1, I: 1, EM: 1, U: 1, S: 1, STRIKE: 1, A: 1, UL: 1, OL: 1, LI: 1, H2: 1, H3: 1, BLOCKQUOTE: 1, SPAN: 1, FONT: 1, IMG: 1, HR: 1 };
   var PALETA = ['#111111', '#1B3F7F', '#1FA84B', '#b91c1c', '#b45309', '#6b7280'];
   var cmp = null; // the open compose window
+  // the editor is a white sheet on every theme: the colours a person can choose are declared for it explicitly
+  (function () {
+    var css = PALETA.map(function (c) { var m = /^#(..)(..)(..)$/.exec(c), rgb = 'rgb(' + [1, 2, 3].map(function (i) { return parseInt(m[i], 16); }).join(', ') + ')'; return ':is(#c_ed,#mg_ed) :is(font[color="' + c + '" i],[style*="color: ' + rgb + '"],[style*="color:' + c + '" i]){color:' + c + '!important}'; }).join('\n');
+    var s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+  })();
   function hex(c) { var m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c || ''); if (m) c = '#' + [1, 2, 3].map(function (i) { return ('0' + Number(m[i]).toString(16)).slice(-2); }).join(''); c = String(c || '').toLowerCase(); return PALETA.map(function (p) { return p.toLowerCase(); }).indexOf(c) >= 0 ? c : ''; }
   // The HTML that leaves the editor is rebuilt from a short allow-list (the server cleans it once more).
   function serialize(node) {
@@ -410,7 +650,7 @@
       var t = n.tagName;
       if (!TAGS[t]) { if (!/^(SCRIPT|STYLE|IFRAME|OBJECT|EMBED|SVG|MATH|FORM|INPUT|TEXTAREA|SELECT|BUTTON|META|LINK|TITLE|HEAD)$/.test(t)) out += serialize(n); return; }
       if (t === 'BR' || t === 'HR') { out += '<' + t.toLowerCase() + '>'; return; }
-      if (t === 'IMG') { var cid = n.getAttribute('data-cid'); if (cid && /^[A-Za-z0-9._-]{1,60}$/.test(cid)) out += '<img src="cid:' + cid + '" alt="">'; return; }
+      if (t === 'IMG') { var cid = n.getAttribute('data-cid') || (/^cid:(.+)$/.exec(n.getAttribute('src') || '') || [])[1]; if (cid && /^[A-Za-z0-9._-]{1,60}$/.test(cid)) out += '<img src="cid:' + cid + '" alt="">'; return; }
       var tag = { STRONG: 'b', EM: 'i', STRIKE: 's', FONT: 'span', DIV: 'div' }[t] || t.toLowerCase(), attr = '', st = [];
       if (t === 'A') { var h = n.getAttribute('href') || ''; if (/^(https?:\/\/|mailto:)/i.test(h)) attr += ' href="' + esc(h) + '"'; else tag = 'span'; }
       var al = (n.style && n.style.textAlign) || n.getAttribute('align') || ''; if (/^(left|right|center|justify)$/.test(al)) st.push('text-align:' + al);
@@ -435,7 +675,7 @@
     return bad;
   }
   function renderAtts() {
-    var sum = cmp.files.reduce(function (s, f) { return s + f.size; }, 0);
+    var sum = cmp.files.reduce(function (s, f) { return s + (f.size || 0); }, 0);
     $('c_atts').innerHTML = cmp.files.filter(function (f) { return !f.cid; }).map(function (f) { return '<span class="pill p-grey">' + attIco(f.nazwa) + ' ' + esc(f.nazwa) + ' (' + kb(f.size) + ') <a href="#" data-rmf="' + esc(f.id) + '" aria-label="Usuń załącznik" style="text-decoration:none">×</a></span>'; }).join(' ') +
       (cmp.orig.length ? ' ' + cmp.orig.map(function (z, i) { return '<label class="chk" style="display:inline-flex"><input type="checkbox" data-orig="' + i + '"' + (z.on ? ' checked' : '') + ' /> ' + attIco(z.nazwa) + ' ' + esc(z.nazwa) + '</label>'; }).join(' ') : '') +
       (sum ? ' <span class="sub">razem ' + kb(sum) + ' / 20 MB</span>' : '');
@@ -443,7 +683,7 @@
   function b64of(buf) { var b = new Uint8Array(buf), s = ''; for (var i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); }
   async function addFiles(list, inline) {
     for (var i = 0; i < list.length; i++) {
-      var f = list[i], sum = cmp.files.reduce(function (s, x) { return s + x.size; }, 0);
+      var f = list[i], sum = cmp.files.reduce(function (s, x) { return s + (x.size || 0); }, 0);
       if (sum + f.size > 20 * 1024 * 1024) { cMsg('Załączniki przekraczają 20 MB — „' + f.name + '” pominięto.'); continue; }
       if (inline && (!/^image\/(png|jpeg|gif|webp)$/.test(f.type) || f.size > 2 * 1024 * 1024)) { cMsg('Wklejony obraz musi być PNG / JPG / GIF / WebP do 2 MB.'); continue; }
       var buf = await f.arrayBuffer(), item = { id: uuid().slice(0, 8), nazwa: f.name || ('obraz.' + (f.type.split('/')[1] || 'png')), size: f.size, b64: b64of(buf) };
@@ -462,12 +702,20 @@
   async function compose(mode) {
     var m = mb.msg, o = m && m.odp ? m.odp : {};
     cmpReturn = document.activeElement;
-    cmp = { box: mb.box || skrzynka, do: [], dw: [], udw: [], files: [], orig: [], mode: mode, odp: null, szkic_id: uuid(), szkic_uid: 0, dirty: false, sending: false, klucz: uuid() };
+    cmp = { box: mb.box || skrzynka, do: [], dw: [], udw: [], files: [], orig: [], mode: mode, odp: null, szkic_id: uuid(), szkic_uid: 0, dirty: false, sending: false, klucz: uuid(), sigs: null, tpls: [] };
     if (mode === 'reply' || mode === 'replyall') { cmp.do = (o.do || []).slice(); if (mode === 'replyall') cmp.dw = (o.dw || []).slice(); cmp.odp = { folder: mb.folder, uid: m.uid, tryb: 'reply' }; }
     if (mode === 'forward') { cmp.odp = { folder: mb.folder, uid: m.uid, tryb: 'forward' }; cmp.orig = m.zalaczniki.filter(function (z) { return !z.za_duzy; }).map(function (z) { return { part: z.part, nazwa: z.nazwa, on: true }; }); }
-    if (mode === 'draft') { cmp.do = (m.do || []).slice(); cmp.szkic_id = m.szkic.id; cmp.szkic_uid = m.uid; }
+    if (mode === 'draft') {
+      // a draft continues where it was left, on any device: recipients, files and the answered message come from the draft itself
+      var sz = m.szkic;
+      cmp.do = (sz.do || m.do || []).slice(); cmp.dw = (sz.dw || []).slice(); cmp.udw = (sz.udw || []).slice(); cmp.szkic_id = sz.id; cmp.szkic_uid = m.uid;
+      cmp.files = (sz.pliki || []).map(function (p) { return { id: uuid().slice(0, 8), nazwa: p.nazwa, size: p.rozmiar, cid: p.cid || undefined, part: p.part }; });
+      if (sz.odp) cmp.odp = { folder: sz.odp.folder, uid: sz.odp.uid, tryb: sz.odp.tryb };
+    }
     $('c_from').innerHTML = skrzynki.map(function (s) { return '<option value="' + esc(s.klucz) + '"' + (s.klucz === cmp.box ? ' selected' : '') + '>' + esc(s.adres) + '</option>'; }).join('');
     $('c_from').disabled = !!cmp.odp || mode === 'draft';
+    $('c_when_row').hidden = true; $('c_when').value = '';
+    $('c_tpl').innerHTML = '<option value="">Szablon…</option>'; $('c_sig').innerHTML = '<option value="">Podpis…</option>';
     $('c_temat').value = mode === 'forward' ? (o.fwd || '') : mode === 'draft' ? (m.temat || '') : cmp.odp ? (o.re || '') : '';
     $('c_title').textContent = { reply: 'Odpowiedź', replyall: 'Odpowiedź do wszystkich', forward: 'Przekazanie wiadomości', draft: 'Szkic' }[mode] || 'Nowa wiadomość';
     $('c_cytat_row').hidden = !cmp.odp; $('c_cytat').checked = true;
@@ -477,10 +725,18 @@
     renderChips(); renderAtts(); cMsg(''); $('c_send').disabled = false; $('c_undo').hidden = true;
     $('compose').hidden = false; document.body.style.overflow = 'hidden';
     (cmp.do.length ? $('c_ed') : $('c_do')).focus();
-    if (mode !== 'draft') {
-      try { var p = await call('poczta', { action: 'podpis', skrzynka: cmp.box }); if (cmp && p.html) { var d = document.createElement('div'); d.setAttribute('data-podpis', '1'); d.innerHTML = cleanHtml(p.html); $('c_ed').appendChild(document.createElement('br')); $('c_ed').appendChild(d); cmp.stopka = p.stopka || ''; $('c_stopka').textContent = p.stopka ? 'Na końcu zostanie dodana stopka skrzynki: ' + p.stopka.slice(0, 160) + (p.stopka.length > 160 ? '…' : '') : ''; } } catch (e) {}
+    var c0 = cmp;
+    if (mode === 'draft') {
+      // pictures placed in the text live in the draft: shown from their downloaded bytes
+      [].forEach.call($('c_ed').querySelectorAll('img'), function (img) {
+        var cid = (/^cid:(.+)$/.exec(img.getAttribute('src') || '') || [])[1], f = cmp.files.filter(function (x) { return x.cid && x.cid === cid; })[0];
+        img.removeAttribute('src'); if (!f) return img.remove();
+        img.setAttribute('data-cid', cid); img.style.maxWidth = '100%';
+        callFile({ action: 'zalacznik_imap', skrzynka: c0.box, folder: mb.folder, uid: c0.szkic_uid, part: f.part }).then(function (buf) { var t = sniff(new Uint8Array(buf.slice(0, 16))); if (/^image\//.test(t) && cmp === c0) img.src = URL.createObjectURL(new Blob([buf], { type: t })); }).catch(function () {});
+      });
     }
-    cmp.dirty = false;
+    await loadSigs(c0, mode !== 'draft');
+    if (cmp === c0) cmp.dirty = false;
     // the draft is kept in the mailbox's Drafts folder (visible from any mail program); attachments are not part of it
     cmp.timer = setInterval(function () { if (cmp && cmp.dirty && !cmp.sending && !cmp.saving) saveDraft(true); }, 20000);
   }
@@ -488,20 +744,123 @@
     ['do', 'dw', 'udw'].forEach(function (k) { if ($('c_' + k).value.trim()) { addAddr(k, $('c_' + k).value); $('c_' + k).value = ''; } });
     return { skrzynka: cmp.box, do: cmp.do, dw: cmp.dw, udw: cmp.udw, temat: $('c_temat').value.trim(), html: serialize($('c_ed')) };
   }
+  // The draft is one message in the mailbox's Drafts folder, files included. A file travels from this browser once:
+  // on the next save the server takes it from the previous copy of the draft ("zachowaj").
   async function saveDraft(auto) {
-    if (!cmp) return;
-    var c = cmp, p = payload(); p.action = 'szkic_zapisz'; p.szkic_id = c.szkic_id; p.poprzedni_uid = c.szkic_uid || undefined;
+    if (!cmp) return false;
+    var c = cmp, p = payload(), ok = false; p.action = 'szkic_zapisz'; p.szkic_id = c.szkic_id; p.poprzedni_uid = c.szkic_uid || undefined;
+    var kept = c.files.filter(function (f) { return f.part && c.szkic_uid; }), fresh = c.files.filter(function (f) { return !(f.part && c.szkic_uid) && f.b64; });
+    p.zachowaj = kept.map(function (f) { return f.part; }); p.zalaczniki = fresh.map(function (f) { return { nazwa: f.nazwa, b64: f.b64, cid: f.cid }; });
+    if (c.odp) p.odp = { folder: c.odp.folder, uid: c.odp.uid, tryb: c.odp.tryb };
     c.saving = true; c.dirty = false;
-    try { var out = await call('poczta', p); if (out.error) throw new Error(out.error); c.szkic_uid = out.uid || 0; if (cmp === c) cMsg('Szkic zapisany w folderze Robocze ' + new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) + (c.files.length ? ' (bez załączników).' : '.')); }
-    catch (e) { c.dirty = true; if (cmp === c && !auto) cMsg('Nie udało się zapisać szkicu: ' + e.message); }
+    try {
+      var out = await call('poczta', p); if (out.error) throw new Error(out.error);
+      c.szkic_uid = out.uid || 0;
+      // where each file sits in the new copy
+      var order = kept.concat(fresh), plain = order.filter(function (f) { return !f.cid; }), got = (out.pliki || []).filter(function (x) { return !x.cid; });
+      order.forEach(function (f) { f.part = null; });
+      order.filter(function (f) { return f.cid; }).forEach(function (f) { var h = (out.pliki || []).filter(function (x) { return x.cid === f.cid; })[0]; if (h) f.part = h.part; });
+      if (got.length === plain.length) plain.forEach(function (f, i) { f.part = got[i].part; });
+      if (cmp === c) cMsg('Szkic zapisany w folderze Robocze ' + new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) + (order.length ? ' (z załącznikami: ' + order.length + ').' : '.') + (out.wysylka_anulowana ? ' Zaplanowana wysyłka tej wiadomości została wstrzymana — zaplanuj ją ponownie.' : ''));
+      ok = true;
+    } catch (e) { c.dirty = true; if (cmp === c && !auto) cMsg('Nie udało się zapisać szkicu: ' + e.message); }
     c.saving = false;
+    return ok;
   }
+  // ----- signatures and templates in the compose window
+  function setSig(html) {
+    var ed = $('c_ed'), old = ed.querySelector('[data-podpis]');
+    if (html == null) { if (old) old.remove(); return; }
+    if (!old) { old = document.createElement('div'); old.setAttribute('data-podpis', '1'); ed.appendChild(document.createElement('br')); ed.appendChild(old); }
+    old.innerHTML = cleanHtml(html);
+  }
+  async function loadSigs(c, insert) {
+    try {
+      var r = await Promise.all([call('poczta', { action: 'podpisy', skrzynka: c.box }), call('poczta', { action: 'szablony', skrzynka: c.box })]);
+      if (cmp !== c) return;
+      c.sigs = r[0]; c.tpls = r[1].szablony || [];
+      var def = (c.sigs.lista || []).filter(function (x) { return x.domyslna; })[0];
+      $('c_sig').innerHTML = '<option value="">Podpis…</option>' + (c.sigs.lista || []).map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.nazwa) + (x.domyslna ? ' (domyślny)' : '') + '</option>'; }).join('') +
+        '<option value="_wzor">Wzór z mojego profilu</option><option value="_brak">Bez podpisu</option><option value="_manage">Zarządzaj podpisami…</option>';
+      $('c_tpl').innerHTML = '<option value="">Szablon…</option>' + c.tpls.map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.nazwa) + '</option>'; }).join('') + '<option value="_manage">Zarządzaj szablonami…</option>';
+      if (insert) setSig(def ? def.html : (c.sigs.dawny || c.sigs.wzor));
+      $('c_stopka').textContent = c.sigs.stopka ? 'Na końcu zostanie dodana stopka skrzynki: ' + c.sigs.stopka.slice(0, 160) + (c.sigs.stopka.length > 160 ? '…' : '') : '';
+    } catch (e) {}
+  }
+  $('c_sig').addEventListener('change', function () {
+    var v = this.value; this.value = ''; if (!cmp || !v || !cmp.sigs) return;
+    if (v === '_manage') return openManager();
+    var s = (cmp.sigs.lista || []).filter(function (x) { return x.id === v; })[0];
+    setSig(v === '_brak' ? null : v === '_wzor' ? cmp.sigs.wzor : s ? s.html : null); cmp.dirty = true;
+  });
+  // {klient} and {imie} of a template are filled from the first recipient (clients base, saved contacts); what cannot be
+  // established stays visible in braces for the person to fill in
+  async function applyTpl(t) {
+    var c = cmp, adr = c.do[0] || '', dane = { klient: '', imie: '' };
+    if (/\{(klient|imie)\}/.test(t.html + (t.temat || '')) && adr) { try { dane = await call('poczta', { action: 'kto_to', skrzynka: c.box, adres: adr }); } catch (e) {} }
+    if (cmp !== c) return;
+    if (!dane.imie && c.odp && mb.msg && /^[A-ZŻŹĆĄŚĘŁÓŃ][a-zżźćńółęąś]+$/.test((mb.msg.od_nazwa || '').split(' ')[0])) dane.imie = mb.msg.od_nazwa.split(' ')[0];
+    var fill = function (s, e) { return s.replace(/\{klient\}/g, dane.klient ? e(dane.klient) : '{klient}').replace(/\{imie\}/g, dane.imie ? e(dane.imie) : '{imie}'); };
+    var d = document.createElement('div'), ed = $('c_ed'), first = ed.firstChild;
+    d.innerHTML = cleanHtml(fill(t.html, esc));
+    if (first && first.nodeName === 'P' && !first.textContent.trim()) ed.removeChild(first);
+    while (d.lastChild) ed.insertBefore(d.lastChild, ed.firstChild);
+    if (!$('c_temat').value.trim() && t.temat) $('c_temat').value = fill(t.temat, function (x) { return x; });
+    c.dirty = true;
+    cMsg(/\{(klient|imie)\}/.test(plainOf(ed) + $('c_temat').value) ? 'Uzupełnij pola {klient} / {imie} — nie udało się ich ustalić z adresata' + (adr ? '.' : ' (najpierw wpisz adresata, potem wstaw szablon).') : 'Wstawiono szablon „' + t.nazwa + '”.');
+  }
+  $('c_tpl').addEventListener('change', function () {
+    var v = this.value; this.value = ''; if (!cmp || !v) return;
+    if (v === '_manage') return openManager();
+    var t = cmp.tpls.filter(function (x) { return x.id === v; })[0]; if (t) applyTpl(t);
+  });
+  $('c_savetpl').addEventListener('click', async function () {
+    if (!cmp) return;
+    var copy = $('c_ed').cloneNode(true), sig = copy.querySelector('[data-podpis]'); if (sig) sig.remove();
+    var html = serialize(copy), nazwa = (prompt('Nazwa szablonu (pola {klient} i {imie} w treści wypełnią się z adresata):') || '').trim();
+    if (!nazwa) return;
+    var old = cmp.tpls.filter(function (x) { return x.nazwa.toLowerCase() === nazwa.toLowerCase(); })[0];
+    if (old && !confirm('Szablon „' + old.nazwa + '” już istnieje. Zastąpić go?')) return;
+    try { var out = await call('poczta', { action: 'szablon_zapisz', skrzynka: cmp.box, id: old ? old.id : undefined, nazwa: nazwa, temat: $('c_temat').value.trim(), html: html }); if (out.error) return cMsg(out.error); cMsg('Szablon zapisany — widzą go wszyscy pracujący na tej skrzynce.'); loadSigs(cmp, false); }
+    catch (e) { cMsg(e.message); }
+  });
+  $('c_book').addEventListener('click', function () { openContacts(); });
+  // ----- "Wyślij później": the message waits as a draft in the mailbox; the server sends it at the chosen time
+  $('c_later').addEventListener('click', function () {
+    var row = $('c_when_row'); row.hidden = !row.hidden;
+    if (!row.hidden && !$('c_when').value) { var d = new Date(Date.now() + 86400000), p = function (n) { return ('0' + n).slice(-2); }; $('c_when').value = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T08:00'; }
+    if (!row.hidden) $('c_when').focus();
+  });
+  $('c_plan').addEventListener('click', async function () {
+    if (!cmp || cmp.sending) return;
+    var c = cmp, p = payload(), text = plainOf($('c_ed')), kiedy = ($('c_when').value || '').slice(0, 16);
+    if (!p.do.length && !p.dw.length && !p.udw.length) return cMsg('Podaj odbiorcę.');
+    if (!p.temat) return cMsg('Podaj temat wiadomości.');
+    if (!text && !c.files.length && !(c.odp && c.odp.tryb === 'forward')) return cMsg('Wiadomość jest pusta.');
+    if (!kiedy) return cMsg('Podaj datę i godzinę wysyłki.');
+    if (/\{(klient|imie)\}/.test(text + p.temat) && !confirm('W wiadomości zostały niewypełnione pola {klient} / {imie}. Zaplanować mimo to?')) return;
+    c.sending = true; $('c_send').disabled = true; this.disabled = true; cMsg('Zapisuję wiadomość w folderze Robocze…');
+    var done = function (t) { c.sending = false; $('c_send').disabled = false; $('c_plan').disabled = false; if (cmp === c) cMsg(t); };
+    try {
+      if (!(await saveDraft(false)) || !c.szkic_uid) return done($('c_msg').textContent || 'Nie udało się zapisać szkicu.');
+      var body = { action: 'zaplanuj', skrzynka: c.box, szkic_id: c.szkic_id, klucz: c.klucz, kiedy: kiedy, potwierdzenie: $('c_potw').checked, pilna: $('c_pilna').checked, cytat: $('c_cytat').checked };
+      if (c.odp) body.odp = { folder: c.odp.folder, uid: c.odp.uid, tryb: c.odp.tryb, czesci: c.orig.filter(function (z) { return z.on; }).map(function (z) { return z.part; }) };
+      var out = await call('poczta', body);
+      if (out.potwierdz) { if (!confirm(out.pytanie + '\n\n' + out.potwierdz.join('\n') + '\n\nZaplanować mimo to?')) return done('Nie zaplanowano — wiadomość została w folderze Robocze.'); body.potwierdzone = true; out = await call('poczta', body); }
+      if (out.error) return done(out.error);
+      c.sending = false; $('c_plan').disabled = false; closeCompose();
+      alert('Wiadomość zostanie wysłana ' + when(out.kiedy) + '. Do tego czasu czeka w folderze Robocze; listę i anulowanie znajdziesz pod „🕒 Zaplanowane”.');
+      if (mb.loaded) { loadFolders(mb.box, true); if (mb.msg) openMsg(mb.msg.uid); else if (mb.folder && !mb.all) openFolder(mb.folder, true, true); }
+    } catch (e) { done(e.message); }
+  });
   async function reallySend(confirmed) {
     var c = cmp; if (!c) return;
     var p = payload(); p.action = 'wyslij'; p.klucz = c.klucz; p.potwierdzone = !!confirmed; p.potwierdzenie = $('c_potw').checked; p.pilna = $('c_pilna').checked;
-    p.zalaczniki = c.files.map(function (f) { return { nazwa: f.nazwa, b64: f.b64, cid: f.cid }; });
+    p.zalaczniki = c.files.filter(function (f) { return f.b64; }).map(function (f) { return { nazwa: f.nazwa, b64: f.b64, cid: f.cid }; });
+    p.szkic_pliki = c.files.filter(function (f) { return !f.b64 && f.part; }).map(function (f) { return f.part; });
     if (c.odp) { p.odp = { folder: c.odp.folder, uid: c.odp.uid, tryb: c.odp.tryb, czesci: c.orig.filter(function (z) { return z.on; }).map(function (z) { return z.part; }) }; p.cytat = $('c_cytat').checked; }
     if (c.szkic_uid) { p.szkic_id = c.szkic_id; p.szkic_uid = c.szkic_uid; }
+    if (c.files.some(function (f) { return !f.b64 && !f.part; })) { c.sending = false; $('c_send').disabled = false; return cMsg('Jednego z załączników nie udało się odczytać ze szkicu — usuń go i dodaj ponownie.'); }
     cMsg('Wysyłam…');
     try {
       var out = await call('poczta', p);
@@ -524,6 +883,7 @@
     if (!p.do.length && !p.dw.length && !p.udw.length) return cMsg('Podaj odbiorcę.');
     if (!p.temat) return cMsg('Podaj temat wiadomości.');
     if (!text && !cmp.files.length && !(cmp.odp && cmp.odp.tryb === 'forward')) return cMsg('Wiadomość jest pusta.');
+    if (/\{(klient|imie)\}/.test(text + p.temat) && !confirm('W wiadomości zostały niewypełnione pola {klient} / {imie}. Wysłać mimo to?')) return;
     if (/za[łl][aą]czni|w za[łl][aą]czeniu|attach/i.test(text) && !cmp.files.length && !cmp.orig.some(function (z) { return z.on; }) && !confirm('W treści jest mowa o załączniku, ale nic nie dołączono. Wysłać bez załącznika?')) return;
     // ten seconds to change one's mind; the key makes a second click harmless
     cmp.sending = true; $('c_send').disabled = true; $('c_undo').hidden = false;
@@ -544,11 +904,8 @@
     var c = cmp; closeCompose();
     if (c.szkic_uid) { try { await call('poczta', { action: 'szkic_usun', skrzynka: c.box, szkic_id: c.szkic_id, uid: c.szkic_uid }); if (mb.loaded) { loadFolders(mb.box, true); if (curFolder().typ === 'drafts') { mb.msg = null; openFolder(mb.folder); } } } catch (e) {} }
   });
-  $('c_from').addEventListener('change', function () { if (cmp) cmp.box = this.value; });
-  $('c_savesig').addEventListener('click', async function () {
-    var sig = $('c_ed').querySelector('[data-podpis]'); if (!cmp || !sig) return cMsg('W treści nie ma bloku podpisu.');
-    try { await call('poczta', { action: 'podpis', skrzynka: cmp.box, html: serialize(sig) }); cMsg('Podpis zapisany dla skrzynki ' + cmp.box + '.'); } catch (e) { cMsg(e.message); }
-  });
+  $('c_from').addEventListener('change', function () { if (cmp) { cmp.box = this.value; loadSigs(cmp, true); } });
+
   $('compose').addEventListener('click', function (e) {
     var rm = e.target.closest('[data-rm]'), rf = e.target.closest('[data-rmf]'), cmd = e.target.closest('[data-cmd]');
     if (rm) { e.preventDefault(); var p = rm.getAttribute('data-rm').split(':'); cmp[p[0]].splice(Number(p[1]), 1); cmp.dirty = true; return renderChips(); }
@@ -608,29 +965,35 @@
   function rowKeys(sel, attr, fn) {
     return function (e) {
       if (e.target.closest('[data-sel]')) return;
+      var ex = e.target.closest('[data-exp]');
+      if (ex) { if (e.type === 'click' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); var w = ex.getAttribute('data-exp'); mb.exp[w] = !mb.exp[w]; renderRows(); var again = document.querySelector('[data-exp="' + w.replace(/[^0-9a-f]/g, '') + '"]'); if (again) again.focus(); } return; }
       var r = e.target.closest(sel); if (!r) return;
-      if (e.type === 'click' || e.key === 'Enter') { e.preventDefault(); return fn(r.getAttribute(attr)); }
+      if (e.type === 'click' || e.key === 'Enter') { e.preventDefault(); return fn(r.getAttribute(attr), r); }
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { var n = e.key === 'ArrowDown' ? r.nextElementSibling : r.previousElementSibling; while (n && !n.matches(sel)) n = e.key === 'ArrowDown' ? n.nextElementSibling : n.previousElementSibling; if (n) { e.preventDefault(); n.focus(); } }
       if (e.key === 'x' && attr === 'data-u') { var u = r.getAttribute('data-u'); mb.sel[u] = !mb.sel[u]; var cb = r.querySelector('[data-sel]'); if (cb) cb.checked = !!mb.sel[u]; renderBulk(); }
     };
   }
-  var onFolder = rowKeys('[data-f]', 'data-f', function (id) { openFolder(id); }), onRow = rowKeys('[data-u]', 'data-u', function (u) { openMsg(Number(u)); });
+  var onFolder = rowKeys('[data-f]', 'data-f', function (id) { openFolder(id); }), onRow = rowKeys('[data-u]', 'data-u', function (u, r) { openMsg(Number(u), r.getAttribute('data-uf') || undefined); });
   $('mbTree').addEventListener('click', onFolder); $('mbTree').addEventListener('keydown', onFolder);
   $('mbRows').addEventListener('click', onRow); $('mbRows').addEventListener('keydown', onRow);
   $('mbRows').addEventListener('change', function (e) { var c = e.target.closest('[data-sel]'); if (c) { mb.sel[c.getAttribute('data-sel')] = c.checked; renderBulk(); } });
   $('mbBox').addEventListener('change', function () { loadFolders(this.value); });
   $('mbToFolders').addEventListener('click', function () { ekran('foldery'); });
-  function search() { mb.page = 1; mb.sel = {}; if (mb.folder) openFolder(mb.folder); }
+  function search() { mb.page = 1; mb.sel = {}; if ($('mbAll').checked) return searchAll(); if (mb.folder) openFolder(mb.folder); }
   $('mbGo').addEventListener('click', search);
   $('mbQ').addEventListener('keydown', function (e) { if (e.key === 'Enter') search(); });
-  $('mbClear').addEventListener('click', function () { $('mbQ').value = ''; $('mbOd').value = ''; $('mbDo').value = ''; ['mbNew', 'mbAtt', 'mbStar', 'mbBody2'].forEach(function (i) { $(i).checked = false; }); search(); });
+  $('mbClear').addEventListener('click', function () { $('mbQ').value = ''; $('mbOd').value = ''; $('mbDo').value = ''; ['mbNew', 'mbAtt', 'mbStar', 'mbBody2', 'mbAll'].forEach(function (i) { $(i).checked = false; }); search(); });
+  $('mbConv').checked = pref('rozmowy', true);
+  $('mbConv').addEventListener('change', function () { setPref('rozmowy', this.checked); mb.exp = {}; renderRows(); });
+  $('mbAhead').checked = pref('wstepnie', true);
+  $('mbAhead').addEventListener('change', function () { setPref('wstepnie', this.checked); });
   $('mbPrev').addEventListener('click', function () { if (mb.page > 1) { mb.page--; openFolder(mb.folder); } });
   $('mbNext').addEventListener('click', function () { mb.page++; openFolder(mb.folder); });
   $('mbRead').checked = pref('czytaj', true);
   $('mbRead').addEventListener('change', function () { setPref('czytaj', this.checked); });
   $('mbHelp').addEventListener('click', function () { $('mbKeys').hidden = !$('mbKeys').hidden; });
   document.addEventListener('keydown', function (e) {
-    if ($('vSkrzynka').hidden || cmp || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || '')) || e.target.isContentEditable) return;
+    if ($('vSkrzynka').hidden || cmp || !$('dlg').hidden || e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || '')) || e.target.isContentEditable) return;
     var k = e.key;
     if (k === '?') { $('mbKeys').hidden = !$('mbKeys').hidden; return; }
     if (k === 'c' || k === 'n') { e.preventDefault(); return compose('new'); }
@@ -656,9 +1019,193 @@
       var changed = false;
       Object.keys(out.liczniki || {}).forEach(function (id) { var f = mb.folders.filter(function (x) { return x.id === id; })[0], l = out.liczniki[id]; if (f) { if (f.wiadomosci !== l.wiadomosci || f.nieprzeczytane !== l.nieprzeczytane) changed = changed || id === mb.folder; f.wiadomosci = l.wiadomosci; f.nieprzeczytane = l.nieprzeczytane; } });
       renderFolders();
-      if (changed && !mb.msg && mb.page === 1 && !hasFilters() && !selected().length) openFolder(mb.folder, true, true);
+      if (changed && !mb.msg && !mb.all && mb.page === 1 && !hasFilters() && !selected().length) openFolder(mb.folder, true, true);
     } catch (e) {}
   }, 60000);
+  // ---------------- dialogs: contacts, signatures and templates, scheduled messages, preview, source ----------------
+  var dlgClose = null, dlgReturn = null;
+  function dlg(title, html, onClose) {
+    if (!$('dlg').hidden) closeDlg();
+    dlgReturn = document.activeElement; dlgClose = onClose || null;
+    $('dlg_t').textContent = title; $('dlg_b').innerHTML = html; $('dlg').hidden = false; document.body.style.overflow = 'hidden'; $('dlg_x').focus();
+  }
+  function closeDlg() {
+    if ($('dlg').hidden) return;
+    $('dlg').hidden = true; $('dlg_b').innerHTML = ''; if (!cmp) document.body.style.overflow = '';
+    var f = dlgClose; dlgClose = null; if (f) f();
+    if (dlgReturn && dlgReturn.focus && document.contains(dlgReturn)) dlgReturn.focus();
+  }
+  $('dlg_x').addEventListener('click', closeDlg);
+  $('dlg').addEventListener('mousedown', function (e) { if (e.target === $('dlg')) closeDlg(); });
+  $('dlg').addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { e.stopPropagation(); return closeDlg(); }
+    if (e.key !== 'Tab') return;
+    var f = [].filter.call($('dlg').querySelectorAll('button,[href],input,select,textarea,[contenteditable],[tabindex]:not([tabindex="-1"])'), function (x) { return !x.disabled && x.offsetParent !== null; });
+    if (!f.length) return;
+    if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+  });
+  function dMsg(t) { var m = $('dlg_b').querySelector('[data-dmsg]'); if (m) m.textContent = t || ''; }
+  // text pasted into a small editor of a dialog goes through the same allow-list as in the compose window
+  function miniPaste(e) { var cd = e.clipboardData; if (!cd) return; e.preventDefault(); var h = cd.getData('text/html'), t = cd.getData('text/plain'); document.execCommand('insertHTML', false, h ? cleanHtml(h) : esc(t).replace(/\n/g, '<br>')); }
+
+  // ----- the address book of the mailbox
+  var kb2 = { q: '', edit: null };
+  async function openContacts(seed) {
+    var box = cmp ? cmp.box : (mb.box || skrzynka), adres = (skrzynki.filter(function (s) { return s.klucz === box; })[0] || {}).adres || box;
+    kb2 = { q: '', edit: null, box: box };
+    dlg('Kontakty — ' + adres, '<p class="sub" style="margin:0 0 10px">Wspólna książka adresowa tej skrzynki. Zapisany adres nie wymaga potwierdzenia przy pierwszej wiadomości i podpowiada się w polu „Do”.</p>' +
+      '<div class="kgrid"><div><label for="k_adres">Adres e-mail</label><input type="text" id="k_adres" maxlength="254" autocomplete="off" /></div><div><label for="k_nazwa">Imię i nazwisko</label><input type="text" id="k_nazwa" maxlength="120" /></div>' +
+      '<div><label for="k_firma">Firma</label><input type="text" id="k_firma" maxlength="160" /></div><div><label for="k_not">Notatka</label><input type="text" id="k_not" maxlength="300" /></div><button type="button" class="mini ok" id="k_save">Zapisz kontakt</button></div>' +
+      '<div class="acts" style="margin:0 0 10px"><input type="text" id="k_q" maxlength="60" placeholder="Szukaj: nazwisko, firma, adres…" style="flex:1;min-width:180px" aria-label="Szukaj w kontaktach" /><span class="sub" data-dmsg role="status"></span></div><div id="k_list"><div class="empty">Ładowanie…</div></div>');
+    if (seed) { $('k_adres').value = seed.adres || ''; $('k_nazwa').value = seed.nazwa || ''; }
+    var t = null;
+    $('k_q').addEventListener('input', function () { clearTimeout(t); var v = this.value.trim(); t = setTimeout(function () { kb2.q = v; loadContacts(); }, 250); });
+    $('k_save').addEventListener('click', async function () {
+      try {
+        var out = await call('poczta', { action: 'kontakt_zapisz', skrzynka: kb2.box, id: kb2.edit || undefined, adres: $('k_adres').value, nazwa: $('k_nazwa').value, firma: $('k_firma').value, notatka: $('k_not').value });
+        if (out.error) return dMsg(out.error);
+        kb2.edit = null; ['k_adres', 'k_nazwa', 'k_firma', 'k_not'].forEach(function (i) { $(i).value = ''; }); $('k_save').textContent = 'Zapisz kontakt'; dMsg('Zapisano.'); loadContacts();
+      } catch (e) { dMsg(e.message); }
+    });
+    $('k_list').addEventListener('click', async function (e) {
+      var b = e.target.closest('[data-k]'); if (!b) return;
+      var act = b.getAttribute('data-k'), row = b.closest('[data-kid]'), d = row ? JSON.parse(row.getAttribute('data-kd')) : {};
+      if (act === 'pisz') { closeDlg(); if (cmp) { addAddr('do', d.adres); } else { await compose('new'); if (cmp) addAddr('do', d.adres); } return; }
+      if (act === 'edytuj') { kb2.edit = d.id; $('k_adres').value = d.adres; $('k_nazwa').value = d.nazwa || ''; $('k_firma').value = d.firma || ''; $('k_not').value = d.notatka || ''; $('k_save').textContent = 'Zapisz zmiany'; return $('k_nazwa').focus(); }
+      if (act === 'dodaj') { $('k_adres').value = d.adres; $('k_nazwa').value = d.nazwa || ''; $('k_firma').value = d.firma || ''; kb2.edit = null; return $('k_save').click(); }
+      if (act === 'usun') { if (!confirm('Usunąć kontakt ' + d.adres + '?')) return; try { var out = await call('poczta', { action: 'kontakt_usun', skrzynka: kb2.box, id: d.id }); if (out.error) return dMsg(out.error); loadContacts(); } catch (er) { dMsg(er.message); } }
+    });
+    loadContacts();
+  }
+  async function loadContacts() {
+    var el = $('k_list'); if (!el) return;
+    try {
+      var out = await call('poczta', { action: 'kontakty', skrzynka: kb2.box, q: kb2.q, zrodla: true });
+      if (!$('k_list')) return;
+      if (out.error) throw new Error(out.error);
+      var row = function (k, saved) {
+        return '<div class="krow" data-kid="' + esc(k.id || '') + '" data-kd="' + esc(JSON.stringify(k)) + '"><span><b>' + esc(k.nazwa || k.adres) + '</b>' + (k.firma ? ' · ' + esc(k.firma) : '') + '<br><span class="sub">' + esc(k.adres) + (k.notatka ? ' · ' + esc(k.notatka) : '') + (k.zrodlo ? ' · ' + esc(k.zrodlo) : '') + '</span></span>' +
+          '<span class="acts" style="margin:0"><button type="button" class="mini" data-k="pisz">' + (cmp ? 'Dodaj do „Do”' : '✏️ Napisz') + '</button>' + (saved ? '<button type="button" class="mini" data-k="edytuj">Edytuj</button><button type="button" class="mini" data-k="usun">Usuń</button>' : '<button type="button" class="mini" data-k="dodaj">＋ Zapisz</button>') + '</span></div>';
+      };
+      el.innerHTML = (out.kontakty.length ? out.kontakty.map(function (k) { return row(k, true); }).join('') : '<div class="empty">' + (kb2.q ? 'Brak zapisanych kontaktów pasujących do „' + esc(kb2.q) + '”.' : 'Nie ma jeszcze zapisanych kontaktów.') + '</div>') +
+        (out.propozycje.length ? '<h3 style="margin:14px 0 4px">Podpowiedzi — z bazy klientów i korespondencji</h3>' + out.propozycje.map(function (k) { return row(k, false); }).join('') : '') +
+        '<p class="sub" style="margin:10px 0 0">Zapisanych kontaktów: ' + out.razem + '.</p>';
+    } catch (e) { mbErr(el, e); }
+  }
+  $('mbContacts').addEventListener('click', function () { openContacts(); });
+
+  // ----- my signatures and the templates of the mailbox
+  var mg = { box: '', sigs: null, tpls: [], edit: null };
+  async function openManager() {
+    mg = { box: cmp ? cmp.box : (mb.box || skrzynka), sigs: null, tpls: [], edit: null };
+    var adres = (skrzynki.filter(function (s) { return s.klucz === mg.box; })[0] || {}).adres || mg.box;
+    dlg('Podpisy i szablony — ' + adres, '<div id="mg_list"><div class="empty">Ładowanie…</div></div>' +
+      '<div id="mg_edit" hidden><h3 id="mg_h" style="margin:14px 0 8px"></h3><div class="set" style="grid-template-columns:1fr 1.6fr"><div><label for="mg_nazwa">Nazwa</label><input type="text" id="mg_nazwa" maxlength="80" /></div><div id="mg_temat_w"><label for="mg_temat">Temat (opcjonalnie)</label><input type="text" id="mg_temat" maxlength="250" /></div></div>' +
+      '<div class="editor small" id="mg_ed" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Treść"></div>' +
+      '<p class="sub" id="mg_hint" style="margin:6px 0 0"></p>' +
+      '<div class="acts"><label class="chk" id="mg_def_w"><input type="checkbox" id="mg_def" /> domyślny dla tej skrzynki</label><button type="button" class="mini ok" id="mg_save">Zapisz</button><button type="button" class="mini" id="mg_cancel">Anuluj</button></div></div>' +
+      '<p class="sub" data-dmsg role="status" style="margin:8px 0 0"></p>', function () { if (cmp) loadSigs(cmp, false); });
+    $('mg_ed').addEventListener('paste', miniPaste);
+    $('mg_cancel').addEventListener('click', function () { $('mg_edit').hidden = true; mg.edit = null; });
+    $('mg_save').addEventListener('click', async function () {
+      var e = mg.edit; if (!e) return;
+      try {
+        var out = await call('poczta', e.typ === 'podpis' ? { action: 'podpis_zapisz', skrzynka: mg.box, id: e.id || undefined, nazwa: $('mg_nazwa').value, html: serialize($('mg_ed')), domyslna: $('mg_def').checked }
+          : { action: 'szablon_zapisz', skrzynka: mg.box, id: e.id || undefined, nazwa: $('mg_nazwa').value, temat: $('mg_temat').value, html: serialize($('mg_ed')) });
+        if (out.error) return dMsg(out.error);
+        $('mg_edit').hidden = true; mg.edit = null; dMsg('Zapisano.'); loadManager();
+      } catch (er) { dMsg(er.message); }
+    });
+    $('mg_list').addEventListener('click', async function (ev) {
+      var b = ev.target.closest('[data-g]'); if (!b) return;
+      var act = b.getAttribute('data-g'), typ = b.getAttribute('data-t'), id = b.getAttribute('data-id') || null;
+      var item = (typ === 'podpis' ? mg.sigs.lista : mg.tpls).filter(function (x) { return x.id === id; })[0];
+      if (act === 'usun') {
+        if (!confirm('Usunąć ' + (typ === 'podpis' ? 'podpis' : 'szablon') + ' „' + item.nazwa + '”?')) return;
+        try { var out = await call('poczta', { action: typ === 'podpis' ? 'podpis_usun' : 'szablon_usun', skrzynka: mg.box, id: id }); if (out.error) return dMsg(out.error); loadManager(); } catch (er) { dMsg(er.message); }
+        return;
+      }
+      mg.edit = { typ: typ, id: id };
+      $('mg_edit').hidden = false; $('mg_temat_w').hidden = typ === 'podpis'; $('mg_def_w').hidden = typ !== 'podpis';
+      $('mg_h').textContent = (id ? 'Edycja: ' : 'Nowy ') + (typ === 'podpis' ? 'podpis' : 'szablon');
+      $('mg_nazwa').value = item ? item.nazwa : ''; $('mg_temat').value = item ? item.temat || '' : ''; $('mg_def').checked = item ? !!item.domyslna : typ === 'podpis' && !mg.sigs.lista.length;
+      $('mg_ed').innerHTML = cleanHtml(item ? item.html : typ === 'podpis' ? (mg.sigs.dawny || mg.sigs.wzor) : '<p>Dzień dobry {imie},</p><p><br></p>');
+      $('mg_hint').textContent = typ === 'podpis' ? 'Wzór bierze imię i nazwisko, stanowisko i telefon z Twojego profilu pracownika (strona zespołu). Obowiązkową stopkę skrzynki ustawia administrator — dodaje się sama.' : 'Pola {klient} i {imie} wypełnią się przy wstawianiu — z bazy klientów albo kontaktów, według pierwszego adresata. Szablon widzą wszyscy pracujący na tej skrzynce.';
+      $('mg_nazwa').focus();
+    });
+    loadManager();
+  }
+  async function loadManager() {
+    var el = $('mg_list'); if (!el) return;
+    try {
+      var r = await Promise.all([call('poczta', { action: 'podpisy', skrzynka: mg.box }), call('poczta', { action: 'szablony', skrzynka: mg.box })]);
+      if (!$('mg_list')) return;
+      mg.sigs = r[0]; mg.tpls = r[1].szablony || [];
+      var p = mg.sigs.profil || {}, line = function (typ, x, extra) { return '<div class="krow"><span><b>' + esc(x.nazwa) + '</b>' + extra + '</span><span class="acts" style="margin:0"><button type="button" class="mini" data-g="edytuj" data-t="' + typ + '" data-id="' + esc(x.id) + '">Edytuj</button><button type="button" class="mini" data-g="usun" data-t="' + typ + '" data-id="' + esc(x.id) + '">Usuń</button></span></div>'; };
+      el.innerHTML = '<h3 style="margin:0 0 4px">Moje podpisy</h3>' +
+        (mg.sigs.lista.length ? mg.sigs.lista.map(function (x) { return line('podpis', x, x.domyslna ? ' <span class="pill p-ok">domyślny dla tej skrzynki</span>' : ''); }).join('') : '<p class="sub" style="margin:0 0 6px">Nie masz jeszcze zapisanego podpisu — do wiadomości wstawiany jest wzór z profilu' + (p.imie ? ' (' + esc(p.imie) + (p.stanowisko ? ', ' + esc(p.stanowisko) : '') + (p.telefon ? ', tel. ' + esc(p.telefon) : '') + ')' : ' (profil pracownika nie ma jeszcze imienia i stanowiska)') + '.</p>') +
+        '<div class="acts"><button type="button" class="mini" data-g="nowy" data-t="podpis">＋ Nowy podpis</button></div>' +
+        '<h3 style="margin:16px 0 4px">Szablony odpowiedzi tej skrzynki</h3>' +
+        (mg.tpls.length ? mg.tpls.map(function (x) { return line('szablon', x, (x.temat ? ' · ' + esc(x.temat) : '') + ' <span class="sub">· ' + esc(who(x.kto)) + ', ' + esc(when(x.kiedy)) + '</span>'); }).join('') : '<p class="sub" style="margin:0 0 6px">Brak szablonów. Szablon można też zapisać z okna pisania („Zapisz treść jako szablon”).</p>') +
+        '<div class="acts"><button type="button" class="mini" data-g="nowy" data-t="szablon">＋ Nowy szablon</button></div>';
+    } catch (e) { mbErr(el, e); }
+  }
+  $('mbSigs').addEventListener('click', openManager);
+
+  // ----- scheduled messages of the mailbox
+  var STAN = { czeka: 'czeka', wysylanie: 'w trakcie wysyłki — sprawdź folder Wysłane', wyslano: 'wysłano', blad: 'NIE wysłano', anulowano: 'anulowano' };
+  async function openQueue() {
+    var box = mb.box || skrzynka;
+    dlg('Zaplanowane wiadomości — ' + ((skrzynki.filter(function (s) { return s.klucz === box; })[0] || {}).adres || box), '<p class="sub" style="margin:0 0 10px">Wiadomość czeka w folderze Robocze i wychodzi o wybranej porze (serwer sprawdza kolejkę co kilka minut), z tymi samymi limitami i wpisem w dzienniku wysyłek co zwykła wysyłka. Zmiana szkicu wstrzymuje wysyłkę.</p><div id="q_list"><div class="empty">Ładowanie…</div></div><p class="sub" data-dmsg role="status" style="margin:8px 0 0"></p>');
+    var load = async function () {
+      try {
+        var out = await call('poczta', { action: 'zaplanowane', skrzynka: box });
+        if (!$('q_list')) return;
+        if (out.error) throw new Error(out.error);
+        $('q_list').innerHTML = out.zaplanowane.length ? out.zaplanowane.map(function (r) {
+          return '<div class="krow"><span><b>' + esc(when(r.kiedy)) + '</b> · ' + esc(r.temat || '(bez tematu)') + '<br><span class="sub">do: ' + esc((r.odbiorcy || []).join(', ')) + ' · zaplanował(a): ' + esc(who(r.kto)) + '</span></span>' +
+            '<span class="acts" style="margin:0"><span class="pill ' + ({ czeka: 'p-amber', wyslano: 'p-ok', blad: 'p-red', wysylanie: 'p-red' }[r.stan] || 'p-grey') + '">' + esc(STAN[r.stan] || r.stan) + '</span>' + (r.stan === 'czeka' && (r.moje || admin) ? '<button type="button" class="mini" data-qx="' + esc(r.id) + '">Anuluj wysyłkę</button>' : '') + '</span>' +
+            (r.blad && r.stan !== 'wyslano' ? '<span class="sub" style="grid-column:1/-1">' + esc(r.blad) + '</span>' : '') + '</div>';
+        }).join('') : '<div class="empty">Brak zaplanowanych wiadomości.</div>';
+      } catch (e) { if ($('q_list')) mbErr($('q_list'), e); }
+    };
+    $('q_list').addEventListener('click', async function (e) {
+      var b = e.target.closest('[data-qx]'); if (!b || !confirm('Anulować wysyłkę? Wiadomość zostanie w folderze Robocze.')) return;
+      b.disabled = true;
+      try { var out = await call('poczta', { action: 'zaplanowane_anuluj', skrzynka: box, id: b.getAttribute('data-qx') }); dMsg(out.error || 'Anulowano.'); } catch (er) { dMsg(er.message); }
+      load();
+    });
+    load();
+  }
+  $('mbQueue').addEventListener('click', openQueue);
+
+  // ----- new mail: the tab title, an optional desktop notification (asked for by a click), the badge of the top bar
+  var seen = {};
+  $('mbNotify').checked = pref('powiadomienia', false) && !!window.Notification && Notification.permission === 'granted';
+  $('mbNotify').addEventListener('change', function () {
+    var box = this;
+    if (!box.checked) return setPref('powiadomienia', false);
+    if (!window.Notification) { box.checked = false; return alert('Ta przeglądarka nie obsługuje powiadomień na pulpicie.'); }
+    Notification.requestPermission().then(function (p) { var ok = p === 'granted'; box.checked = ok; setPref('powiadomienia', ok); if (!ok) alert('Przeglądarka nie zezwoliła na powiadomienia dla portalu — zmień to w ustawieniach witryny (ikona kłódki przy adresie).'); });
+  });
+  async function mailPoll() {
+    if (!skrzynki.length) return;
+    try {
+      var out = await call('poczta', { action: 'nieprzeczytane' });
+      document.title = (out.razem ? '(' + out.razem + ') ' : '') + 'Poczta — TD Consulting Group';
+      Object.keys(out.skrzynki || {}).forEach(function (k) {
+        var s = out.skrzynki[k];
+        // no sender and no subject on the desktop: only that something came
+        if (seen[k] != null && s.uidnext > seen[k] && s.nieprzeczytane > 0 && pref('powiadomienia', false) && window.Notification && Notification.permission === 'granted' && (document.hidden || !document.hasFocus())) {
+          var n = new Notification('Nowa poczta — ' + s.adres, { body: 'Nieprzeczytane w Odebranych: ' + s.nieprzeczytane, tag: 'tdcg-poczta-' + k });
+          n.onclick = function () { window.focus(); n.close(); };
+        }
+        seen[k] = s.uidnext;
+      });
+    } catch (e) {}
+  }
+  setInterval(mailPoll, 120000); setTimeout(mailPoll, 8000);
+
   function show(v) {
     $('vAnaliza').hidden = v !== 'analiza'; $('vSkrzynka').hidden = v !== 'skrzynka';
     document.querySelectorAll('#views [data-v]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-v') === v); });
@@ -668,9 +1215,9 @@
   $('logShow').addEventListener('click', async function () {
     this.disabled = true;
     try {
-      var out = await call('poczta', { action: 'dziennik' }), CO = { otwarcie: 'otwarcie wiadomości', zalacznik: 'pobranie załącznika', analiza: 'analiza na żądanie', zmiana: 'zmiana' };
+      var out = await call('poczta', { action: 'dziennik' }), CO = { otwarcie: 'otwarcie wiadomości', zalacznik: 'pobranie załącznika', analiza: 'analiza na żądanie', zmiana: 'zmiana', wstepne: 'wczytanie z wyprzedzeniem' };
       $('logRows').innerHTML = out.dziennik.length ? '<table style="width:100%;font-size:13px;border-collapse:collapse"><tr><th align="left">Kiedy</th><th align="left">Kto</th><th align="left">Co</th><th align="left">Skrzynka / folder</th><th align="left">Nr</th></tr>' +
-        out.dziennik.map(function (r) { return '<tr><td>' + esc(when(r.at)) + '</td><td>' + esc(who(r.kto)) + '</td><td>' + esc(CO[r.akcja] || r.akcja) + (r.szczegoly ? ': ' + esc(r.szczegoly) : '') + (r.czesc ? ' (część ' + esc(r.czesc) + ', ' + kb(r.rozmiar) + ')' : '') + '</td><td>' + esc(r.skrzynka) + ' / ' + esc(r.folder || '') + '</td><td>' + esc(r.uid) + '</td></tr>'; }).join('') + '</table>'
+        out.dziennik.map(function (r) { return '<tr><td>' + esc(when(r.at)) + '</td><td>' + esc(who(r.kto)) + '</td><td>' + esc(CO[r.akcja] || r.akcja) + (r.szczegoly ? ': ' + esc(r.szczegoly) : '') + (r.czesc ? ' (' + (r.czesc === '0' ? 'cała wiadomość .eml' : 'część ' + esc(r.czesc)) + ', ' + kb(r.rozmiar) + ')' : '') + '</td><td>' + esc(r.skrzynka) + ' / ' + esc(r.folder || '') + '</td><td>' + esc(r.uid) + '</td></tr>'; }).join('') + '</table>'
         : '<p class="sub">Brak wpisów.</p>';
     } catch (e) { $('logRows').innerHTML = '<p class="sub">' + esc(e.message) + '</p>'; }
     this.disabled = false;

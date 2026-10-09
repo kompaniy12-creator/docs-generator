@@ -11,6 +11,7 @@ import {
 import type { Examined, Fetched, Folder, Meta, Szukaj } from "./imap.ts";
 import { AKCJE, przegladarka, typFolderu } from "./skrzynka.ts";
 import { AKCJE_W, pisanie } from "./wysylka.ts";
+import { AKCJE_N, narzedzia, wyslijZaplanowane } from "./narzedzia.ts";
 import type { Flaga } from "./imapw.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -31,7 +32,15 @@ export type Row = {
 };
 export type StanRow = { skrzynka: string; uidvalidity: number | null; last_uid: number | null; last_run: string | null; last_ok: string | null; last_error: string | null; info: Any };
 export type Zadanie = { id: string; status: string; assignee: string; tytul: string; komentarze?: { at: string; by: string; text: string }[] };
+// tables of the mail client proper (signatures, templates, contacts, the scheduled-send queue): service role only
+export type Tabela = "poczta_sygnatury" | "poczta_szablony" | "poczta_kontakty" | "poczta_kolejka";
 export interface Store {
+  // equality filters on fixed column names; `doKiedy`: rows whose `kiedy` is not later than that instant
+  rekordy(t: Tabela, filtr: Record<string, string>, o?: { limit?: number; doKiedy?: string }): Promise<Any[]>;
+  rekordZapisz(t: Tabela, row: Any): Promise<Any | null>;          // insert, or replace the row with this id; null: a unique key says it exists
+  rekordZmien(t: Tabela, filtr: Record<string, string>, patch: Any): Promise<number>;   // how many rows changed
+  rekordUsun(t: Tabela, filtr: Record<string, string>): Promise<number>;
+  profilPracownika(email: string): Promise<{ imie: string; stanowisko: string; telefon: string }>;   // empty strings when there is no profile
   ustawienia(): Promise<Any>;
   zapiszUstawienia(v: Any): Promise<void>;
   zadaniaKadry(): Promise<string>;
@@ -90,6 +99,7 @@ export interface ImapLike {
   meta(set: number[] | { od: number; do: number }, uidMode: boolean, naglowki: boolean, struktura?: boolean): Promise<Meta[]>;
   part(uid: number, id: string, max?: number): Promise<Uint8Array | null>;
   wWatku(id: string): Promise<number[]>;
+  szkice(id: string): Promise<number[]>;
 }
 export interface ImapZapisLike extends ImapLike {
   wybierz(f: Folder): Promise<void>;
@@ -97,6 +107,11 @@ export interface ImapZapisLike extends ImapLike {
   flagi(uids: number[], dodaj: boolean, flagi: Flaga[]): Promise<void>;
   przenies(uids: number[], cel: Folder): Promise<void>;
   usunSzkic(uid: number): Promise<void>;
+  kopiuj(uids: number[], cel: Folder): Promise<void>;
+  oproznij(uids: number[]): Promise<void>;
+  utworz(raw: string, delim: string, list: Folder[]): Promise<void>;
+  zmienNazwe(f: Folder, nowy: string, list: Folder[]): Promise<void>;
+  usunFolder(f: Folder, list: Folder[]): Promise<void>;
 }
 export type Me = { email: string; admin: boolean; sekcje: string[] | null };
 export type Deps = {
@@ -424,8 +439,10 @@ export async function handle(d: Deps, req: Request): Promise<{ status: number; b
   try { body = await req.json(); } catch { return { status: 400, body: { error: "Nieprawidłowy JSON." } }; }
   const cron = sameKey(req.headers.get("x-cron-key") ?? "", d.cronKey);
 
-  if (body.action === "run" || body.action === "diag") {
+  if (body.action === "run" || body.action === "diag" || body.action === "wyslij_zaplanowane") {
     if (!cron) return { status: 403, body: { error: "Brak dostępu." } };
+    // the queue of "Wyślij później": each due message goes through the ordinary send (same caps, same log)
+    if (body.action === "wyslij_zaplanowane") return { status: 200, body: { ok: true, kolejka: await wyslijZaplanowane(d, await kontekst(d)) } };
     if (body.action === "diag") return { status: 200, body: { ok: true, diag: await diag(d) } };
     const ctx = await kontekst(d);
     const out: Any = {};
@@ -448,6 +465,7 @@ export async function handle(d: Deps, req: Request): Promise<{ status: number; b
 
   if (AKCJE.includes(body.action)) return await przegladarka(d, me, ctx, body);
   if (AKCJE_W.includes(body.action)) return await pisanie(d, me, ctx, body);
+  if (AKCJE_N.includes(body.action)) return await narzedzia(d, me, ctx, body);
 
   if (body.action === "lista") {
     const s = isSkrzynka(body.skrzynka) && moje.includes(body.skrzynka) ? body.skrzynka : moje[0];

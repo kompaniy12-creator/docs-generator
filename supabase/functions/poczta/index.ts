@@ -29,9 +29,12 @@
 //   { action: "autotest" }                  model + table round trip on a built-in fictional message
 // Cron only: { action: "diag" }             login + counters, proves reading leaves "unseen" unchanged
 //
+// Mail client proper (narzedzia.ts): search in all folders, folder management, signatures, templates, contacts,
+// "Wyślij później" — Cron only: { action: "wyslij_zaplanowane" } sends what is due (every 5 minutes).
+//
 // Secrets: SMTP_PASS (kadry@, the same password as for sending) or IMAP_PASS_KADRY, IMAP_PASS_KSIEGOWOSC,
 // POCZTA_WEBHOOK_KEY, CRON_KEY, ANTHROPIC_API_KEY; optional IMAP_HOST, IMAP_PORT, IMAP_USER_KADRY,
-// IMAP_USER_KSIEGOWOSC. Nothing here sends e-mail, Telegram or SMS.
+// IMAP_USER_KSIEGOWOSC. E-mail leaves only through wysylka.ts (a person's send, or the queue above).
 
 import { loadKlienciRows } from "../_shared/klienci.ts";
 import nodemailer from "npm:nodemailer@6.9.14";
@@ -81,6 +84,7 @@ const e = encodeURIComponent;
 // a value inside in.(...) of PostgREST: quoted, with quotes and backslashes escaped
 const q = (s: string) => '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
 
+const filtr = (f: Record<string, string>) => Object.entries(f).map(([k, v]) => { if (!/^[a-z_]{1,30}$/.test(k)) throw new Error("filtr: " + k); return `&${k}=eq.${e(String(v))}`; }).join("");
 const store: Store = {
   async ustawienia() { return (await rows("portal_ustawienia?key=eq.poczta&select=value"))[0]?.value ?? {}; },
   async zapiszUstawienia(v) { await rows("portal_ustawienia", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ key: "poczta", value: v, updated_at: new Date().toISOString() }) }); },
@@ -176,7 +180,7 @@ const store: Store = {
   },
   async dziennik(row) { await rows("poczta_dostep", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify(row) }); },
   async dziennikLicz(kto, od) { return await count(`poczta_dostep?select=id&kto=eq.${e(kto)}&at=gte.${e(od)}`); },
-  async dziennikLista(limit) { return await rows(`poczta_dostep?select=at,kto,akcja,skrzynka,folder,uid,msg_hash,czesc,rozmiar,szczegoly&akcja=in.(otwarcie,zalacznik,analiza,zmiana)&order=at.desc&limit=${limit}`); },
+  async dziennikLista(limit) { return await rows(`poczta_dostep?select=at,kto,akcja,skrzynka,folder,uid,msg_hash,czesc,rozmiar,szczegoly&akcja=in.(otwarcie,zalacznik,analiza,zmiana,wstepne)&order=at.desc&limit=${limit}`); },
   async dziennikSprzataj(starsze) { await rows(`poczta_dostep?akcja=in.(lista,foldery)&at=lt.${e(starsze)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } }); },
   async ktoCo(s, hash) {
     if (!/^[0-9a-f]{32}$/.test(hash)) return [];
@@ -215,6 +219,30 @@ const store: Store = {
     const r = await db(`portal_pracownicy?select=imie_nazwisko&email=eq.${e(email)}`).catch(() => null);
     if (!r?.ok) { await r?.body?.cancel(); return ""; } // the staff profiles may not exist
     return String((await r.json())[0]?.imie_nazwisko ?? "");
+  },
+  // ---- signatures, templates, contacts, the scheduled-send queue: column names come from the code only
+  async rekordy(t, f, o = {}) {
+    return await rows(`${t}?select=*${filtr(f)}${o.doKiedy ? `&kiedy=lte.${e(o.doKiedy)}` : ""}&order=${t === "poczta_kolejka" ? (o.doKiedy ? "kiedy.asc" : "kiedy.desc") : "updated_at.desc"}&limit=${Math.max(1, Math.min(2000, o.limit ?? 500))}`);
+  },
+  async rekordZapisz(t, row) {
+    const r = await db(`${t}?on_conflict=id`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(row) });
+    if (r.status === 409) { await r.body?.cancel(); return null; } // another unique key (address of a contact, key of a send)
+    if (!r.ok) throw new Error(t + ": " + r.status + " " + (await r.text()).slice(0, 160));
+    return (await r.json())[0] ?? null;
+  },
+  async rekordZmien(t, f, patch) {
+    if (!Object.keys(f).length) throw new Error(t + ": zmiana bez filtra");
+    return (await rows(`${t}?select=id${filtr(f)}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(patch) })).length;
+  },
+  async rekordUsun(t, f) {
+    if (!Object.keys(f).length) throw new Error(t + ": usuwanie bez filtra");
+    return (await rows(`${t}?select=id${filtr(f)}`, { method: "DELETE", headers: { Prefer: "return=representation" } })).length;
+  },
+  async profilPracownika(email) {
+    const r = await db(`portal_pracownicy?select=imie_nazwisko,stanowisko,telefon&email=eq.${e(email)}`).catch(() => null);
+    if (!r?.ok) { await r?.body?.cancel(); return { imie: "", stanowisko: "", telefon: "" }; } // the staff profiles may not exist
+    const p = (await r.json())[0] ?? {};
+    return { imie: String(p.imie_nazwisko ?? ""), stanowisko: String(p.stanowisko ?? ""), telefon: String(p.telefon ?? "") };
   },
   async usunStarsze(cutoff) { return (await rows(`${T}?created_at=lt.${e(cutoff)}&select=id`, { method: "DELETE", headers: { Prefer: "return=representation" } })).length; },
 };

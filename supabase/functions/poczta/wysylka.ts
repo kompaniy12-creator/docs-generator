@@ -2,6 +2,7 @@
 // and the changes a person makes in a mailbox (read / unread, flag, move, archive, delete = move to Trash, spam).
 //
 //   { action: "wyslij", skrzynka, klucz, do[], dw[]?, udw[]?, temat, html, zalaczniki[]?, odp?, cytat?, potwierdzone?, szkic_uid?, potwierdzenie?, pilna? }
+//        szkic_pliki: [part ids of the draft szkic_uid to send along — files kept in the draft, e.g. added on another device]
 //        zalaczniki: [{ nazwa, b64, cid? }]      odp: { folder, uid, tryb: "reply" | "reply_all" | "forward", czesci?: [part ids to forward] }
 //   { action: "szkic_zapisz", skrzynka, szkic_id, poprzedni_uid?, do, dw, udw, temat, html }   -> { uid }
 //   { action: "szkic_usun", skrzynka, szkic_id, uid }
@@ -20,8 +21,8 @@ import { DARMOWE, isSkrzynka, parseMail, plData, poczatekDnia, sha256hex, SKRZYN
 import { type Folder, type Meta, nieWybieralny, withTimeout } from "./imap.ts";
 import { folderPortalu, type Typ } from "./foldery.ts";
 import { type Flaga } from "./imapw.ts";
-import { czesci, naTekst, odkoduj, oczyscHtml, rozmiarPo, tekstCzesc, zalaczniki as zalCzesci, base64Bytes } from "./widok.ts";
-import { adresy, adresyZNaglowka, bezCtl, budujMime, cytat, idOk, MAX_INLINE, MAX_INLINE_N, MAX_ZAL_RAZEM, nazwaPlikuWych, nowyId, oczyscWychodzacy, sprawdzZalacznik, tekstNaHtml, tekstZHtml, tematOdp, type Zal } from "./mime.ts";
+import { type Czesc, czesci, naTekst, nazwaPliku, odkoduj, oczyscHtml, rozmiarPo, tekstCzesc, zalaczniki as zalCzesci, base64Bytes } from "./widok.ts";
+import { adresy, adresyZNaglowka, bezCtl, budujMime, cytat, idOk, MAX_INLINE, MAX_INLINE_N, MAX_ZAL_RAZEM, nazwaPlikuWych, nowyId, oczyscWychodzacy, odpNaglowek, sprawdzZalacznik, tekstNaHtml, tekstZHtml, tematOdp, type Zal } from "./mime.ts";
 
 // deno-lint-ignore no-explicit-any
 type Any = any;
@@ -40,7 +41,19 @@ function smtpBlad(e: unknown): string {
   if (/timeout|ETIMEDOUT|ECONN|przekroczono czas/i.test(m)) return "Brak odpowiedzi serwera poczty — wiadomość NIE została wysłana, spróbuj ponownie.";
   return "Serwer poczty nie przyjął wiadomości — nie została wysłana.";
 }
-const podpisDomyslny = (imie: string, s: Skrzynka) => `<p>Pozdrawiam${imie ? "<br>" + tekstNaHtml(imie) : ""}<br>TD Consulting Group — ${SKRZYNKI[s].nazwa}</p>`;
+// the signature proposed to a person who has none: name, role and phone come from the staff profile
+export const wzorPodpisu = (p: { imie: string; stanowisko: string; telefon: string }, s: Skrzynka) =>
+  `<p>Pozdrawiam${p.imie ? "<br><b>" + tekstNaHtml(p.imie) + "</b>" : ""}${p.stanowisko ? "<br>" + tekstNaHtml(p.stanowisko) : ""}${p.telefon ? "<br>tel. " + tekstNaHtml(p.telefon) : ""}<br>TD Consulting Group — ${SKRZYNKI[s].nazwa}<br>${SKRZYNKI[s].adres}</p>`;
+// files of a draft as the page lists them (attachments and pictures placed in the text), with their part numbers
+export const plikiSzkicu = (cz: Czesc[]) => zalCzesci(cz).map((c) => ({ part: c.id, nazwa: nazwaPliku(c), rozmiar: rozmiarPo(c), cid: c.inline && /^[A-Za-z0-9._-]{1,60}$/.test(c.cid) ? c.cid : null }));
+// addresses nobody of this mailbox has written with: not in the clients base, the correspondence or the saved contacts
+export async function nieznaneAdresy(d: Deps, ctx: Ctx, s: Skrzynka, wszyscy: string[]): Promise<string[]> {
+  const kontakty = (await d.store.rekordy("poczta_kontakty", { skrzynka: s }, { limit: 2000 }).catch(() => [])).map((k: Any) => String(k.adres));
+  const znane = new Set([...ctx.klienci.flatMap((k) => adresy(k.email, 10).ok), ...(await d.store.znaneAdresy(s, wszyscy).catch(() => [])), ...kontakty, ...Object.values(SKRZYNKI).map((x) => x.adres)]);
+  // a colleague of a known client (same company domain, not a free-mail one) is not a stranger either
+  const domeny = new Set([...znane].map((a) => a.split("@")[1]).filter((dm) => dm && !DARMOWE.has(dm)));
+  return wszyscy.filter((a) => !znane.has(a) && !domeny.has(a.split("@")[1]));
+}
 
 export async function pisanie(d: Deps, me: Me, ctx: Ctx, body: Any): Promise<Out> {
   if (body.action === "wyslane_log") {
@@ -54,13 +67,17 @@ export async function pisanie(d: Deps, me: Me, ctx: Ctx, body: Any): Promise<Out
 
   if (body.action === "podpis") {
     if (typeof body.html === "string") { await d.store.podpisZapisz(me.email, s, oczyscWychodzacy(body.html).slice(0, 4000)); return { status: 200, body: { ok: true } }; }
-    const zapisany = await d.store.podpis(me.email, s);
-    return { status: 200, body: { html: zapisany ?? podpisDomyslny(await d.store.pracownik(me.email).catch(() => ""), s), wlasny: zapisany !== null, stopka: ctx.ust.stopka[s], nadawca: ctx.ust.nadawca[s] } };
+    // the signature marked as default for this mailbox, else the one saved the old way, else a proposal from the staff profile
+    const lista = await d.store.rekordy("poczta_sygnatury", { kto: me.email }, { limit: 20 }).catch(() => []);
+    const zapisany = lista.find((x: Any) => (x.domyslna ?? []).includes(s))?.html ?? await d.store.podpis(me.email, s);
+    const prof = await d.store.profilPracownika(me.email).catch(() => ({ imie: "", stanowisko: "", telefon: "" }));
+    return { status: 200, body: { html: zapisany ?? wzorPodpisu(prof, s), wlasny: zapisany != null, stopka: ctx.ust.stopka[s], nadawca: ctx.ust.nadawca[s] } };
   }
   if (body.action === "podpowiedzi") {
     const q = bezCtl(body.q, 60).toLowerCase();
     if (q.length < 2) return { status: 200, body: { adresy: [] } };
     const out: { adres: string; opis: string }[] = [];
+    for (const k of await d.store.rekordy("poczta_kontakty", { skrzynka: s }, { limit: 2000 }).catch(() => [])) if ([k.adres, k.nazwa, k.firma].join(" ").toLowerCase().includes(q)) out.push({ adres: String(k.adres), opis: [k.nazwa, k.firma].filter(Boolean).join(" · ") || "kontakt" });
     for (const k of ctx.klienci) for (const a of adresy(k.email, 10).ok) if ((a.includes(q) || k.nazwa.toLowerCase().includes(q)) && !out.some((x) => x.adres === a)) out.push({ adres: a, opis: k.nazwa });
     for (const a of await d.store.adresySzukaj(s, q).catch(() => [])) if (!out.some((x) => x.adres === a)) out.push({ adres: a, opis: "z korespondencji" });
     return { status: 200, body: { adresy: out.slice(0, 8) } };
@@ -86,12 +103,12 @@ export async function pisanie(d: Deps, me: Me, ctx: Ctx, body: Any): Promise<Out
       if (co === "kosz") cel = await wybrany(im, list, "trash");
       else if (co === "archiwum") cel = await wybrany(im, list, "archive");
       else if (co === "spam") cel = await wybrany(im, list, "junk");
-      else if (co === "przenies") cel = typeof body.cel === "string" ? list.find((f) => f.raw === body.cel && !nieWybieralny(f)) ?? null : null;
+      else if (co === "przenies" || co === "kopiuj") cel = typeof body.cel === "string" ? list.find((f) => f.raw === body.cel && !nieWybieralny(f)) ?? null : null;
       else if (!flagi[co]) return { status: 400, body: { error: "Nieznana operacja." } };
-      if (!flagi[co] && !cel) return { status: 200, body: { error: co === "przenies" ? "Nie ma takiego folderu docelowego." : "W tej skrzynce nie ma folderu na tę operację (Kosz / Archiwum / Spam)." } };
+      if (!flagi[co] && !cel) return { status: 200, body: { error: co === "przenies" || co === "kopiuj" ? "Nie ma takiego folderu docelowego." : "W tej skrzynce nie ma folderu na tę operację (Kosz / Archiwum / Spam)." } };
       if (cel && cel.raw === src.raw) return { status: 200, body: { error: "Wiadomość już jest w tym folderze." } };
       await im.wybierz(src);
-      if (flagi[co]) await im.flagi(uids, flagi[co][0], [flagi[co][1]]); else await im.przenies(uids, cel!);
+      if (flagi[co]) await im.flagi(uids, flagi[co][0], [flagi[co][1]]); else if (co === "kopiuj") await im.kopiuj(uids, cel!); else await im.przenies(uids, cel!);
       for (const uid of uids) await d.store.dziennik({ kto: me.email, akcja: "zmiana", skrzynka: s, folder: src.raw.slice(0, 300), uid, szczegoly: (co + (cel ? " -> " + cel.raw : "")).slice(0, 300) });
       return { status: 200, body: { ok: true, ile: uids.length, cel: cel?.raw ?? null } };
     }
@@ -104,23 +121,65 @@ export async function pisanie(d: Deps, me: Me, ctx: Ctx, body: Any): Promise<Out
 
     if (body.action === "szkic_usun" || body.action === "szkic_zapisz") {
       if (!UUID.test(String(body.szkic_id ?? ""))) return { status: 400, body: { error: "Nieprawidłowy szkic." } };
-      im = await d.imapw(s);
+      im = await d.imapw(s, Math.ceil(MAX_ZAL_RAZEM * 1.45));
       const drafts = await wybrany(im, await im.list(), "drafts");
       if (!drafts) return { status: 200, body: { error: "W tej skrzynce nie ma folderu wersji roboczych." } };
       // the previous copy is removed only when it really is THIS draft (its X-Portal-Szkic header says so)
       const stary = Math.floor(Number(body.action === "szkic_usun" ? body.uid : body.poprzedni_uid));
-      let uid: number | null = null;
+      let uid: number | null = null, pliki: Any[] | null = null;
       if (body.action === "szkic_zapisz") {
-        const html = oczyscWychodzacy(String(body.html ?? ""));
-        const raw = budujMime({ od: { nazwa: ctx.ust.nadawca[s], adres: SKRZYNKI[s].adres }, do: A.do.ok, dw: A.dw.ok, udw: A.udw.ok, temat, tekst: tekstZHtml(html), html, zalaczniki: [], messageId: nowyId(DOMENA), data: new Date(d.now()), szkicId: body.szkic_id }, true);
+        // the draft's files: new ones from the browser, and those kept from the previous copy of THIS draft (read
+        // from the mailbox, so a file is uploaded once however many times the draft is saved, on whichever device)
+        const zal: Zal[] = [];
+        let razem = 0, inl = 0;
+        const dodaj = (nazwa: string, bytes: Uint8Array, cid: unknown): string | null => {
+          const n = nazwaPlikuWych(nazwa), t = sprawdzZalacznik(n, bytes);
+          if (!t.ok) return t.error;
+          razem += bytes.length;
+          if (cid != null) {
+            if (!/^[A-Za-z0-9._-]{1,60}$/.test(String(cid)) || !/^image\/(png|jpeg|gif|webp)$/.test(t.typ) || bytes.length > MAX_INLINE || ++inl > MAX_INLINE_N) return "Obraz wklejony w treść jest za duży albo nieobsługiwany (PNG / JPG / GIF / WebP do 2 MB, najwyżej 8).";
+            zal.push({ nazwa: n, typ: t.typ, bytes, cid: String(cid) });
+          } else zal.push({ nazwa: n, typ: t.typ, bytes });
+          return null;
+        };
+        const zachowaj = (Array.isArray(body.zachowaj) ? body.zachowaj : []).slice(0, 40);
+        if (stary > 0 && zachowaj.length) {
+          await im.examine(drafts.raw);
+          const m = (await im.meta([stary], true, true))[0];
+          if (m && (await parseMail(naglowek(m))).naglowki["x-portal-szkic"]?.trim() === body.szkic_id) {
+            const dost = zalCzesci(czesci(m.bs));
+            for (const id of zachowaj) {
+              const c = dost.find((x) => x.id === String(id));
+              if (!c) continue;
+              if (razem + rozmiarPo(c) > MAX_ZAL_RAZEM) return { status: 200, body: { error: "Załączniki przekraczają 20 MB." } };
+              const b = await im.part(stary, c.id);
+              if (!b) continue;
+              const e = dodaj(c.nazwa || "zalacznik", odkoduj(c, b), c.inline && c.cid ? c.cid : null);
+              if (e) return { status: 200, body: { error: e } };
+            }
+          }
+        }
+        for (const z of (Array.isArray(body.zalaczniki) ? body.zalaczniki : []).slice(0, 40)) {
+          if (!z || typeof z.b64 !== "string" || z.b64.length > MAX_ZAL_RAZEM * 1.4) return { status: 200, body: { error: "Nieprawidłowy załącznik." } };
+          const e = dodaj(z.nazwa, base64Bytes(z.b64), z.cid);
+          if (e) return { status: 200, body: { error: e } };
+        }
+        if (razem > MAX_ZAL_RAZEM) return { status: 200, body: { error: "Załączniki przekraczają 20 MB." } };
+        const html = oczyscWychodzacy(String(body.html ?? ""), new Set(zal.filter((z) => z.cid).map((z) => z.cid!)));
+        for (let i = zal.length - 1; i >= 0; i--) if (zal[i].cid && !html.includes(`cid:${zal[i].cid}"`)) zal.splice(i, 1);
+        const raw = budujMime({ od: { nazwa: ctx.ust.nadawca[s], adres: SKRZYNKI[s].adres }, do: A.do.ok, dw: A.dw.ok, udw: A.udw.ok, temat, tekst: tekstZHtml(html), html, zalaczniki: zal, messageId: nowyId(DOMENA), data: new Date(d.now()), szkicId: body.szkic_id, szkicOdp: odpNaglowek(body.odp) }, true);
         uid = await im.dopisz(drafts, ["\\Seen", "\\Draft"], raw);
+        if (uid && zal.length) { await im.examine(drafts.raw); const m = (await im.meta([uid], true, false))[0]; pliki = m ? plikiSzkicu(czesci(m.bs)) : null; }
+        else if (uid) pliki = [];
       }
+      // a draft that changes or goes away is no longer waiting to be sent: the person schedules it again
+      const anulowano = await d.store.rekordZmien("poczta_kolejka", { skrzynka: s, szkic_id: String(body.szkic_id), stan: "czeka" }, { stan: "anulowano", blad: body.action === "szkic_usun" ? "szkic usunięty" : "szkic zmieniony" }).catch(() => 0);
       if (stary > 0) {
         await im.wybierz(drafts);
         const m = (await im.meta([stary], true, true, false))[0];
         if (m && (await parseMail(naglowek(m))).naglowki["x-portal-szkic"]?.trim() === body.szkic_id) await im.usunSzkic(stary);
       }
-      return { status: 200, body: { ok: true, uid } };
+      return { status: 200, body: { ok: true, uid, pliki, wysylka_anulowana: anulowano > 0 } };
     }
 
     // ------------------------------------------------------------ wyslij
@@ -150,6 +209,32 @@ export async function pisanie(d: Deps, me: Me, ctx: Ctx, body: Any): Promise<Out
         zal.push({ nazwa, typ: t.typ, bytes, cid: String(z.cid) });
       } else zal.push({ nazwa, typ: t.typ, bytes });
     }
+    // files that live in the draft itself (it was written, or continued, somewhere else): read from the mailbox,
+    // from THIS draft only, and checked like any other attachment
+    const zeSzkicu = (Array.isArray(body.szkic_pliki) ? body.szkic_pliki : []).slice(0, 40).map(String), su0 = Math.floor(Number(body.szkic_uid));
+    if (zeSzkicu.length && su0 > 0 && UUID.test(String(body.szkic_id ?? ""))) {
+      im = await d.imapw(s, Math.ceil(MAX_ZAL_RAZEM * 1.45));
+      const drafts = await wybrany(im, await im.list(), "drafts");
+      if (drafts) {
+        await im.examine(drafts.raw);
+        const m = (await im.meta([su0], true, true))[0];
+        if (m && (await parseMail(naglowek(m))).naglowki["x-portal-szkic"]?.trim() === body.szkic_id) {
+          const dost = zalCzesci(czesci(m.bs));
+          for (const id of zeSzkicu) {
+            const c = dost.find((x) => x.id === id);
+            if (!c) continue;
+            if (razem + rozmiarPo(c) > MAX_ZAL_RAZEM) return { status: 200, body: { error: "Załączniki przekraczają 20 MB." } };
+            const b = await im.part(su0, c.id);
+            if (!b) continue;
+            const bytes = odkoduj(c, b), nazwa = nazwaPlikuWych(c.nazwa || "zalacznik"), t = sprawdzZalacznik(nazwa, bytes), cid = c.inline && /^[A-Za-z0-9._-]{1,60}$/.test(c.cid) ? c.cid : null;
+            if (!t.ok) return { status: 200, body: { error: t.error } };
+            if (zal.some((z) => (cid && z.cid === cid))) continue; // the browser sent this picture itself
+            razem += bytes.length;
+            if (cid && /^image\/(png|jpeg|gif|webp)$/.test(t.typ) && bytes.length <= MAX_INLINE && ++inl <= MAX_INLINE_N) zal.push({ nazwa, typ: t.typ, bytes, cid }); else zal.push({ nazwa, typ: t.typ, bytes });
+          }
+        }
+      }
+    }
     let html = oczyscWychodzacy(String(body.html ?? ""), new Set(zal.filter((z) => z.cid).map((z) => z.cid!)));
     let cytatTekst = "";
     // a picture that the text does not use is not sent along
@@ -158,14 +243,11 @@ export async function pisanie(d: Deps, me: Me, ctx: Ctx, body: Any): Promise<Out
     if (!tekst.trim() && !zal.length && body.odp?.tryb !== "forward") return { status: 200, body: { error: "Wiadomość jest pusta — napisz treść albo dodaj załącznik." } };
 
     // a first message to an address nobody here has written with: the person confirms it
-    const znane = new Set([...ctx.klienci.flatMap((k) => adresy(k.email, 10).ok), ...(await d.store.znaneAdresy(s, wszyscy).catch(() => [])), ...Object.values(SKRZYNKI).map((x) => x.adres)]);
-    // a colleague of a known client (same company domain, not a free-mail one) is not a stranger either
-    const domeny = new Set([...znane].map((a) => a.split("@")[1]).filter((dm) => dm && !DARMOWE.has(dm)));
-    let nowe = wszyscy.filter((a) => !znane.has(a) && !domeny.has(a.split("@")[1]));
+    let nowe = await nieznaneAdresy(d, ctx, s, wszyscy);
 
     // reply / forward: the original is read from the mailbox (never trusted from the browser)
     let inReplyTo: string | undefined, refs: string[] | undefined, zrodlo: { folder: Folder; uid: number; hash: string; tryb: string } | null = null;
-    im = await d.imapw(s, Math.ceil(MAX_ZAL_RAZEM * 1.45));
+    im ??= await d.imapw(s, Math.ceil(MAX_ZAL_RAZEM * 1.45));
     const list = await im.list();
     if (body.odp && typeof body.odp === "object") {
       const tryb = body.odp.tryb === "forward" ? "forward" : "reply";

@@ -7,15 +7,19 @@ import { guardZapis, ImapZapis } from "./imapw.ts";
 const te = new TextEncoder(), td = new TextDecoder();
 const F = (raw: string, flagi: string[] = []): Folder => ({ raw, nazwa: raw, delim: ".", flagi });
 
-Deno.test("write guard: only APPEND, the four flags, UID MOVE, one-UID expunge and the read-only commands pass", () => {
+Deno.test("write guard: only APPEND, the four flags, UID MOVE / COPY, listed-UID expunge, folder commands and the read-only commands pass", () => {
   for (const ok of ['SELECT "INBOX"', "SELECT {7}", 'APPEND "INBOX.Sent" (\\Seen) {120}', 'APPEND "INBOX.Drafts" (\\Seen \\Draft) {9}', "APPEND {8} () {5}",
     "UID STORE 7 +FLAGS.SILENT (\\Seen)", "UID STORE 7,8,9 -FLAGS.SILENT (\\Seen \\Flagged)", "UID STORE 5 +FLAGS.SILENT (\\Answered)", "UID STORE 5 +FLAGS.SILENT ($Forwarded)",
     "UID STORE 5 +FLAGS.SILENT (\\Deleted)", "UID EXPUNGE 5", 'UID MOVE 5,6 "INBOX.Trash"', "UID MOVE 5 {9}", "CAPABILITY",
+    "UID STORE 5,6,7 +FLAGS.SILENT (\\Deleted)", "UID EXPUNGE 5,6,7", 'UID COPY 5,6 "INBOX.Klienci"', "UID COPY 5 {9}", 'CREATE "INBOX.Klienci"', "CREATE {12}", 'RENAME "INBOX.A" "INBOX.B"', "RENAME {7} {9}",
+    'DELETE "INBOX.Stare"', 'SUBSCRIBE "INBOX.Klienci"', 'UNSUBSCRIBE "INBOX.Stare"',
     'EXAMINE "INBOX"', 'LIST "" "*"', "UID FETCH 5 (UID BODY.PEEK[1])", "UID SEARCH ALL", "LOGOUT"]) guardZapis(ok);
-  for (const bad of ["EXPUNGE", "UID EXPUNGE 1:*", "UID EXPUNGE 5,6", "UID EXPUNGE 5:9", "CLOSE", 'DELETE "INBOX.Stare"', 'RENAME "A" "B"', 'CREATE "Nowy"', 'SUBSCRIBE "x"', 'UNSUBSCRIBE "x"',
-    "UID STORE 1:* +FLAGS.SILENT (\\Deleted)", "UID STORE 5,6 +FLAGS.SILENT (\\Deleted)", "UID STORE 5 -FLAGS.SILENT (\\Deleted)", "UID STORE 5 +FLAGS.SILENT (\\Seen \\Deleted)", "UID STORE 5 +FLAGS (\\Seen)", "UID STORE 5 FLAGS.SILENT (\\Seen)",
+  for (const bad of ["EXPUNGE", "UID EXPUNGE 1:*", "UID EXPUNGE 5:9", "UID EXPUNGE 5,6:9", "UID EXPUNGE *", "UID EXPUNGE", "UID EXPUNGE " + Array.from({ length: 201 }, (_, i) => i + 1).join(","), "CLOSE", "UNSELECT",
+    "DELETE INBOX.Stare", 'DELETE "a" "b"', "DELETE", 'RENAME "A"', 'RENAME "A" "B" "C"', "RENAME A B", "CREATE Nowy", 'CREATE "a" (USE (\\Trash))', 'SUBSCRIBE "x" "y"', 'LSUB "" "*"',
+    'UID COPY 1:* "x"', 'UID COPY 5:9 "x"', "UID COPY 5 INBOX", 'UID COPY 5 "a" "b"', 'CREATE "x"\r\nA2 DELETE "INBOX"',
+    "UID STORE 1:* +FLAGS.SILENT (\\Deleted)", "UID STORE 5:9 +FLAGS.SILENT (\\Deleted)", "UID STORE 5 -FLAGS.SILENT (\\Deleted)", "UID STORE 5 +FLAGS (\\Deleted)", "UID STORE 5 +FLAGS.SILENT (\\Seen \\Deleted)", "UID STORE 5 +FLAGS (\\Seen)", "UID STORE 5 FLAGS.SILENT (\\Seen)",
     "UID STORE 5 +FLAGS.SILENT (\\Draft)", "UID STORE 5 +FLAGS.SILENT ($Junk)", "UID STORE 5 +FLAGS.SILENT (NonJunk)", "UID STORE 5 +FLAGS.SILENT ()", "STORE 1:* +FLAGS.SILENT (\\Seen)", "UID STORE 1:* +FLAGS.SILENT (\\Seen)",
-    'UID COPY 5 "INBOX.Trash"', 'COPY 1:* "x"', 'MOVE 1:* "INBOX.Trash"', 'UID MOVE 1:* "INBOX.Trash"', "UID MOVE 5 INBOX.Trash", 'UID MOVE 5 "a" "b"',
+    'COPY 5 "INBOX.Trash"', 'COPY 1:* "x"', 'MOVE 1:* "INBOX.Trash"', 'UID MOVE 1:* "INBOX.Trash"', "UID MOVE 5 INBOX.Trash", 'UID MOVE 5 "a" "b"',
     'APPEND "INBOX" (\\Seen \\Deleted) {5}', 'APPEND "INBOX" (\\Flagged) {5}', 'APPEND "x" (\\Seen) "tekst"', 'APPEND "x" (\\Seen) {5}\r\nA2 DELETE "INBOX"',
     'SELECT "INBOX" (CONDSTORE)', "UID FETCH 5 (BODY[1])", 'SETACL "INBOX" anyone lrswipkxtecda', 'SETQUOTA "" (STORAGE 1)', "AUTHENTICATE PLAIN", "STARTTLS", "IDLE", "ENABLE QRESYNC", "UID SORT (DATE) UTF-8 ALL", ""]) {
     assertThrows(() => guardZapis(bad), Error, undefined, bad);
@@ -23,7 +27,7 @@ Deno.test("write guard: only APPEND, the four flags, UID MOVE, one-UID expunge a
 });
 
 // a scripted server: answers OK to everything, with the tagged text given per command
-function serwer(odp: (cmd: string) => string = () => "OK done") {
+function serwer(odp: (cmd: string) => string = () => "OK done", przed: (cmd: string) => string = () => "") {
   const sent: { text: string; literal?: Uint8Array }[] = [];
   let out: Uint8Array[] = [te.encode("* OK ready\r\n")], buf = new Uint8Array(0), need = 0, cur = "", lit: Uint8Array | undefined;
   const waiters: (() => void)[] = [];
@@ -43,6 +47,7 @@ function serwer(odp: (cmd: string) => string = () => "OK done") {
         const [tag, ...rest] = cur.split(" "), cmd = rest.join(" ");
         sent.push({ text: cmd, literal: lit });
         if (cmd === "CAPABILITY") push("* CAPABILITY IMAP4rev1 UIDPLUS MOVE LITERAL+\r\n");
+        if (przed(cmd)) push(przed(cmd));
         push(`${tag} ${odp(cmd)}\r\n`);
         cur = ""; lit = undefined;
       }
@@ -107,4 +112,52 @@ Deno.test("write path: the methods refuse everything outside their rules before 
   await assertRejects(() => im2.przenies([5], F("INBOX.Trash")), Error, "MOVE");
   await assertRejects(() => im2.usunSzkic(5), Error, "UID EXPUNGE");
   assert(o.sent.every((x) => !/COPY|EXPUNGE|STORE/.test(x.text)));
+});
+
+Deno.test("folders and emptying: only user folders are created, renamed or deleted; only a Trash / Spam folder is emptied, by listed UIDs", async () => {
+  let wiadomosci = 0;
+  const s = serwer((cmd) => cmd.startsWith("EXAMINE") ? "OK [READ-ONLY] done" : "OK done",
+    (cmd) => cmd.startsWith("EXAMINE") ? "* 0 EXISTS\r\n* OK [UIDVALIDITY 1] ok\r\n" : cmd.startsWith("STATUS") ? `* STATUS x (MESSAGES ${wiadomosci} UNSEEN 0 UIDNEXT 9 UIDVALIDITY 1)\r\n` : "");
+  const im = new ImapZapis(s.c, 2000);
+  const list = [F("INBOX"), F("INBOX.Sent", ["\\Sent"]), F("INBOX.Trash", ["\\Trash"]), F("INBOX.spam"), F("INBOX.Drafts"), F("INBOX.Klienci"), F("INBOX.Klienci.Alfa"), F("INBOX.Stare"), F("INBOX.Wazne", ["\\Flagged"]), F("INBOX.Puste", ["\\Noselect"])];
+  // create: never a system name (in any language or case), never twice, never with characters the server reads specially
+  for (const raw of ["INBOX", "inbox", "INBOX.Kosz", "INBOX.TRASH", "INBOX.Sent", "INBOX.Wys&AUI-ane", "INBOX.Spam", "INBOX.Archiwum", "INBOX.Robocze", "INBOX.klienci", "INBOX.Stare", "INBOX.Żółte", "INBOX.a%", "INBOX.a*", 'INBOX.a"b', "INBOX.a\\b",
+    "INBOX.", "INBOX..x", "INBOX. x", "INBOX.x ", 'INBOX.x"\r\nA9 DELETE "INBOX', "x".repeat(201), "", "INBOX.Sent.Moje", "INBOX.Trash.Moje", "INBOX.Niema.Moje", "INBOX.Puste.Moje"]) await assertRejects(() => im.utworz(raw, ".", list), Error, undefined, raw);
+  // rename / delete: never INBOX, a folder of a standard kind, one with a special-use flag, one with subfolders, one that is not listed
+  for (const f of [list[0], list[1], list[2], list[3], list[4], list[5], list[8], list[9], F("INBOX.Obcy")]) {
+    await assertRejects(() => im.zmienNazwe(f, "INBOX.Nowa", list), Error, undefined, f.raw);
+    await assertRejects(() => im.usunFolder(f, list), Error, undefined, f.raw);
+  }
+  // a rename keeps the folder where it is and cannot take a system or an existing name
+  for (const n of ["Nowa", "INBOX.Klienci.Nowa", "INBOX.Kosz", "INBOX.Klienci", "INBOX.stare", "INBOX"]) await assertRejects(() => im.zmienNazwe(list[7], n, list), Error, undefined, n);
+  // emptying needs a selected Trash or Spam folder; copying needs a selected folder and another target
+  await assertRejects(() => im.oproznij([5]), Error, "tylko Kosz i Spam");
+  await assertRejects(() => im.kopiuj([5], list[5]), Error, "najpierw wybierz");
+  assertEquals(s.sent.length, 0);
+  for (const f of [list[0], list[4], list[5], list[1]]) { await im.wybierz(f); await assertRejects(() => im.oproznij([5]), Error, "tylko Kosz i Spam"); }
+  await assertRejects(() => im.kopiuj([5], list[1]), Error, "docelowy");
+  await assertRejects(() => im.kopiuj([5], list[9]), Error, "docelowy");
+  assert(s.sent.every((x) => x.text.startsWith("SELECT")));
+  // a folder that still holds a message is not deleted
+  wiadomosci = 3;
+  await assertRejects(() => im.usunFolder(list[7], list), Error, "nie jest pusty");
+  assert(!s.sent.some((x) => x.text.startsWith("DELETE")));
+  // what does go out
+  const od = s.sent.length;
+  wiadomosci = 0;
+  await im.utworz("INBOX.Nowy klient", ".", list);
+  await im.utworz("INBOX.Klienci.Beta", ".", list);
+  await im.utworz("INBOX.&AXsA8wFC-te", ".", list);
+  await im.zmienNazwe(list[7], "INBOX.Archiwalne 2025", list);
+  await im.usunFolder(list[6], list);
+  await im.wybierz(list[0]); await im.kopiuj([5, 6], list[5]);
+  await im.wybierz(list[2]); await im.oproznij([7, 8, 8]);
+  await im.wybierz(list[3]); await im.oproznij([9]);
+  await assertRejects(() => im.oproznij([]), Error, "lista");
+  await assertRejects(() => im.oproznij(Array.from({ length: 201 }, (_, i) => i + 1)), Error, "lista");
+  assertEquals(s.sent.slice(od).map((x) => x.text), ['CREATE "INBOX.Nowy klient"', 'SUBSCRIBE "INBOX.Nowy klient"', 'CREATE "INBOX.Klienci.Beta"', 'SUBSCRIBE "INBOX.Klienci.Beta"', 'CREATE "INBOX.&AXsA8wFC-te"', 'SUBSCRIBE "INBOX.&AXsA8wFC-te"',
+    'RENAME "INBOX.Stare" "INBOX.Archiwalne 2025"', 'UNSUBSCRIBE "INBOX.Stare"', 'SUBSCRIBE "INBOX.Archiwalne 2025"',
+    'EXAMINE "INBOX"', 'STATUS "INBOX.Klienci.Alfa" (MESSAGES UNSEEN UIDNEXT UIDVALIDITY)', 'DELETE "INBOX.Klienci.Alfa"', 'UNSUBSCRIBE "INBOX.Klienci.Alfa"',
+    'SELECT "INBOX"', 'UID COPY 5,6 "INBOX.Klienci"', 'SELECT "INBOX.Trash"', "CAPABILITY", "UID STORE 7,8 +FLAGS.SILENT (\\Deleted)", "UID EXPUNGE 7,8",
+    'SELECT "INBOX.spam"', "CAPABILITY", "UID STORE 9 +FLAGS.SILENT (\\Deleted)", "UID EXPUNGE 9"]);
 });

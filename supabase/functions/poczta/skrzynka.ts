@@ -14,10 +14,10 @@ import { analizuj, type Ctx, type Deps, type ImapLike, MAX_RAW, type Me, PARTIAL
 import { dataImap, folderPortalu, kandydaci, NAZWY, ostatnia, TYPY } from "./foldery.ts";
 import { bezCtl } from "./mime.ts";
 import { bezLinkow, dataOk, htmlToText, isSkrzynka, maskuj, parseMail, poczatekDnia, sha256hex, SKRZYNKI, type Skrzynka } from "./logic.ts";
-import { type Folder, type Meta, typFolderu, withTimeout } from "./imap.ts";
+import { type Folder, folderUzytkownika, type Meta, typFolderu, withTimeout } from "./imap.ts";
 export { typFolderu };
-import { daneOdpowiedzi } from "./wysylka.ts";
-import { oczyscWychodzacy } from "./mime.ts";
+import { daneOdpowiedzi, plikiSzkicu } from "./wysylka.ts";
+import { adresyZNaglowka, oczyscWychodzacy, odpZNaglowka } from "./mime.ts";
 import { cidWHtml, czesci, maZalaczniki, naTekst, nazwaPliku, oczyscHtml, odkoduj, ramka, rozmiarPo, tekstCzesc, zalaczniki } from "./widok.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -25,7 +25,7 @@ type Any = any;
 type Out = { status: number; body: Any; raw?: { bytes: Uint8Array; headers: Record<string, string> } };
 export const AKCJE = ["foldery", "liczniki", "lista_imap", "wiadomosc_imap", "zalacznik_imap", "analizuj_imap", "watek_imap", "biore_imap", "notatka_imap", "dziennik"];
 export const STRONA = 30;
-export const NA_MINUTE = 40;                    // mailbox requests of one person per minute
+export const NA_MINUTE = 60;                    // mailbox requests of one person per minute
 export const MAX_ZALACZNIK = 20 * 1024 * 1024;  // decoded bytes of one download
 const MAX_TEKST = 600 * 1024, MAX_HTML = 1400 * 1024, MAX_CID = 500 * 1024, MAX_CID_RAZEM = 2 * 1024 * 1024, SKAN = 400, BUDZET_MS = 55000;
 const OBRAZY = ["image/png", "image/jpeg", "image/gif", "image/webp"];
@@ -36,8 +36,21 @@ const PORZADEK = ["inbox", "sent", "drafts", "archive", "", "junk", "trash"];
 const b64 = (b: Uint8Array) => { let s = ""; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); };
 const naglowek = (m: Meta) => { const k = Object.keys(m.sekcje).find((x) => x.startsWith("BODY[HEADER")); return k ? m.sekcje[k] : new Uint8Array(0); };
 
+// One line of a message list. `watek` names the conversation (a short hash of the first message's id), so the page
+// can group a list by thread; `mid` is for the server only (who looks after the message) and is not sent on.
+export async function wierszListy(m: Meta) {
+  const h = await parseMail(naglowek(m)).catch(() => null);
+  const idate = dataImap(m.internaldate);
+  const root = h ? h.refs[0] || h.inReplyTo || h.messageId : "";
+  return {
+    uid: m.uid, od_nazwa: h?.odNazwa ?? "", od_adres: h?.odAdres ?? "", do: (h?.doAdresy ?? []).slice(0, 3), temat: h?.temat ?? "",
+    data: h?.data ?? (idate ? new Date(idate).toISOString() : null), rozmiar: m.size,
+    przeczytana: m.flagi.some((f) => /^\\seen$/i.test(f)), odpowiedziano: m.flagi.some((f) => /^\\answered$/i.test(f)), oflagowana: m.flagi.some((f) => /^\\flagged$/i.test(f)),
+    zalaczniki: maZalaczniki(czesci(m.bs)), watek: root && !root.startsWith("<brak:") ? (await sha256hex(root)).slice(0, 12) : "", mid: h?.messageId ?? "",
+  };
+}
 // the folder the browser names must be one the server itself listed for this mailbox
-async function folderZListy(im: ImapLike, name: unknown): Promise<Folder | null> {
+export async function folderZListy(im: ImapLike, name: unknown): Promise<Folder | null> {
   if (typeof name !== "string" || !name || name.length > 300 || /[\r\n\0]/.test(name)) return null;
   return (await im.list()).find((f) => f.raw === name && !noselect(f)) ?? null;
 }
@@ -67,7 +80,7 @@ export async function przegladarka(d: Deps, me: Me, ctx: Ctx, body: Any): Promis
       d.store.dziennikSprzataj(new Date(d.now() - 86400000).toISOString()).catch(() => {});
       const out = [];
       for (const f of (await im.list()).slice(0, 120)) {
-        const o: Any = { id: f.raw, nazwa: f.nazwa.split(f.delim).pop(), sciezka: f.nazwa, poziom: f.nazwa.split(f.delim).length - 1, typ: typFolderu(f), wybieralny: !noselect(f), wiadomosci: null, nieprzeczytane: null };
+        const o: Any = { id: f.raw, nazwa: f.nazwa.split(f.delim).pop(), sciezka: f.nazwa, poziom: f.nazwa.split(f.delim).length - 1, typ: typFolderu(f), wybieralny: !noselect(f), wlasny: folderUzytkownika(f), wiadomosci: null, nieprzeczytane: null };
         if (o.wybieralny) { try { const st = await im.status(f.raw); o.wiadomosci = st.messages; o.nieprzeczytane = st.unseen; } catch { /* a folder that cannot be counted is still listed */ } }
         out.push(o);
       }
@@ -128,18 +141,10 @@ export async function przegladarka(d: Deps, me: Me, ctx: Ctx, body: Any): Promis
         metas = await im.meta(uids.slice((strona - 1) * STRONA, strona * STRONA), true, true);
       }
       const rows = [];
-      for (const m of metas.sort((a, b) => b.uid - a.uid)) {
-        const h = await parseMail(naglowek(m)).catch(() => null);
-        const idate = Date.parse(m.internaldate.replace(/^(\d{1,2})-(\w{3})-(\d{4}) /, "$1 $2 $3 "));
-        rows.push({
-          uid: m.uid, od_nazwa: h?.odNazwa ?? "", od_adres: h?.odAdres ?? "", do: (h?.doAdresy ?? []).slice(0, 3), temat: h?.temat ?? "",
-          data: h?.data ?? (Number.isFinite(idate) ? new Date(idate).toISOString() : null), rozmiar: m.size,
-          przeczytana: m.flagi.some((f) => /^\\seen$/i.test(f)), odpowiedziano: m.flagi.some((f) => /^\\answered$/i.test(f)), oflagowana: m.flagi.some((f) => /^\\flagged$/i.test(f)),
-          zalaczniki: maZalaczniki(czesci(m.bs)), mid: h?.messageId ?? "",
-        });
-      }
+      for (const m of metas.sort((a, b) => b.uid - a.uid)) rows.push(await wierszListy(m));
       const kto = await d.store.przypisania(s, rows.map((r) => r.mid).filter(Boolean)).catch(() => ({} as Record<string, string>));
-      return { status: 200, body: { folder: folder.raw, strona, na_stronie: STRONA, razem, przeszukano, wiadomosci: rows.map(({ mid, ...r }) => ({ ...r, przypisany: kto[mid] ?? null })) } };
+      // uidvalidity + uidnext let the page keep the first page of a folder and ask only for what changed (odswiez_imap)
+      return { status: 200, body: { folder: folder.raw, strona, na_stronie: STRONA, razem, przeszukano, uidvalidity: ex.uidvalidity, uidnext: ex.uidnext, wiadomosci: rows.map(({ mid, ...r }) => ({ ...r, przypisany: kto[mid] ?? null })) } };
     }
 
     const m = (await im.meta([uid], true, true))[0];
@@ -172,13 +177,17 @@ export async function przegladarka(d: Deps, me: Me, ctx: Ctx, body: Any): Promis
         srcdoc = ramka(o.html); zdalne = o.zdalne;
         tekst = htmlToText(o.html);
       }
-      // the access log comes before the content: without the log row the message is not shown
-      await log("otwarcie", { uid, msg_hash: hash });
+      // the access log comes before the content: without the log row the message is not shown. A message fetched ahead
+      // (the next one on the list) is logged as that; the page reports the real opening with "otwarto_imap".
+      await log(body.wstepnie === true ? "wstepne" : "otwarcie", { uid, msg_hash: hash });
       const wiersz = await d.store.znajdz(s, mail.messageId).catch(() => null);
       const typ = typFolderu(folder);
       const szkicId = mail.naglowki["x-portal-szkic"]?.trim() ?? "";
       const flaga = (f: string) => m.flagi.some((x) => x.toLowerCase() === f);
       const zad = wiersz?.zadanie_id ? (await d.store.zadania([wiersz.zadanie_id]))[0] ?? null : null;
+      const jestSzkic = typ === "drafts" && /^[0-9a-f-]{36}$/.test(szkicId);
+      const pliki = jestSzkic ? plikiSzkicu(cz) : [];
+      const czeka = jestSzkic ? (await d.store.rekordy("poczta_kolejka", { skrzynka: s, szkic_id: szkicId, stan: "czeka" }, { limit: 1 }).catch(() => []))[0] : null;
       return { status: 200, body: {
         folder: folder.raw, uid, rozmiar: m.size, przeczytana: m.flagi.some((f) => /^\\seen$/i.test(f)),
         od_nazwa: mail.odNazwa, od_adres: mail.odAdres, do: mail.doAdresy, temat: mail.temat, data: mail.data,
@@ -187,7 +196,12 @@ export async function przegladarka(d: Deps, me: Me, ctx: Ctx, body: Any): Promis
         odpowiedziano: flaga("\\answered"), przekazano: flaga("$forwarded"), oflagowana: flaga("\\flagged"), typ_folderu: typ,
         odp: daneOdpowiedzi(mail.naglowki, mail.odAdres, mail.temat, s),
         // a draft written in the portal can be opened for editing again
-        szkic: typ === "drafts" && /^[0-9a-f-]{36}$/.test(szkicId) ? { id: szkicId, html: oczyscWychodzacy(htmlRaw) } : null,
+        // — with its recipients, files (kept in the draft itself), the message it answers and whether it waits to be sent
+        szkic: jestSzkic ? {
+          id: szkicId, html: oczyscWychodzacy(htmlRaw, new Set(pliki.filter((p) => p.cid).map((p) => p.cid!))), pliki,
+          do: adresyZNaglowka(mail.naglowki["to"]), dw: adresyZNaglowka(mail.naglowki["cc"]), udw: adresyZNaglowka(mail.naglowki["bcc"]),
+          odp: odpZNaglowka(mail.naglowki["x-portal-odp"]), zaplanowana: czeka ? { id: czeka.id, kiedy: czeka.kiedy, kto: czeka.kto } : null,
+        } : null,
         // a shared mailbox: who already opened or answered this message from the portal
         kto: await d.store.ktoCo(s, hash).catch(() => []),
         analiza: wiersz ? { id: wiersz.id, status: wiersz.status, opisana: !!wiersz.ai, zadanie: zad ? { id: zad.id, status: zad.status, tytul: zad.tytul, assignee: zad.assignee, notatki: (zad.komentarze ?? []).filter((k) => k.by !== "system").slice(-30) } : null } : null,

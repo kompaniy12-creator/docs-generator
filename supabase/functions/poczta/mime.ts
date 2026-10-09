@@ -160,7 +160,25 @@ export type Zal = { nazwa: string; typ: string; bytes: Uint8Array; cid?: string 
 export type Wiadomosc = {
   od: { nazwa: string; adres: string }; do: string[]; dw: string[]; udw: string[]; temat: string; tekst: string; html: string;
   zalaczniki: Zal[]; messageId: string; data: Date; inReplyTo?: string; refs?: string[]; potwierdzenie?: boolean; pilna?: boolean; szkicId?: string;
+  szkicOdp?: string;   // a draft of a reply / forward remembers its original (see odpNaglowek)
 };
+// "reply 123 <folder name, base64url>": what a draft answers, so that it can be resumed on another device
+const ODP = /^(reply|forward) (\d{1,10}) ([A-Za-z0-9_-]{1,400})$/;
+export function odpNaglowek(o: { tryb?: unknown; uid?: unknown; folder?: unknown } | null | undefined): string | undefined {
+  const uid = Math.floor(Number(o?.uid));
+  if (!o || typeof o.folder !== "string" || !o.folder || o.folder.length > 290 || /[\r\n\0]/.test(o.folder) || !(uid > 0 && uid < 4294967296)) return undefined;
+  const v = `${o.tryb === "forward" ? "forward" : "reply"} ${uid} ${b64(te.encode(o.folder)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
+  return ODP.test(v) ? v : undefined;
+}
+export function odpZNaglowka(v: unknown): { tryb: "reply" | "forward"; uid: number; folder: string } | null {
+  const m = ODP.exec(String(v ?? "").trim());
+  if (!m) return null;
+  try {
+    const bin = atob(m[3].replace(/-/g, "+").replace(/_/g, "/") + "===".slice((m[3].length + 3) % 4));
+    const folder = new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+    return /[\r\n\0]/.test(folder) ? null : { tryb: m[1] as "reply" | "forward", uid: Number(m[2]), folder };
+  } catch { return null; }
+}
 const ID = /^<[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,200}@[A-Za-z0-9.-]{1,200}>$/;
 export const idOk = (v: unknown): v is string => typeof v === "string" && ID.test(v);
 export const nowyId = (domena: string) => `<${crypto.randomUUID()}@${domena}>`;
@@ -185,6 +203,7 @@ export function budujMime(w: Wiadomosc, zUdw = false): Uint8Array {
   if (w.potwierdzenie) h.push("Disposition-Notification-To: " + w.od.adres);
   if (w.pilna) h.push("X-Priority: 1 (Highest)", "Importance: High");
   if (w.szkicId) { if (!/^[0-9a-f-]{36}$/.test(w.szkicId)) throw new Error("mime: nieprawidłowy szkic"); h.push("X-Portal-Szkic: " + w.szkicId); }
+  if (w.szkicOdp) { if (!w.szkicId || !ODP.test(w.szkicOdp)) throw new Error("mime: nieprawidłowy szkic"); h.push("X-Portal-Odp: " + w.szkicOdp); }
   h.push("MIME-Version: 1.0");
 
   const czesc = (typ: string, bytes: Uint8Array, extra: string[] = []) => [`Content-Type: ${typ}`, "Content-Transfer-Encoding: base64", ...extra, "", b64linie(bytes)].join("\r\n");

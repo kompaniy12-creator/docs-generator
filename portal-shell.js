@@ -240,7 +240,7 @@
   function link(it, cls) {
     return '<a class="' + cls + '" href="' + it.href + '" data-href="' + it.href + '">' +
       (cls === 'ps-item' ? '<span class="ps-ico">' + ico(it.ico) + '</span>' + esc(it.text) : '<span class="i">' + ico(it.ico) + '</span>' + esc(it.short)) +
-      (it.badge ? '<span class="ps-badge" data-badge hidden></span>' : '') + (it.tasks ? '<span class="ps-badge" data-tbadge hidden></span>' : '') + '</a>';
+      (it.badge ? '<span class="ps-badge" data-badge hidden></span>' : '') + (it.tasks ? '<span class="ps-badge" data-tbadge hidden></span>' : '') + (it.href === 'poczta.html' ? '<span class="ps-badge" data-pbadge hidden></span>' : '') + '</a>';
   }
   // the user's own order of modules (saved per browser); modules not in the saved list keep their place after it
   var ORDER_KEY = 'tdcg_menu_order';
@@ -280,7 +280,7 @@
       (user.admin ? '<a class="ps-top" href="pulpit.html" data-top="pulpit.html">' + ico('📊') + ' Pulpit</a>' : '') +
       '<a class="ps-top" href="' + CRM_URL + '" target="_blank" rel="noopener" title="CRM — leady, sprawy, klienci (otwiera się w nowej karcie)">' + ico('📇') + ' CRM ↗</a>' +
       '<a class="ps-top" href="zadania.html" data-top="zadania.html">' + ico('✅') + ' Zadania<span class="ps-badge" data-tbadge hidden></span></a>' +
-      (acc.has('kadry') || acc.has('onboarding') ? '<a class="ps-top" href="poczta.html" data-top="poczta.html">' + ico('✉️') + ' Poczta</a>' : '') +
+      (acc.has('kadry') || acc.has('onboarding') ? '<a class="ps-top" href="poczta.html" data-top="poczta.html">' + ico('✉️') + ' Poczta<span class="ps-badge" data-pbadge hidden></span></a>' : '') +
       (acc.has('kadry') ? '<a class="ps-top" href="zatrudnienie.html" data-top="zatrudnienie.html" title="Nowe zgłoszenia pracowników">' + ico('📥') + '<span class="ps-badge" data-badge hidden></span></a>' : '') +
       (user.admin ? '<a class="ps-top" href="dostep.html" data-top="dostep.html">' + ico('🔑') + ' Dostęp do portalu</a>' : '') +
       '<button type="button" class="ps-top" data-pt-open title="Wygląd — motywy, tło i kolory">' + ico('🎨') + '</button>' +
@@ -440,7 +440,21 @@
       document.querySelectorAll('[data-tbadge]').forEach(function (b) { b.hidden = !n; b.textContent = n; });
     });
   }
-  window.PortalShell = { refreshBadge: loadBadge, refreshTasks: loadTasks };
+  // unread mail in the office mailboxes the user may see (the function keeps a one-minute cache)
+  function loadMail() {
+    if (!(acc.has('kadry') || acc.has('onboarding')) || !window.sb) return;
+    window.sb.auth.getSession().then(function (r) {
+      var t = r && r.data && r.data.session && r.data.session.access_token; if (!t) return;
+      return fetch('https://dpfxwkxpzqqjtmgqwozw.supabase.co/functions/v1/poczta', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: window.sb.supabaseKey || '', Authorization: 'Bearer ' + t },
+        body: JSON.stringify({ action: 'nieprzeczytane' }) }).then(function (x) { return x.json(); }).then(function (o) {
+          var n = (o && o.razem) || 0;
+          document.querySelectorAll('[data-pbadge]').forEach(function (b) { b.hidden = !n; b.textContent = n; });
+        });
+    }).catch(function () {});
+  }
+  loadMail(); setInterval(loadMail, 180000);
+  window.PortalShell = { refreshBadge: loadBadge, refreshTasks: loadTasks, refreshMail: loadMail };
 
   if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
 })();
