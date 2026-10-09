@@ -1,0 +1,75 @@
+<?php
+// Poczta TD — variant B: cron job (every minute) for hostings where a pipe forwarder is not allowed.
+// Looks into the mailboxes' Maildir (INBOX only: new/ and cur/) for files it has not sent yet and posts each
+// to the portal. STRICTLY READ-ONLY on the Maildir: files are only opened for reading — never renamed, moved,
+// flagged or deleted — so mail programs and webmail see no difference.
+// The first run only notes what is already there (nothing old is sent).
+//
+// Cron:  * * * * *  /usr/local/bin/php -q /home/host552333/poczta_fwd/poczta_maildir.php >/dev/null 2>&1
+
+error_reporting(0);
+@ini_set('display_errors', '0');
+ob_start();
+register_shutdown_function(function () { while (ob_get_level() > 0) { @ob_end_clean(); } });
+@set_time_limit(50);
+
+require __DIR__ . '/poczta_lib.php';
+
+$DOMAIN = 'td-group.pl';
+$MAILROOT = dirname(__DIR__) . '/imap/' . $DOMAIN;      // /home/host552333/imap/td-group.pl/<skrzynka>/Maildir
+$PER_RUN = 20;
+
+$lock = @fopen(POCZTA_DIR . '/maildir.lock', 'c');
+if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) { exit(0); }   // the previous run is still working
+
+$stateFile = POCZTA_DIR . '/maildir.state.json';
+$state = json_decode((string) @file_get_contents($stateFile), true);
+if (!is_array($state)) { $state = array(); }
+$sent = 0;
+$deadline = time() + 40;
+
+foreach (poczta_boxes() as $box) {
+    $dir = $MAILROOT . '/' . $box . '/Maildir';
+    if (!is_dir($dir)) { continue; }
+    $first = !isset($state[$box]) || !is_array($state[$box]);
+    $seen = $first ? array() : $state[$box];
+    $now = array();
+    foreach (array('new', 'cur') as $sub) {
+        $list = @scandir($dir . '/' . $sub);
+        if (!is_array($list)) { continue; }
+        foreach ($list as $fn) {
+            if ($fn === '.' || $fn === '..' || $fn[0] === '.') { continue; }
+            $id = explode(':', $fn, 2);                 // the unique part of a Maildir name (flags come after ":")
+            $now[$id[0]] = $dir . '/' . $sub . '/' . $fn;
+        }
+    }
+    if ($first) {                                       // start from "now"
+        $state[$box] = array_fill_keys(array_keys($now), 1);
+        poczta_log('maildir ' . $box . ': pierwszy przebieg, zapamietano ' . count($now) . ' istniejacych wiadomosci');
+        continue;
+    }
+    $fresh = array_diff_key($now, $seen);
+    asort($fresh);
+    foreach ($fresh as $id => $path) {
+        if ($sent >= $PER_RUN || time() > $deadline) { break; }
+        $age = time() - (int) @filemtime($path);
+        if ($age > 172800) { $seen[$id] = 1; continue; }               // waited two days: the portal has it by its own check
+        $code = poczta_send($box, $path);
+        $sent++;
+        if (poczta_final($code)) {
+            $seen[$id] = 1;
+            if ($code >= 300) { poczta_log('maildir ' . $box . ': ' . (int) @filesize($path) . ' B -> HTTP ' . $code . ' (pominieta na stale)'); }
+        } else {
+            poczta_log('maildir ' . $box . ': HTTP ' . $code . ' (sprobuje za minute)');
+            break;                                                       // the portal is away: try again next minute
+        }
+    }
+    // remember only what still exists, so the state file stays small
+    $state[$box] = array_intersect_key($seen, $now);
+}
+
+$tmp = $stateFile . '.tmp';
+if (@file_put_contents($tmp, json_encode($state), LOCK_EX) !== false) { @rename($tmp, $stateFile); @chmod($stateFile, 0600); }
+flock($lock, LOCK_UN);
+fclose($lock);
+exit(0);

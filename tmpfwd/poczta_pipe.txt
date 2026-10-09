@@ -1,0 +1,74 @@
+#!/usr/local/bin/php -q
+<?php
+// Poczta TD — variant A: "pipe to a program" forwarder (DirectAdmin: E-mail > Przekierowania > surowe dane).
+// Exim hands a COPY of each incoming message to this script on STDIN; the mailbox itself gets the message
+// as always. The script posts the copy to the portal and ALWAYS ends quietly with status 0, so that mail is
+// never bounced or delayed, whatever happens here. What could not be sent waits in spool/ for the next run.
+//
+// Usage:  |/usr/local/bin/php -q /home/host552333/poczta_fwd/poczta_pipe.php kadry
+// The mailbox comes from the argument; without it from Exim's LOCAL_PART.
+
+error_reporting(0);
+@ini_set('display_errors', '0');
+@ini_set('log_errors', '0');
+ob_start();
+register_shutdown_function(function () { while (ob_get_level() > 0) { @ob_end_clean(); } exit(0); });
+@set_time_limit(60);
+
+require __DIR__ . '/poczta_lib.php';
+
+$box = isset($argv[1]) ? strtolower(trim($argv[1])) : strtolower((string) getenv('LOCAL_PART'));
+$spool = POCZTA_DIR . '/spool';
+if (!is_dir($spool)) { @mkdir($spool, 0700, true); }
+
+// 1. the message from STDIN into a spool file (STDIN is always read to the end, so Exim never sees a broken pipe)
+$name = $spool . '/' . $box . '.' . date('Ymd-His') . '.' . bin2hex(pack('N', mt_rand())) . getmypid() . '.eml';
+$in = @fopen('php://stdin', 'rb');
+$out = in_array($box, poczta_boxes(), true) ? @fopen($name, 'wb') : false;
+$size = 0;
+if ($in) {
+    while (!feof($in)) {
+        $chunk = fread($in, 65536);
+        if ($chunk === false || $chunk === '') { continue; }
+        $size += strlen($chunk);
+        if ($out && $size <= POCZTA_MAX) { fwrite($out, $chunk); }
+    }
+    fclose($in);
+}
+if ($out) { fclose($out); @chmod($name, 0600); }
+
+if (!$out) {
+    poczta_log('pipe: nieznana skrzynka albo brak miejsca na spool (' . preg_replace('~[^a-z0-9_.-]~', '?', $box) . ')');
+} elseif ($size > POCZTA_MAX) {
+    @unlink($name);
+    poczta_log('pipe ' . $box . ': ' . $size . ' B — za duza, pominieta (portal odczyta ja sam)');
+} else {
+    $code = poczta_send($box, $name);
+    if (poczta_final($code)) { @unlink($name); if ($code >= 300) { poczta_log('pipe ' . $box . ': ' . $size . ' B -> HTTP ' . $code . ' (odrzucona na stale)'); } }
+    else { poczta_log('pipe ' . $box . ': ' . $size . ' B -> HTTP ' . $code . ' (zostaje w spool, ponowie pozniej)'); }
+}
+
+// 2. a few older leftovers, one process at a time; anything older than 2 days is dropped (the portal's
+//    fallback check has read it from the mailbox long before)
+$lock = @fopen($spool . '/.lock', 'c');
+if ($lock && flock($lock, LOCK_EX | LOCK_NB)) {
+    $files = glob($spool . '/*.eml');
+    if (is_array($files)) {
+        sort($files);
+        $tried = 0;
+        foreach ($files as $f) {
+            if ($f === $name) { continue; }
+            $age = time() - (int) @filemtime($f);
+            if ($age > 172800) { @unlink($f); continue; }
+            if ($age < 60 || $tried >= 3) { continue; }
+            $tried++;
+            $b = explode('.', basename($f));
+            $code = poczta_send($b[0], $f);
+            if (poczta_final($code)) { @unlink($f); }
+            else { break; }                      // the portal is still away: do not hold the delivery any longer
+        }
+    }
+    flock($lock, LOCK_UN);
+}
+if ($lock) { fclose($lock); }
+exit(0);
