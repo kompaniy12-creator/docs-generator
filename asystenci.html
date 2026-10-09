@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <script src="vendor/supabase-2.117.3.js" integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R"></script>
 <script src="supabase-config.js"></script>
-<script src="auth-guard.js"></script>
-<title>Asystenci AI — tryb testowy — TD Consulting Group</title>
+<script src="auth-guard.js?v=2"></script>
+<title>Asystenci AI — TD Consulting Group</title>
 <style>
   :root{--brand-navy:#1B3F7F;--brand-navy-dark:#15315F;--brand-green:#1FA84B;--brand-tint:#EEF3F9;}
   *,*::before,*::after{box-sizing:border-box}
@@ -84,19 +84,28 @@
 </head>
 <body>
 <main>
-  <a href="pulpit.html" class="back">← Pulpit</a>
+  <a href="index.html" class="back" id="back">← Start</a>
   <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
-  <h1>Asystenci AI — tryb testowy</h1>
-  <p class="lead">14 asystentów, którzy <b>przygotowują</b> szkice, listy kontrolne i odpowiedzi — niczego nie wysyłają i niczego nie zmieniają w portalu. Na razie widzi ich i uruchamia tylko administrator z listy testerów.</p>
+  <h1 id="h1">Asystenci AI</h1>
+  <p class="lead" id="lead">Asystenci <b>przygotowują</b> szkice, listy kontrolne i odpowiedzi — niczego nie wysyłają i niczego nie zmieniają w portalu.</p>
 
   <div id="status" class="status"></div>
 
   <div id="ui" hidden>
-    <div class="warnbox" id="banner"></div>
+    <div class="warnbox" id="banner" hidden></div>
+    <div class="box" id="zasady">
+      <h2>Zasady korzystania</h2>
+      <p class="hint" style="margin:0">
+        <b>1.</b> Odpowiedź asystenta to <b>szkic do sprawdzenia</b> — zanim jej użyjesz, zweryfikuj fakty, daty i przepisy; odpowiadasz za to, co wyślesz klientowi.<br>
+        <b>2.</b> <b>Nic nie jest wysyłane automatycznie</b> — asystent niczego nie wysyła, nie zapisuje i nie zmienia w portalu; szkice kopiujesz samodzielnie.<br>
+        <b>3.</b> <b>Nie wklejaj i nie wgrywaj danych osób spoza klientów biura</b> ani danych, które nie są potrzebne do sprawy. Numerów PESEL, dokumentów, rachunków i telefonów asystent nie potrzebuje.<br>
+        <b>4.</b> Asystent widzi tylko te dane portalu, do których masz dostęp w swoich działach. Treść zapytania (zamaskowana) i wgrane pliki są przetwarzane przez zewnętrznego dostawcę modelu<span id="zasDostawca"></span>.
+      </p>
+    </div>
     <div class="tiles" id="tiles"></div>
 
     <div class="box" id="boxStaff"><h2>Dla pracowników biura</h2><p class="hint">Czytają dane portalu wyłącznie do odczytu, bez PESEL, numerów dokumentów, kont i telefonów.</p><div id="listStaff"></div></div>
-    <div class="box" id="boxKlient"><h2>Dla klientów — symulacja</h2><p class="hint">Klienci tych asystentów jeszcze nie widzą. Wybierasz firmę („Testuj jako klient”) i sprawdzasz, co asystent odpowiedziałby jej — ma wtedy dostęp wyłącznie do danych tej jednej firmy.</p><div id="listKlient"></div></div>
+    <div class="box" id="boxKlient" hidden><h2>Dla klientów — symulacja</h2><p class="hint">Klienci tych asystentów jeszcze nie widzą. Wybierasz firmę („Testuj jako klient”) i sprawdzasz, co asystent odpowiedziałby jej — ma wtedy dostęp wyłącznie do danych tej jednej firmy.</p><div id="listKlient"></div></div>
 
     <div class="box" id="panel" hidden>
       <div class="acts" style="justify-content:space-between"><h2 id="pTitle"></h2><button class="mini" id="pClose" type="button">Zamknij</button></div>
@@ -114,13 +123,19 @@
       <div class="acts" style="justify-content:space-between"><h2>Historia uruchomień</h2><button class="mini" id="hReload" type="button">Odśwież</button></div>
       <p class="hint" id="hHint"></p>
       <div id="hDays"></div>
-      <div class="tablewrap"><table id="hist"><thead><tr><th>Kiedy</th><th>Asystent</th><th>Kontekst</th><th>Status</th><th>Model</th><th class="num">Tokeny</th><th class="num">Koszt</th><th class="num">Czas</th><th>Ocena</th><th></th></tr></thead><tbody id="hBody"></tbody></table></div>
+      <div class="tablewrap"><table id="hist"><thead><tr id="hHead"></tr></thead><tbody id="hBody"></tbody></table></div>
     </div>
 
-    <div class="box">
-      <h2>Ustawienia trybu testowego</h2>
-      <p class="hint">Asystenta może uruchomić tylko administrator portalu, którego adres jest na tej liście. Sprawdza to serwer przy każdym wywołaniu.</p>
-      <label for="sTesters">Testerzy (adresy e-mail administratorów, po jednym w linii)</label>
+    <div class="box" id="boxSettings" hidden>
+      <h2>Ustawienia asystentów</h2>
+      <p class="hint">Widoczne tylko dla administratora. Każde wywołanie sprawdza serwer.</p>
+      <label for="sTryb">Kto korzysta z asystentów</label>
+      <select id="sTryb">
+        <option value="test">Tryb testowy — tylko administratorzy z listy testerów</option>
+        <option value="zespol">Zespół — każdy użytkownik portalu, w zakresie swoich działów</option>
+      </select>
+      <p class="hint" style="margin-top:6px">W trybie „Zespół” pracownik widzi tylko asystentów swojego działu, a asystent czyta tylko dane, do których ta osoba ma dostęp w portalu. Asystenci dla klientów i „Analityk dla szefa” pozostają wyłącznie dla administratora.</p>
+      <label for="sTesters">Testerzy w trybie testowym (adresy e-mail administratorów, po jednym w linii)</label>
       <textarea id="sTesters" spellcheck="false"></textarea>
       <div class="four">
         <div><label for="sOsoba">Uruchomień dziennie na osobę</label><input type="number" id="sOsoba" min="1" /></div>
@@ -130,7 +145,7 @@
       </div>
       <div class="checks"><label><input type="checkbox" id="sRu" /> Po każdym uruchomieniu asystenta biura przygotuj też wersję po rosyjsku (dodatkowy, mały koszt)</label></div>
       <h3>Model dla asystenta</h3>
-      <p class="hint" id="sModelHint">Domyślny wybór jest w kodzie; tu można go zmienić na czas testów.</p>
+      <p class="hint" id="sModelHint">Domyślny wybór jest w kodzie; tu można go zmienić.</p>
       <div class="two" id="sModels"></div>
       <div class="acts" style="margin-top:14px">
         <button class="mini ok" id="sSave" type="button">Zapisz ustawienia</button>
@@ -140,6 +155,6 @@
     </div>
   </div>
 </main>
-<script src="asystenci.js"></script>
+<script src="asystenci.js?v=2"></script>
 </body>
 </html>

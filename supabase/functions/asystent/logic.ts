@@ -1,4 +1,5 @@
-// Asystenci AI — pure rules (no network, no database): the test-mode gate, settings, masking,
+// Asystenci AI — pure rules (no network, no database): the gate (test mode / team mode), who may run
+// which assistant and read which data, settings, masking,
 // limits, cost, uploaded files, the shape of an answer and its validation.
 
 import { CENA_NIEZNANA, CENY, DOMYSLNE, GRANICE, MAX_PLIK, MAX_PLIKI_RAZEM, MAX_PLIKOW, MODELE } from "./modele.ts";
@@ -19,8 +20,10 @@ export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 export const okUuid = (v: unknown): v is string => typeof v === "string" && UUID.test(v);
 
 // ---------------------------------------------------------------- settings and the gate
+export type Tryb = "test" | "zespol";
 export type Ustawienia = {
-  testerzy: string[];            // e-mails of administrators allowed to run assistants
+  tryb: Tryb;                    // "test": administrators on the testers list only; "zespol": every portal user, within their sections
+  testerzy: string[];            // e-mails of administrators allowed to run assistants in test mode
   wylaczone: string[];           // ids of assistants switched off
   limity: { dziennie_osoba: number; dziennie_razem: number; koszt_dzien_usd: number };
   retencja_dni: number;
@@ -41,6 +44,7 @@ export function normalizujUstawienia(raw: Any): Ustawienia {
   const modele: Record<string, string> = {};
   if (r.modele && typeof r.modele === "object") for (const [k, v] of Object.entries(r.modele)) if (/^[a-z_]{2,40}$/.test(k) && (MODELE as readonly string[]).includes(String(v))) modele[k] = String(v);
   return {
+    tryb: r.tryb === "zespol" ? "zespol" : "test", // anything else (missing, misspelt) is the closed mode
     testerzy: [...new Set<string>((Array.isArray(r.testerzy) ? r.testerzy : []).map(mail).filter(okMail))].slice(0, 20),
     wylaczone: [...new Set((Array.isArray(r.wylaczone) ? r.wylaczone : []).map(String).filter((s: string) => /^[a-z_]{2,40}$/.test(s)))].slice(0, 50) as string[],
     limity: {
@@ -54,24 +58,61 @@ export function normalizujUstawienia(raw: Any): Ustawienia {
   };
 }
 
-export type Ja = { email: string; portal: boolean; admin: boolean };
+// sekcje: the portal sections of the account (app_metadata.portal_sections); null = no list = every
+// section, exactly as has_portal_section() in the database and the page guard treat it.
+export type Ja = { email: string; portal: boolean; admin: boolean; sekcje: string[] | null };
 export type Odmowa = { status: number; error: string; kod: string };
 
 // TEST MODE: a portal administrator who is on the testers list — nobody else, for every action.
+// TEAM MODE ("zespol"): every portal user gets in; what they may run and read is decided per assistant
+// (mozeAsystent) and per tool / per table (narzedzia.ts).
 // There is no cron path and no client path: a request without a portal user's token is anonymous.
 export function bramka(ja: Ja | null, ust: Ustawienia): Odmowa | null {
   if (!ja || !ja.email) return { status: 401, error: "Zaloguj się do portalu.", kod: "anon" };
   if (!ja.portal) return { status: 403, error: "Brak dostępu do portalu.", kod: "nie_portal" };
+  if (ust.tryb === "zespol") return null;
   if (!ja.admin) return { status: 403, error: "Asystenci AI działają w trybie testowym — tylko dla administratora.", kod: "nie_admin" };
   if (!ust.testerzy.includes(mail(ja.email))) return { status: 403, error: "Tego konta nie ma na liście testerów asystentów AI.", kod: "nie_tester" };
   return null;
 }
 
+// ---------------------------------------------------------------- who may run / read what
+// The caller as the tools see it. Built from the verified session only — never from the request body.
+export type Kto = { admin: boolean; sekcje: string[] | null; email: string };
+export const SEKCJE = ["rejestracja", "biezaca", "kadry", "legalizacja", "onboarding"] as const;
+export const SEKCJA_NAZWA: Record<string, string> = { kadry: "Kadry", onboarding: "Księgowość", legalizacja: "Legalizacja", rejestracja: "Rejestracja spółek", biezaca: "Obsługa bieżąca" };
+export const ktoZ = (ja: Ja): Kto => ({ email: String(ja.email ?? "").trim().toLowerCase(), admin: ja.admin === true, sekcje: ja.admin ? null : Array.isArray(ja.sekcje) ? ja.sekcje.map(String) : ja.sekcje === null ? null : [] });
+export const maSekcje = (k: Kto | null | undefined, s: string) => !!k && (k.admin === true || k.sekcje === null || (Array.isArray(k.sekcje) && k.sekcje.includes(s)));
+
+// A requirement written next to an assistant, a tool or a table:
+//   { admin: true }            administrators only
+//   { sekcje: [a, b] }         any ONE of these sections is enough
+//   { wszystkie: [a, b] }      EVERY one of these sections is needed
+//   { kazdy: true }            any portal user
+// Anything else — a missing or an empty requirement — means administrators only (fail closed).
+export type Wymog = { admin?: true; sekcje?: string[]; wszystkie?: string[]; kazdy?: true };
+export function spelnia(k: Kto | null | undefined, w: Wymog | null | undefined): boolean {
+  if (!k) return false;
+  if (k.admin === true) return true;
+  if (!w || typeof w !== "object" || w.admin === true) return false;
+  const jedna = Array.isArray(w.sekcje) && w.sekcje.length > 0, kazda = Array.isArray(w.wszystkie) && w.wszystkie.length > 0;
+  if (!jedna && !kazda) return w.kazdy === true;
+  return (!jedna || w.sekcje!.some((s) => maSekcje(k, s))) && (!kazda || w.wszystkie!.every((s) => maSekcje(k, s)));
+}
+// the section named in a refusal: the first one the caller lacks
+export function brakujacyDzial(k: Kto | null | undefined, w: Wymog | null | undefined): string {
+  if (!w || w.admin === true || (!w.sekcje?.length && !w.wszystkie?.length)) return "administratora";
+  const brak = [...(w.wszystkie ?? []), ...(w.sekcje ?? [])].filter((s) => !maSekcje(k, s));
+  return (brak.length ? brak : [...(w.wszystkie ?? []), ...(w.sekcje ?? [])]).map((s) => SEKCJA_NAZWA[s] ?? s).join(w.wszystkie?.length ? " i " : " / ");
+}
+
 // What the administrator sent from the settings form -> the settings to store, or what is wrong.
 // The person saving must stay on the list: nobody locks the test mode from the inside by accident.
-export function walidujUstawienia(wej: Any, ja: Ja, znaneAsystenty: string[]): { ust?: Ustawienia; bledy: string[] } {
+// `obecne`: the mode is kept when the form does not send one (a page published before the team mode).
+export function walidujUstawienia(wej: Any, ja: Ja, znaneAsystenty: string[], obecne?: Ustawienia): { ust?: Ustawienia; bledy: string[] } {
   const bledy: string[] = [];
   const w = wej && typeof wej === "object" ? wej : {};
+  if (w.tryb !== undefined && w.tryb !== "test" && w.tryb !== "zespol") bledy.push("Tryb: „test” albo „zespol”.");
   const surowi = (Array.isArray(w.testerzy) ? w.testerzy : []).map(mail).filter(Boolean);
   for (const t of surowi) if (!okMail(t)) bledy.push(`Niepoprawny adres testera: ${String(t).slice(0, 60)}`);
   if (surowi.length > 20) bledy.push("Najwyżej 20 testerów.");
@@ -91,7 +132,7 @@ export function walidujUstawienia(wej: Any, ja: Ja, znaneAsystenty: string[]): {
     }
   }
   if (bledy.length) return { bledy };
-  return { ust: normalizujUstawienia(w), bledy };
+  return { ust: normalizujUstawienia({ ...w, tryb: w.tryb ?? obecne?.tryb ?? "test" }), bledy };
 }
 
 // ---------------------------------------------------------------- limits

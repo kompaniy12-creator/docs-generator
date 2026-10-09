@@ -1,8 +1,13 @@
-/* Asystenci AI — tryb testowy (administrators on the testers list only).
+/* Asystenci AI. Two modes, decided by the server (portal_ustawienia['asystenci'].tryb):
+     "test"   — administrators on the testers list only;
+     "zespol" — every portal user: the server lists only the assistants that person may run, scopes every
+                read to their sections and returns only their own runs. Settings, costs, models, the record of
+                what the model was given and other people's runs exist for administrators only — the page
+                simply shows what the server sent (D.ja.admin), it decides nothing itself.
    Everything goes through the `asystent` edge function, which checks the caller on every action; this
    page holds no privileged key. An assistant only PREPARES: the page shows drafts with "Kopiuj" and, where
-   an assistant proposes a task, a button that creates it for the signed-in administrator through the
-   ordinary tasks table (the same insert as zadania.html). Nothing is sent to anybody from here. */
+   an assistant proposes a task, a button that creates it for the signed-in person through the ordinary
+   tasks table (the same insert as zadania.html). Nothing is sent to anybody from here. */
 (function () {
   'use strict';
   var FN = 'https://dpfxwkxpzqqjtmgqwozw.supabase.co/functions/v1/asystent';
@@ -22,7 +27,7 @@
   function liczba(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
   function pill(p) { return '<span class="pill ' + p[1] + '">' + esc(p[0]) + '</span>'; }
 
-  var D = null, me = '', klienci = null, otwarty = null, biezacy = null, timer = null;
+  var D = null, me = '', adm = false, klienci = null, otwarty = null, biezacy = null, timer = null;
 
   async function post(body) {
     var sess = await window.sb.auth.getSession();
@@ -36,7 +41,34 @@
 
   // ---------------- page ----------------
   function renderTop() {
+    var test = D.tryb_testowy !== false, lim = D.limit || {};
+    document.title = 'Asystenci AI' + (test ? ' — tryb testowy' : '') + ' — TD Consulting Group';
+    $('h1').textContent = 'Asystenci AI' + (test ? ' — tryb testowy' : '');
+    $('back').href = adm ? 'pulpit.html' : 'index.html'; $('back').textContent = adm ? '← Pulpit' : '← Start';
+    $('lead').innerHTML = 'Asystenci <b>przygotowują</b> szkice, listy kontrolne i odpowiedzi — niczego nie wysyłają i niczego nie zmieniają w portalu.' +
+      (test ? ' Na razie widzi ich i uruchamia tylko administrator z listy testerów.' : adm ? ' Pracownicy widzą asystentów swojego działu i tylko własne uruchomienia.' : ' Widzisz asystentów dostępnych dla Twoich działów.');
+    $('zasDostawca').textContent = D.dostawca ? ' (' + D.dostawca + ')' : '';
+    $('boxSettings').hidden = !adm;
+    if (!adm) {
+      // a member of staff: no banner of the test mode, no costs — their own runs and how many are left today
+      $('banner').hidden = true;
+      var zostalo = Number(lim.pozostalo) || 0;
+      var tt = [
+        [(lim.dzis_moje || 0) + ' / ' + (lim.dziennie_osoba || 0), 'Twoje uruchomienia dziś', lim.dzis_moje ? '' : 'zero'],
+        [String(zostalo), 'Pozostało Ci dziś uruchomień', zostalo ? '' : 'amber'],
+        [String(D.asystenci.filter(function (a) { return a.wlaczony; }).length), 'Dostępni asystenci', ''],
+      ];
+      $('tiles').innerHTML = tt.map(function (x) { return '<div class="tile ' + x[2] + '"><b>' + esc(x[0]) + '</b><span>' + esc(x[1]) + '</span></div>'; }).join('');
+      if (!D.model_gotowy) show('Asystenci są chwilowo niedostępni (brak konfiguracji modelu) — zgłoś to administratorowi.', 'error');
+      else if (!zostalo) show('Dzienny limit uruchomień został wykorzystany — wróć jutro albo poproś administratora o zwiększenie limitu.', 'error');
+      return;
+    }
     var u = D.ustawienia, d = D.dzis;
+    $('banner').hidden = false;
+    if (!test) {
+      $('banner').innerHTML = '<b>Tryb zespołu — asystenci są otwarci dla pracowników.</b> Każde uruchomienie wysyła dane (zamaskowane: bez PESEL, numerów dokumentów, rachunków i telefonów) oraz wgrane pliki do dostawcy modelu: <b>' + esc(D.dostawca) + '</b>. ' +
+        'Sprawdź, czy to przekazanie danych jest opisane w klauzuli informacyjnej i w umowach powierzenia. Zapis tego, co dostał model, i odpowiedzi są w dzienniku przez <b>' + esc(u.retencja_dni) + ' dni</b>; pracownik widzi tylko własne uruchomienia, bez kosztów. Powrót do trybu testowego — w ustawieniach na dole strony.';
+    } else
     $('banner').innerHTML = '<b>Tryb testowy.</b> Każde uruchomienie wysyła dane (zamaskowane: bez PESEL, numerów dokumentów, rachunków i telefonów) oraz wgrane pliki do dostawcy modelu: <b>' + esc(D.dostawca) + '</b>. ' +
       'To przekazanie danych <b>nie jest jeszcze opisane w klauzuli informacyjnej ani w umowach powierzenia</b> — dlatego asystenci działają tylko dla testerów. ' +
       'To, co dostał model, i jego odpowiedź są zapisywane w dzienniku do Twojej oceny przez <b>' + esc(u.retencja_dni) + ' dni</b>; wgrane pliki — tylko gdy zaznaczysz „zachowaj do oceny”.';
@@ -45,6 +77,7 @@
       [d.razem + ' / ' + u.limity.dziennie_razem, 'Wszystkie uruchomienia dziś', d.razem ? '' : 'zero'],
       [usd(d.koszt_usd), 'Szacowany koszt dziś (limit ' + usd(u.limity.koszt_dzien_usd) + ')', d.koszt_usd >= u.limity.koszt_dzien_usd * 0.8 ? 'amber' : d.koszt_usd ? '' : 'zero'],
       [D.asystenci.filter(function (a) { return a.wlaczony; }).length + ' / ' + D.asystenci.length, 'Asystenci włączeni', ''],
+      [String(Number((D.limit || {}).pozostalo) || 0), 'Pozostało Ci dziś uruchomień', (D.limit || {}).pozostalo ? '' : 'amber'],
     ];
     $('tiles').innerHTML = t.map(function (x) { return '<div class="tile ' + x[2] + '"><b>' + esc(x[0]) + '</b><span>' + esc(x[1]) + '</span></div>'; }).join('');
     if (!D.model_gotowy) show('Funkcja nie ma klucza dostępu do modelu (ANTHROPIC_API_KEY) — asystentów nie da się uruchomić.', 'error');
@@ -52,17 +85,30 @@
   function karta(a) {
     return '<div class="doc' + (otwarty === a.id ? ' on' : '') + '" data-id="' + esc(a.id) + '"><div class="n"><strong>' + a.nr + '. ' + esc(a.nazwa) + '</strong>' +
       '<small>' + esc(a.opis) + '</small><small><b>Czyta:</b> ' + esc(a.czyta) + '</small>' +
-      pill(STAN[a.stan] || STAN.dziala) + '<span class="pill p-grey">' + esc(a.model) + '</span>' + (a.wlaczony ? '' : '<span class="pill p-red">wyłączony</span>') +
+      pill(STAN[a.stan] || STAN.dziala) + (adm && a.model ? '<span class="pill p-grey">' + esc(a.model) + '</span>' : '') + (adm ? '<span class="pill p-navy">' + esc(ktoMoze(a)) + '</span>' : '') + (a.wlaczony ? '' : '<span class="pill p-red">wyłączony</span>') +
       (a.stan_powod ? '<small>' + esc(a.stan_powod) + '</small>' : '') + '</div>' +
-      '<div class="acts"><label><input type="checkbox" data-toggle="' + esc(a.id) + '"' + (a.wlaczony ? ' checked' : '') + ' /> włączony</label>' +
+      '<div class="acts">' + (adm ? '<label><input type="checkbox" data-toggle="' + esc(a.id) + '"' + (a.wlaczony ? ' checked' : '') + ' /> włączony</label>' : '') +
       '<button class="mini ok" type="button" data-open="' + esc(a.id) + '"' + (a.wlaczony ? '' : ' disabled') + '>Otwórz</button></div></div>';
   }
+  // for the administrator: who gets this assistant in the team mode
+  var SEKCJA = { kadry: 'Kadry', onboarding: 'Księgowość', legalizacja: 'Legalizacja', rejestracja: 'Rejestracja spółek', biezaca: 'Obsługa bieżąca' };
+  function ktoMoze(a) {
+    var d = a.dostep || {}, n = function (s) { return SEKCJA[s] || s; };
+    if (d.wszystkie && d.wszystkie.length) return 'dla: ' + d.wszystkie.map(n).join(' + ');
+    if (d.sekcje && d.sekcje.length) return 'dla: ' + d.sekcje.map(n).join(' lub ');
+    return d.kazdy ? 'dla: każdy użytkownik portalu' : 'tylko administrator';
+  }
   function renderLists() {
-    $('listStaff').innerHTML = D.asystenci.filter(function (a) { return a.odbiorca === 'staff'; }).map(karta).join('');
-    $('listKlient').innerHTML = D.asystenci.filter(function (a) { return a.odbiorca === 'klient'; }).map(karta).join('');
+    var kl = D.asystenci.filter(function (a) { return a.odbiorca === 'klient'; });
+    $('listStaff').innerHTML = D.asystenci.filter(function (a) { return a.odbiorca === 'staff'; }).map(karta).join('') || '<p class="empty">Brak asystentów dostępnych dla Twojego konta.</p>';
+    $('boxKlient').hidden = !kl.length;
+    $('listKlient').innerHTML = kl.map(karta).join('');
   }
   function renderSettings() {
+    $('hHead').innerHTML = '<th>Kiedy</th>' + (adm ? '<th>Kto</th>' : '') + '<th>Asystent</th><th>Kontekst</th><th>Status</th>' + (adm ? '<th>Model</th><th class="num">Tokeny</th><th class="num">Koszt</th>' : '') + '<th class="num">Czas</th><th>Ocena</th><th></th>';
+    if (!adm) { $('hHint').textContent = 'Widzisz tylko własne uruchomienia. Możesz usunąć każde z nich; starsze są usuwane automatycznie.'; return; }
     var u = D.ustawienia;
+    $('sTryb').value = u.tryb === 'zespol' ? 'zespol' : 'test';
     $('sTesters').value = u.testerzy.join('\n');
     $('sOsoba').value = u.limity.dziennie_osoba; $('sRazem').value = u.limity.dziennie_razem; $('sKoszt').value = u.limity.koszt_dzien_usd; $('sRet').value = u.retencja_dni;
     $('sRu').checked = !!u.ru_auto;
@@ -71,13 +117,14 @@
         return '<option value="' + esc(m.id) + '"' + (m.id === a.model ? ' selected' : '') + '>' + esc(m.id) + (m.id === a.model_domyslny ? ' (domyślny)' : '') + '</option>';
       }).join('') + '</select></div>';
     }).join('');
-    $('sModelHint').textContent = 'Domyślny wybór jest w kodzie; tu można go zmienić na czas testów. Cennik (USD za 1 mln tokenów, wejście / wyjście): ' + D.modele.map(function (m) { return m.id + ' — ' + m.cena.we + ' / ' + m.cena.wy; }).join('; ') + '.';
+    $('sModelHint').textContent = 'Domyślny wybór jest w kodzie; tu można go zmienić. Cennik (USD za 1 mln tokenów, wejście / wyjście): ' + D.modele.map(function (m) { return m.id + ' — ' + m.cena.we + ' / ' + m.cena.wy; }).join('; ') + '.';
     $('hHint').textContent = 'Tokeny i koszt są szacowane z cennika dostawcy zapisanego w kodzie; rozliczeniem jest faktura dostawcy. Dziennik przechowuje uruchomienia ' + u.retencja_dni + ' dni.';
   }
   function zbierzUstawienia() {
     var modele = {};
     Array.prototype.forEach.call(document.querySelectorAll('[data-model]'), function (s) { var a = def(s.getAttribute('data-model')); if (a && s.value !== a.model_domyslny) modele[a.id] = s.value; });
     return {
+      tryb: $('sTryb').value === 'zespol' ? 'zespol' : 'test',
       testerzy: $('sTesters').value.split(/[\s,;]+/).filter(Boolean),
       wylaczone: D.asystenci.filter(function (a) { return !a.wlaczony; }).map(function (a) { return a.id; }),
       limity: { dziennie_osoba: Number($('sOsoba').value), dziennie_razem: Number($('sRazem').value), koszt_dzien_usd: Number($('sKoszt').value) },
@@ -116,8 +163,8 @@
       else if (p.typ === 'wybor') html += lab + '<select id="' + fid + '">' + opcje(p.opcje, null) + '</select>';
       else if (p.typ === 'tekst') html += lab + '<textarea id="' + fid + '" maxlength="' + (p.max || 4000) + '" placeholder="' + esc(p.podpowiedz || '') + '"></textarea>';
       else if (p.typ === 'pliki') html += lab + '<input type="file" id="' + fid + '" accept="application/pdf,image/jpeg,image/png"' + ((p.max || 1) > 1 ? ' multiple' : '') + ' />' +
-        '<div class="checks"><label><input type="checkbox" id="f_zachowaj" /> zachowaj plik do oceny (inaczej plik trafia do modelu tylko na czas tego uruchomienia i nie jest zapisywany)</label></div>' +
-        '<p class="hint" style="margin-top:6px">PDF, JPG albo PNG, do 10 MB' + ((p.max || 1) > 1 ? ', najwyżej ' + p.max + ' plików' : '') + '. Do testów używaj dokumentów fikcyjnych.</p>';
+        '<div class="checks"><label><input type="checkbox" id="f_zachowaj" /> zachowaj plik razem z uruchomieniem (inaczej plik trafia do modelu tylko na czas tego uruchomienia i nie jest zapisywany)</label></div>' +
+        '<p class="hint" style="margin-top:6px">PDF, JPG albo PNG, do 10 MB' + ((p.max || 1) > 1 ? ', najwyżej ' + p.max + ' plików' : '') + '. ' + (D.tryb_testowy !== false ? 'Do testów używaj dokumentów fikcyjnych.' : 'Wgrywaj tylko dokumenty klientów biura potrzebne do tej sprawy.') + '</p>';
     });
     $('pForm').innerHTML = html || '<p class="hint">Ten asystent nie potrzebuje danych wejściowych.</p>';
     $('panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -196,8 +243,9 @@
   function blok(tytul, tresc) { return '<h3>' + esc(tytul) + '</h3><div class="res"><p>' + esc(tresc) + '</p></div>'; }
   function renderPrzebieg(p) {
     var a = def(p.asystent) || { ksztalt: { sekcje: [] }, odbiorca: p.tryb === 'klient' ? 'klient' : 'staff' }, w = p.wynik, h = '';
-    h += '<h3>Wynik</h3><div class="acts">' + pill(STATUS[p.status] || [p.status, 'p-grey']) + '<span class="pill p-grey">' + esc(p.model) + '</span>';
-    if (p.status !== 'w_toku') h += '<span class="sub">' + liczba(tok(p)) + ' tokenów (wejście ' + liczba((p.tokeny_we || 0) + (p.tokeny_cache_r || 0) + (p.tokeny_cache_w || 0)) + ', wyjście ' + liczba(p.tokeny_wy || 0) + ') · ' + usd(p.koszt_usd) + ' · ' + ((p.czas_ms || 0) / 1000).toFixed(1) + ' s · rund modelu: ' + (p.iteracje || 0) + '</span>';
+    h += '<h3>Wynik</h3><div class="acts">' + pill(STATUS[p.status] || [p.status, 'p-grey']) + (adm && p.model ? '<span class="pill p-grey">' + esc(p.model) + '</span>' : '');
+    if (p.status !== 'w_toku' && !adm) h += '<span class="sub">' + ((p.czas_ms || 0) / 1000).toFixed(1) + ' s</span>';
+    if (p.status !== 'w_toku' && adm) h += '<span class="sub">' + liczba(tok(p)) + ' tokenów (wejście ' + liczba((p.tokeny_we || 0) + (p.tokeny_cache_r || 0) + (p.tokeny_cache_w || 0)) + ', wyjście ' + liczba(p.tokeny_wy || 0) + ') · ' + usd(p.koszt_usd) + ' · ' + ((p.czas_ms || 0) / 1000).toFixed(1) + ' s · rund modelu: ' + (p.iteracje || 0) + '</span>';
     h += '</div>';
     if (p.status === 'w_toku') h += '<ol class="steps">' + (p.kroki || []).map(function (k) { return '<li>' + esc(k.co) + '</li>'; }).join('') + '<li><i>trwa…</i></li></ol>';
     if (p.blad) h += '<div class="res err"><p>' + esc(p.blad) + '</p></div>';
@@ -228,7 +276,7 @@
       }
       if (w.nie_znaleziono && w.nie_znaleziono.length) h += blok('Czego asystent nie znalazł / nie wie', w.nie_znaleziono.map(function (x) { return '– ' + x; }).join('\n'));
       h += '<h3>Źródła</h3>' + (w.zrodla.length ? '<ul class="chk">' + w.zrodla.map(function (x) { return '<li><span class="pill p-navy">' + esc(ZRODLO[x.rodzaj] || x.rodzaj) + '</span><div>' + esc(x.id || '') + (x.opis ? '<small>' + esc(x.opis) + '</small>' : '') + '</div></li>'; }).join('') + '</ul>' : '<p class="hint">Asystent nie wskazał żadnego potwierdzonego źródła — traktuj odpowiedź ostrożnie.</p>');
-      if (a.odbiorca === 'staff') h += '<div class="acts" style="margin-top:10px"><button class="mini" type="button" id="ruGo">' + (p.tlumaczenie_ru ? 'Pokaż po rosyjsku' : 'Przygotuj wersję po rosyjsku') + '</button><span class="sub" id="ruMsg"></span></div><div id="ruOut"></div>';
+      if (a.odbiorca === 'staff' && adm) h += '<div class="acts" style="margin-top:10px"><button class="mini" type="button" id="ruGo">' + (p.tlumaczenie_ru ? 'Pokaż po rosyjsku' : 'Przygotuj wersję po rosyjsku') + '</button><span class="sub" id="ruMsg"></span></div><div id="ruOut"></div>';
     }
     if (p.pliki && p.pliki.length) h += '<div class="acts" style="margin-top:10px">' + p.pliki.map(function (_x, i) { return '<button class="mini" type="button" data-plik="' + i + '">Otwórz zachowany plik ' + (i + 1) + '</button>'; }).join('') + '</div>';
     if (p.zapis) {
@@ -236,12 +284,12 @@
         (p.zapis.narzedzia || []).map(function (n) { return '<p class="sub">' + (n.faza === 'wstep' ? 'Odczyt wstępny' : 'Narzędzie wywołane przez model') + ': <b>' + esc(n.nazwa) + '</b> ' + esc(JSON.stringify(n.argumenty)) + (n.blad ? ' — odmowa / błąd' : '') + '</p><pre>' + esc(n.wynik) + '</pre>'; }).join('') + '</details>';
     }
     if (p.status !== 'w_toku') {
-      h += '<h3>Twoja ocena</h3><div class="acts"><button class="mini' + (p.ocena === 1 ? ' ok' : '') + '" type="button" data-ocena="1">Dobra odpowiedź</button><button class="mini' + (p.ocena === -1 ? ' del' : '') + '" type="button" data-ocena="-1">Zła odpowiedź</button></div>' +
+      h += '<h3>Twoja ocena' + (adm ? '' : ' (pomaga poprawiać asystentów)') + '</h3><div class="acts"><button class="mini' + (p.ocena === 1 ? ' ok' : '') + '" type="button" data-ocena="1">Dobra odpowiedź</button><button class="mini' + (p.ocena === -1 ? ' del' : '') + '" type="button" data-ocena="-1">Zła odpowiedź</button></div>' +
         '<label for="ocKom">Komentarz (co poprawić)</label><textarea id="ocKom" maxlength="2000">' + esc(p.ocena_komentarz || '') + '</textarea>' +
         '<div class="acts" style="margin-top:6px"><button class="mini" type="button" id="ocGo">Zapisz ocenę</button><span class="sub" id="ocMsg">' + (p.ocena_at ? 'Oceniono ' + esc(fmt(p.ocena_at)) : '') + '</span></div>';
     }
     $('pRun').innerHTML = h;
-    if (p.tlumaczenie_ru && a.odbiorca === 'staff' && D.ustawienia.ru_auto) renderRu(p.tlumaczenie_ru, a);
+    if (adm && p.tlumaczenie_ru && a.odbiorca === 'staff' && D.ustawienia.ru_auto) renderRu(p.tlumaczenie_ru, a);
   }
   function renderRu(t, a) {
     var h = '<h3>По-русски (перевод для владельца)</h3><div class="res"><p>' + esc(t.odpowiedz) + '</p></div>';
@@ -278,7 +326,7 @@
       // the ordinary tasks table, the administrator's own session, assigned to the administrator
       var z = p.wynik.proponowane_zadanie;
       b.disabled = true;
-      var ins = await window.sb.from('portal_zadania').insert({ created_by: me, assignee: me, tytul: z.tytul, opis: (z.opis ? z.opis + '\n\n' : '') + 'Propozycja asystenta AI „' + (a ? a.nazwa : p.asystent) + '” (tryb testowy).', termin: z.termin || null, pilne: !!z.pilne }).select('id').single();
+      var ins = await window.sb.from('portal_zadania').insert({ created_by: me, assignee: me, tytul: z.tytul, opis: (z.opis ? z.opis + '\n\n' : '') + 'Propozycja asystenta AI „' + (a ? a.nazwa : p.asystent) + '”' + (D.tryb_testowy !== false ? ' (tryb testowy)' : '') + ' — do sprawdzenia.', termin: z.termin || null, pilne: !!z.pilne }).select('id').single();
       if (ins.error) { $('zadMsg').textContent = 'Błąd: ' + ins.error.message; b.disabled = false; return; }
       $('zadMsg').innerHTML = 'Utworzono — zobacz w <a href="zadania.html">Zadaniach</a>.';
       if (window.PortalShell && window.PortalShell.refreshTasks) window.PortalShell.refreshTasks();
@@ -293,15 +341,15 @@
   async function historia() {
     try {
       var h = await post({ action: 'historia', dni: 30 });
-      $('hDays').innerHTML = h.dni.length ? '<p class="sub">' + h.dni.slice(0, 7).map(function (d) { return esc(d.dzien.slice(5).split('-').reverse().join('.')) + ': <b>' + d.przebiegow + '</b> uruch., ' + liczba(d.tokeny) + ' tok., ' + usd(d.koszt_usd); }).join(' &nbsp;·&nbsp; ') + '</p>' : '';
+      $('hDays').innerHTML = adm && h.dni && h.dni.length ? '<p class="sub">' + h.dni.slice(0, 7).map(function (d) { return esc(d.dzien.slice(5).split('-').reverse().join('.')) + ': <b>' + d.przebiegow + '</b> uruch., ' + liczba(d.tokeny) + ' tok., ' + usd(d.koszt_usd); }).join(' &nbsp;·&nbsp; ') + '</p>' : '';
       $('hBody').innerHTML = h.przebiegi.length ? h.przebiegi.map(function (r) {
         var a = def(r.asystent), k = r.kontekst || {};
         var kon = [k.nip ? 'NIP ' + k.nip : '', k.okres || '', k.eli || '', k.wariant || '', (k.pliki || []).length ? 'pliki: ' + k.pliki.length : ''].filter(Boolean).join(', ');
-        return '<tr><td>' + esc(fmt(r.created_at)) + '</td><td>' + esc(a ? a.nr + '. ' + a.nazwa : r.asystent) + (r.tryb === 'klient' ? '<br><span class="sub">symulacja klienta</span>' : '') + '</td><td>' + esc(kon || '—') + '</td><td>' + pill(STATUS[r.status] || [r.status, 'p-grey']) + '</td><td>' + esc(r.model) + '</td>' +
-          '<td class="num">' + liczba(tok(r)) + '</td><td class="num">' + usd(r.koszt_usd) + '</td><td class="num">' + (r.czas_ms ? (r.czas_ms / 1000).toFixed(1) + ' s' : '—') + '</td><td>' + (r.ocena === 1 ? '<span class="pill p-ok">dobra</span>' : r.ocena === -1 ? '<span class="pill p-red">zła</span>' : '<span class="sub">—</span>') + '</td>' +
+        return '<tr><td>' + esc(fmt(r.created_at)) + '</td>' + (adm ? '<td>' + esc(r.kto || '') + '</td>' : '') + '<td>' + esc(a ? a.nr + '. ' + a.nazwa : r.asystent) + (r.tryb === 'klient' ? '<br><span class="sub">symulacja klienta</span>' : '') + '</td><td>' + esc(kon || '—') + '</td><td>' + pill(STATUS[r.status] || [r.status, 'p-grey']) + '</td>' + (adm ? '<td>' + esc(r.model) + '</td>' +
+          '<td class="num">' + liczba(tok(r)) + '</td><td class="num">' + usd(r.koszt_usd) + '</td>' : '') + '<td class="num">' + (r.czas_ms ? (r.czas_ms / 1000).toFixed(1) + ' s' : '—') + '</td><td>' + (r.ocena === 1 ? '<span class="pill p-ok">dobra</span>' : r.ocena === -1 ? '<span class="pill p-red">zła</span>' : '<span class="sub">—</span>') + '</td>' +
           '<td><span class="acts"><button class="mini" type="button" data-show="' + esc(r.id) + '" data-as="' + esc(r.asystent) + '">Pokaż</button><button class="mini del" type="button" data-del="' + esc(r.id) + '">Usuń</button></span></td></tr>';
-      }).join('') : '<tr><td colspan="10" class="empty">Nie było jeszcze żadnego uruchomienia.</td></tr>';
-    } catch (e) { $('hBody').innerHTML = '<tr><td colspan="10" class="empty">' + esc(e.message) + '</td></tr>'; }
+      }).join('') : '<tr><td colspan="11" class="empty">Nie było jeszcze żadnego uruchomienia.</td></tr>';
+    } catch (e) { $('hBody').innerHTML = '<tr><td colspan="11" class="empty">' + esc(e.message) + '</td></tr>'; }
   }
   $('hBody').addEventListener('click', async function (e) {
     var b = e.target.closest('button'); if (!b) return;
@@ -335,19 +383,18 @@
   async function load(cicho) {
     try {
       D = await post({ action: 'lista' });
-      me = D.ja.email;
+      me = D.ja.email; adm = D.ja.admin !== false; // a response without the flag comes from the function before the team mode: administrators only
       $('ui').hidden = false;
       renderTop(); renderLists();
       if (!cicho) { renderSettings(); historia(); if (D.w_toku && D.w_toku.length) show('Jedno uruchomienie jeszcze trwa — znajdziesz je w historii.', 'success'); }
       else renderSettings();
     } catch (e) {
       $('ui').hidden = true;
-      show(e.status === 403 || e.status === 401 ? e.message + ' Ta strona jest dostępna tylko dla administratora z listy testerów.' : 'Nie udało się wczytać asystentów: ' + e.message, 'error');
+      show(e.status === 403 || e.status === 401 ? e.message : 'Nie udało się wczytać asystentów: ' + e.message, 'error');
     }
   }
   function start() {
-    // the menu does not know this page yet: administrators only, everybody else goes back to the start page
-    if (!window.PortalUser || !window.PortalUser.admin) { location.replace('index.html?brak=1'); return; }
+    // every portal user may open the page; who sees and runs what is decided by the server on each call
     load(false);
   }
   if (window.PortalUser) start(); else document.addEventListener('portal:access', start, { once: true });

@@ -56,7 +56,7 @@
       { href: 'pulpit.html', ico: '📊', text: 'Pulpit', short: 'Pulpit', admin: true, wide: true },
       { href: 'zadania.html', ico: '✅', text: 'Zadania', short: 'Zadania', wide: true, tasks: true },
       { href: 'poczta.html', ico: '✉️', text: 'Poczta', short: 'Poczta', wide: true, secAny: ['kadry', 'onboarding'] },
-      { href: 'asystenci.html', ico: '🤖', text: 'Asystenci AI (test)', short: 'Asystenci', admin: true, wide: true },
+      { href: 'asystenci.html', ico: '🤖', text: 'Asystenci AI', short: 'Asystenci', wide: true },
       { href: 'zespol.html', ico: '👥', text: 'Zespół', short: 'Zespół', admin: true, wide: true },
       { href: 'dostep.html', ico: '🔑', text: 'Dostęp do portalu', short: 'Dostęp', admin: true, wide: true },
     ] },
@@ -290,7 +290,8 @@
       '<button type="button" class="ps-top" data-pt-open title="Wygląd — motywy, tło i kolory">' + ico('🎨') + '</button>' +
       '<div class="ps-menu"><button type="button" class="ps-top" id="psGear" aria-haspopup="true" aria-expanded="false" title="Ustawienia">' + ico('⚙️') + ' Ustawienia</button>' +
         '<div class="ps-drop" id="psDrop" hidden>' +
-          (user.admin ? '<a href="asystenci.html">' + ico('🤖') + ' Asystenci AI — tryb testowy</a><a href="zespol.html">' + ico('👥') + ' Zespół — profile i odpowiedzialność</a><a href="dostep.html">' + ico('🔑') + ' Użytkownicy i dostęp do modułów</a><a href="zadania.html#settings">' + ico('🔔') + ' Powiadomienia Telegram i eskalacje</a>' : '') +
+          '<a href="asystenci.html">' + ico('🤖') + ' Asystenci AI</a>' +
+          (user.admin ? '<a href="zespol.html">' + ico('👥') + ' Zespół — profile i odpowiedzialność</a><a href="dostep.html">' + ico('🔑') + ' Użytkownicy i dostęp do modułów</a><a href="zadania.html#settings">' + ico('🔔') + ' Powiadomienia Telegram i eskalacje</a>' : '') +
           (acc.has('kadry') ? '<a href="kontrola.html#rem">' + ico('✉️') + ' Przypomnienia dla klientów</a><a href="wiedza.html">' + ico('⚖️') + ' Baza wiedzy — przepisy</a>' : '') +
           '<a href="#" data-pt-open>' + ico('🎨') + ' Wygląd — motywy, tło i kolory</a>' +
           '<a href="rodo.html" target="_blank" rel="noopener">' + ico('🛡️') + ' Informacja RODO</a>' +

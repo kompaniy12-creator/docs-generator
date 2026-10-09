@@ -4,10 +4,10 @@
 import { assert, assertEquals, assertFalse, assertStringIncludes } from "jsr:@std/assert@1";
 import type Anthropic from "npm:@anthropic-ai/sdk@0.132.1";
 import { type Baza, obsluz, type Zaleznosci } from "./core.ts";
-import { ASYSTENCI, asystent, obliczeniaKontroli, systemDla, walidujWejscie } from "./definicje.ts";
-import { type Any, bramka, type Ja, kosztUsd, maskuj, maskujGleboko, mikrorachunek, niezaufane, normalizujUstawienia, nowySlad, schematWyniku, sprawdzLimity, sprawdzPliki, typPliku, walidujUstawienia, walidujWynik, wstawMikrorachunki } from "./logic.ts";
+import { ASYSTENCI, asystent, mozeAsystent, obliczeniaKontroli, systemDla, walidujWejscie } from "./definicje.ts";
+import { type Any, bramka, brakujacyDzial, type Ja, kosztUsd, type Kto, ktoZ, spelnia, maskuj, maskujGleboko, mikrorachunek, niezaufane, normalizujUstawienia, nowySlad, schematWyniku, sprawdzLimity, sprawdzPliki, typPliku, walidujUstawienia, walidujWynik, wstawMikrorachunki } from "./logic.ts";
 import { CENY, MAX_ITERACJI, MAX_PLIK, MODEL_GLOWNY, MODEL_SZYBKI } from "./modele.ts";
-import { type Ctx, definicjeDla, NARZEDZIA, narzedzie, type Store, wykonaj } from "./narzedzia.ts";
+import { type Ctx, definicjeDla, MAGAZYN, mozeNarzedzie, NARZEDZIA, narzedzie, ograniczStore, type Store, wykonaj } from "./narzedzia.ts";
 import { type Model, przebieg, type Zapytanie } from "./silnik.ts";
 
 // ---------------------------------------------------------------- fixtures
@@ -60,8 +60,10 @@ function sklep(wrogi = true): { store: Store; odczyty: string[] } {
   };
   return { store, odczyty };
 }
-const ctxK = (nip = A): Ctx => ({ tryb: "klient", nip, dzis: "2026-10-09", slad: nowySlad() });
-const ctxS = (nip: string | null = null): Ctx => ({ tryb: "staff", nip, dzis: "2026-10-09", slad: nowySlad() });
+// the caller of the older tests: the administrator (sees everything, as before the team mode)
+const KTO_SZEF: Kto = { admin: true, sekcje: null, email: "szef@test.pl" };
+const ctxK = (nip = A): Ctx => ({ tryb: "klient", nip, dzis: "2026-10-09", slad: nowySlad(), kto: KTO_SZEF });
+const ctxS = (nip: string | null = null, kto: Kto = KTO_SZEF): Ctx => ({ tryb: "staff", nip, dzis: "2026-10-09", slad: nowySlad(), kto });
 const WSZYSTKIE = NARZEDZIA.map((n) => n.name);
 
 // arguments that try to reach firm B from every tool
@@ -76,14 +78,14 @@ const ARG_B: Record<string, Any> = {
 
 // ---------------------------------------------------------------- the gate
 const UST = normalizujUstawienia({ testerzy: ["szef@test.pl"] });
-const SZEF: Ja = { email: "szef@test.pl", portal: true, admin: true };
+const SZEF: Ja = { email: "szef@test.pl", portal: true, admin: true, sekcje: null };
 
 Deno.test("bramka: tylko administrator z listy testerów", () => {
   assertEquals(bramka(null, UST)?.status, 401);
-  assertEquals(bramka({ email: "x@test.pl", portal: false, admin: false }, UST)?.kod, "nie_portal");
-  assertEquals(bramka({ email: "szef@test.pl", portal: true, admin: false }, UST)?.kod, "nie_admin"); // on the list, but not an administrator
-  assertEquals(bramka({ email: "inny@test.pl", portal: true, admin: true }, UST)?.kod, "nie_tester"); // an administrator, but not on the list
-  assertEquals(bramka({ email: "SZEF@test.pl", portal: true, admin: true }, UST), null);
+  assertEquals(bramka({ email: "x@test.pl", portal: false, admin: false, sekcje: null }, UST)?.kod, "nie_portal");
+  assertEquals(bramka({ email: "szef@test.pl", portal: true, admin: false, sekcje: null }, UST)?.kod, "nie_admin"); // on the list, but not an administrator
+  assertEquals(bramka({ email: "inny@test.pl", portal: true, admin: true, sekcje: null }, UST)?.kod, "nie_tester"); // an administrator, but not on the list
+  assertEquals(bramka({ email: "SZEF@test.pl", portal: true, admin: true, sekcje: null }, UST), null);
   assertEquals(bramka(SZEF, normalizujUstawienia({}))?.kod, "nie_tester"); // empty or broken settings open nothing
   assertEquals(bramka(SZEF, normalizujUstawienia({ testerzy: "szef@test.pl" }))?.kod, "nie_tester");
 });
@@ -117,9 +119,9 @@ Deno.test("bramka HTTP: anonim, cron, pracownik, administrator spoza listy — k
   const przypadki: [string, Ja | null, Record<string, string>, number][] = [
     ["anonim", null, {}, 401],
     ["cron z kluczem", null, { "x-cron-key": "jakikolwiek-klucz" }, 401],
-    ["pracownik portalu", { email: "kadry@test.pl", portal: true, admin: false }, {}, 403],
-    ["administrator spoza listy", { email: "admin2@test.pl", portal: true, admin: true }, {}, 403],
-    ["użytkownik innej aplikacji", { email: "szef@test.pl", portal: false, admin: true }, {}, 403],
+    ["pracownik portalu", { email: "kadry@test.pl", portal: true, admin: false, sekcje: ["kadry"] }, {}, 403],
+    ["administrator spoza listy", { email: "admin2@test.pl", portal: true, admin: true, sekcje: null }, {}, 403],
+    ["użytkownik innej aplikacji", { email: "szef@test.pl", portal: false, admin: true, sekcje: null }, {}, 403],
   ];
   for (const [nazwa, ja, naglowki, status] of przypadki) {
     for (const action of AKCJE) {
@@ -144,7 +146,7 @@ Deno.test("kontekst klienta: żadne narzędzie nie pokaże innej firmy, cokolwie
 });
 Deno.test("kontekst klienta: bez NIP w kontekście narzędzia odmawiają", async () => {
   const { store } = sklep();
-  const r = await wykonaj("klient_karta", { nip: B }, WSZYSTKIE, { tryb: "klient", nip: null, dzis: "2026-10-09", slad: nowySlad() }, store);
+  const r = await wykonaj("klient_karta", { nip: B }, WSZYSTKIE, { tryb: "klient", nip: null, dzis: "2026-10-09", slad: nowySlad(), kto: KTO_SZEF }, store);
   assert(r.blad);
   assertFalse(r.tresc.includes("BETA"));
 });
@@ -485,7 +487,7 @@ Deno.test("ustawienia: nie można zdjąć siebie z listy, limity w granicach, ty
   const ids = ASYSTENCI.map((a) => a.id);
   const dobre = { testerzy: ["szef@test.pl", " Druga@Test.pl "], wylaczone: ["analityk"], limity: { dziennie_osoba: 5, dziennie_razem: 10, koszt_dzien_usd: 2 }, retencja_dni: 14, ru_auto: true, modele: { konsjerz: MODEL_SZYBKI } };
   const ok = walidujUstawienia(dobre, SZEF, ids);
-  assertEquals(ok.ust, { testerzy: ["szef@test.pl", "druga@test.pl"], wylaczone: ["analityk"], limity: { dziennie_osoba: 5, dziennie_razem: 10, koszt_dzien_usd: 2 }, retencja_dni: 14, ru_auto: true, modele: { konsjerz: MODEL_SZYBKI } });
+  assertEquals(ok.ust, { tryb: "test", testerzy: ["szef@test.pl", "druga@test.pl"], wylaczone: ["analityk"], limity: { dziennie_osoba: 5, dziennie_razem: 10, koszt_dzien_usd: 2 }, retencja_dni: 14, ru_auto: true, modele: { konsjerz: MODEL_SZYBKI } });
   assert(walidujUstawienia({ ...dobre, testerzy: ["inny@test.pl"] }, SZEF, ids).bledy.some((b) => b.includes("musi pozostać")));
   assert(walidujUstawienia({ ...dobre, testerzy: [] }, SZEF, ids).bledy.length > 0);
   assert(walidujUstawienia({ ...dobre, limity: { dziennie_osoba: 0, dziennie_razem: 10, koszt_dzien_usd: 2 } }, SZEF, ids).bledy.length > 0);
@@ -537,4 +539,383 @@ Deno.test("ustawienia przez HTTP i lista: zapis, wyłączenie asystenta, model z
   assertEquals(l.asystenci.find((a: Any) => a.id === "konsjerz").model, MODEL_SZYBKI);
   assertEquals([l.ustawienia.retencja_dni, l.tryb_testowy, l.dzis.razem], [14, true, 0]);
   assertFalse(JSON.stringify(l).includes("Zasady, które obowiązują zawsze")); // the instructions stay on the server
+});
+
+// ================================================================ TEAM MODE ("zespol"): who runs what, who reads what
+// Four fictional accounts: Kadry only, Księgowość only (section "onboarding"), no section at all, the administrator.
+const J_KADRY: Ja = { email: "kadry@test.pl", portal: true, admin: false, sekcje: ["kadry"] };
+const J_KSIEG: Ja = { email: "ksiegowa@test.pl", portal: true, admin: false, sekcje: ["onboarding"] };
+const J_NIKT: Ja = { email: "nowy@test.pl", portal: true, admin: false, sekcje: [] };
+const OSOBY: [string, Ja][] = [["kadry", J_KADRY], ["ksiegowosc", J_KSIEG], ["bez działów", J_NIKT], ["administrator", SZEF]];
+const ZESPOL = { tryb: "zespol", testerzy: ["szef@test.pl"] };
+const MSG_KS = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+// what each account may run
+const MOJE: Record<string, string[]> = {
+  "kadry": ["sekretarz_poczty", "asystent_kadrowy", "kontroler_dokumentow", "prawnik_obserwator", "zapytaj_portal"],
+  "ksiegowosc": ["sekretarz_poczty", "zamkniecie_miesiaca", "prawnik_obserwator", "asystent_onboardingu", "zapytaj_portal"],
+  "bez działów": ["prawnik_obserwator", "zapytaj_portal"],
+  "administrator": ASYSTENCI.map((a) => a.id),
+};
+// what each account's tools may be called at all
+const OGOLNE = ["klienci_szukaj", "klient_karta", "terminy_ustawowe", "terminy_ogolne", "akt_eli", "wiedza_spis", "wiedza_pobierz", "prawo_zmiany", "grupy_klientow", "zadania_przeglad", "stawki_minimalne"];
+const NARZ: Record<string, string[]> = {
+  "kadry": [...OGOLNE, "pracownicy_firmy", "pracownik_karta", "podpisy_pakiety", "akta_inwentarz", "automatyzacja", "poczta_lista", "poczta_wiadomosc", "zgloszenia_klientow"],
+  "ksiegowosc": [...OGOLNE, "zamkniecie_miesiaca", "rachunki_do_wplat", "braki_onboardingu", "poczta_lista", "poczta_wiadomosc", "zgloszenia_klientow"],
+  "bez działów": OGOLNE,
+  "administrator": NARZEDZIA.map((n) => n.name),
+};
+// the store of the older tests + a second mailbox, a second request category and other people's tasks
+function sklepZespolu() {
+  const s = sklep();
+  const st = s.store, list = (nazwa: string, rows: Any) => { s.odczyty.push(nazwa); return Promise.resolve(rows); };
+  const wiad = (id: string, skrzynka: string, temat: string) => ({ id, data: "2026-10-08T10:00:00Z", skrzynka, od_nazwa: "Nadawca Testowy", od_adres: "nadawca@firma-beta.test", temat, fragment: "Treść: " + temat, wymaga: true, klient_nip: B, klient_nazwa: "FIRMA-BETA Testowa Sp. z o.o.", status: "nowa", zalaczniki: [], ai: {} });
+  st.poczta = () => list("poczta", [wiad(MSG, "kadry", "TEMAT-KADRY"), wiad(MSG_KS, "ksiegowosc", "TEMAT-KSIEGOWOSC"), wiad(WA, "zarzad", "TEMAT-NIEZNANA-SKRZYNKA")]);
+  st.pocztaJedna = (id) => list("pocztaJedna", id === MSG ? wiad(MSG, "kadry", "TEMAT-KADRY") : id === MSG_KS ? wiad(MSG_KS, "ksiegowosc", "TEMAT-KSIEGOWOSC") : null);
+  st.zgloszenia = () => list("zgloszenia", [
+    { created_at: "2026-10-02", nip: A, firma: "FIRMA-ALFA", kategoria: "kadry", rodzaj: "pytanie", temat: "ZGL-KADRY", status: "przyjete" },
+    { created_at: "2026-10-02", nip: A, firma: "FIRMA-ALFA", kategoria: "ksiegowosc", rodzaj: "pytanie", temat: "ZGL-KSIEGOWOSC", status: "przyjete" },
+    { created_at: "2026-10-02", nip: A, firma: "FIRMA-ALFA", kategoria: "inne", rodzaj: "pytanie", temat: "ZGL-INNE", status: "przyjete" },
+    { created_at: "2026-10-02", nip: A, firma: "FIRMA-ALFA", kategoria: "zarzad", rodzaj: "pytanie", temat: "ZGL-NIEZNANA", status: "przyjete" },
+  ]);
+  st.zadania = () => list("zadania", [
+    { id: "z1", assignee: "kadry@test.pl", tytul: "ZADANIE-KADROWEJ", termin: "2026-10-01", pilne: true, status: "nowe", zrodlo: "reczne" },
+    { id: "z2", assignee: "ksiegowa@test.pl", tytul: "ZADANIE-KSIEGOWEJ", termin: "2026-10-01", pilne: false, status: "nowe", zrodlo: "reczne" },
+    { id: "z3", assignee: "szef@test.pl", tytul: "ZADANIE-SZEFA", termin: null, pilne: false, status: "w_toku", zrodlo: "reczne" },
+  ]);
+  st.umowy = () => list("umowy", [{ id: "u1", klient: A, status: "przypisany", rodzaj: "umowa", kontrahent: "UMOWA-Z-BIUREM-ALFA", data_zawarcia: "2026-01-01" }]);
+  return s;
+}
+
+Deno.test("tryb zespołu — bramka: każdy użytkownik portalu wchodzi; anonim i obce konto nie; zepsute ustawienie = tryb testowy", () => {
+  const z = normalizujUstawienia(ZESPOL);
+  assertEquals(z.tryb, "zespol");
+  for (const [, ja] of OSOBY) assertEquals(bramka(ja, z), null);
+  assertEquals(bramka(null, z)?.status, 401);
+  assertEquals(bramka({ ...J_KADRY, portal: false }, z)?.kod, "nie_portal");
+  for (const zly of [undefined, "", "ZESPOL", "wszyscy", true, 1, ["zespol"]]) {
+    const u = normalizujUstawienia({ tryb: zly, testerzy: ["szef@test.pl"] });
+    assertEquals(u.tryb, "test");
+    assertEquals(bramka(J_KADRY, u)?.kod, "nie_admin");
+  }
+});
+
+Deno.test("wymóg dostępu: jedna z sekcji, wszystkie sekcje, administrator, każdy; brak wymogu = tylko administrator", () => {
+  const k = ktoZ(J_KADRY), ks = ktoZ(J_KSIEG), nikt = ktoZ(J_NIKT), szef = ktoZ(SZEF);
+  const bezListy = ktoZ({ email: "stary@test.pl", portal: true, admin: false, sekcje: null }); // no list = every section (as has_portal_section)
+  assertEquals([spelnia(k, { sekcje: ["kadry"] }), spelnia(ks, { sekcje: ["kadry"] }), spelnia(nikt, { sekcje: ["kadry"] }), spelnia(szef, { sekcje: ["kadry"] }), spelnia(bezListy, { sekcje: ["kadry"] })], [true, false, false, true, true]);
+  assertEquals([spelnia(k, { sekcje: ["kadry", "onboarding"] }), spelnia(ks, { sekcje: ["kadry", "onboarding"] }), spelnia(nikt, { sekcje: ["kadry", "onboarding"] })], [true, true, false]);
+  assertEquals([spelnia(k, { wszystkie: ["legalizacja", "kadry"] }), spelnia(ktoZ({ ...J_KADRY, sekcje: ["kadry", "legalizacja"] }), { wszystkie: ["legalizacja", "kadry"] }), spelnia(ktoZ({ ...J_KADRY, sekcje: ["legalizacja"] }), { wszystkie: ["legalizacja", "kadry"] })], [false, true, false]);
+  assertEquals([spelnia(nikt, { kazdy: true }), spelnia(nikt, { admin: true }), spelnia(bezListy, { admin: true }), spelnia(szef, { admin: true })], [true, false, false, true]);
+  // fail closed: nothing written, an empty object, empty lists, a broken account
+  for (const w of [undefined, null, {}, { sekcje: [] }, { wszystkie: [] }] as Any[]) { assertFalse(spelnia(k, w)); assertFalse(spelnia(bezListy, w)); assert(spelnia(szef, w)); }
+  assertFalse(spelnia(null, { kazdy: true }));
+  assertFalse(spelnia(ktoZ({ email: "x@test.pl", portal: true, admin: false, sekcje: "kadry" as Any }), { sekcje: ["kadry"] })); // a malformed list is no list of sections
+  assertFalse(mozeAsystent({}, k));
+  assertFalse(mozeNarzedzie({}, k));
+  assert(mozeNarzedzie({}, szef));
+  assertEquals(brakujacyDzial(ks, { sekcje: ["kadry"] }), "Kadry");
+  assertEquals(brakujacyDzial(k, { sekcje: ["onboarding"] }), "Księgowość");
+});
+
+Deno.test("tryb zespołu — każdy asystent i każde narzędzie ma wymóg; asystenci dla klientów i analityk tylko dla administratora", () => {
+  for (const a of ASYSTENCI) {
+    assert(a.dostep && typeof a.dostep === "object" && Object.keys(a.dostep).length === 1, a.id);
+    if (a.odbiorca === "klient" || a.id === "analityk") assertEquals(a.dostep, { admin: true }, a.id);
+  }
+  for (const n of NARZEDZIA) assert(n.dostep && Object.keys(n.dostep).length === 1, n.name);
+  for (const m of Object.keys(sklep().store)) assert((MAGAZYN as Any)[m] && Object.keys((MAGAZYN as Any)[m]).length === 1, "metoda magazynu bez klasyfikacji: " + m);
+  for (const [nazwa, ja] of OSOBY) {
+    assertEquals(ASYSTENCI.filter((a) => mozeAsystent(a, ktoZ(ja))).map((a) => a.id), MOJE[nazwa], nazwa);
+    assertEquals(NARZEDZIA.filter((n) => mozeNarzedzie(n, ktoZ(ja))).map((n) => n.name).sort(), [...NARZ[nazwa]].sort(), nazwa);
+  }
+  // a person with Legalizacja but without Kadry does not get the assistant that reads the Kadry register
+  assertFalse(mozeAsystent(asystent("asystent_legalizacji")!, ktoZ({ ...J_KADRY, sekcje: ["legalizacja"] })));
+  assert(mozeAsystent(asystent("asystent_legalizacji")!, ktoZ({ ...J_KADRY, sekcje: ["legalizacja", "kadry"] })));
+  assert(mozeAsystent(asystent("asystent_onboardingu")!, ktoZ({ ...J_KADRY, sekcje: ["rejestracja"] })));
+});
+
+Deno.test("tryb zespołu — lista: tylko własni asystenci, bez ustawień, kosztów, modeli i list narzędzi; pozostałe uruchomienia", async () => {
+  for (const [nazwa, ja] of OSOBY) {
+    const z = zaleznosci({ ja, ust: { ...ZESPOL, limity: { dziennie_osoba: 5, dziennie_razem: 80, koszt_dzien_usd: 5 } }, rows: [{ id: "r1", created_at: new Date().toISOString(), kto: ja.email, status: "gotowe", koszt_usd: 0.5 }, { id: "r2", created_at: new Date().toISOString(), kto: "ktos-inny@test.pl", status: "gotowe", koszt_usd: 0.7 }] });
+    const r = await obsluz(post({ action: "lista" }), z.d);
+    assertEquals(r.status, 200, nazwa);
+    const l = await r.json();
+    assertEquals(l.asystenci.map((a: Any) => a.id), MOJE[nazwa], nazwa);
+    assertEquals([l.tryb, l.tryb_testowy, l.ja.admin, l.limit.dziennie_osoba, l.limit.dzis_moje, l.limit.pozostalo], ["zespol", false, ja.admin, 5, 1, 4], nazwa);
+    if (ja.admin) { assert(l.ustawienia && l.granice && l.modele && l.dostawca, nazwa); assertEquals(l.dzis.koszt_usd, 1.2); continue; }
+    for (const k of ["ustawienia", "granice", "modele", "dostawca"]) assertEquals(l[k], undefined, `${nazwa}: ${k}`);
+    assertEquals(l.dzis, { moje: 1 }, nazwa);
+    const txt = JSON.stringify(l);
+    for (const t of ["testerzy", "koszt_usd", "szef@test.pl", "ktos-inny@test.pl", "narzedzia", "claude-", "przeglad_biura", "konsjerz", "analityk", "Zasady, które obowiązują zawsze"]) assertFalse(txt.includes(t), `${nazwa}: lista ujawnia „${t}”`);
+  }
+});
+
+Deno.test("tryb zespołu — bezpośrednie wywołanie cudzego asystenta → 403, bez przebiegu, bez odczytu danych, bez modelu", async () => {
+  const WEJ: Record<string, Any> = { nip: A, worker_id: WA, okres: "2026-09", eli: "DU/2025/621", tekst: "pytanie testowe", wariant: "kontrola" };
+  for (const [nazwa, ja] of OSOBY) {
+    for (const a of ASYSTENCI) {
+      if (MOJE[nazwa].includes(a.id)) continue;
+      const z = zaleznosci({ ja, ust: ZESPOL });
+      const r = await obsluz(post({ action: "uruchom", asystent: a.id, wejscie: WEJ }), z.d);
+      assertEquals([r.status, (await r.json()).kod], [403, "brak_dostepu"], `${nazwa} → ${a.id}`);
+      assertEquals([z.rows.length, z.wywolania.length, z.odczyty.length, z.tlo.length], [0, 0, 0, 0], `${nazwa} → ${a.id}`);
+    }
+  }
+  // the administrator-only actions
+  for (const ja of [J_KADRY, J_KSIEG, J_NIKT]) {
+    for (const body of [{ action: "ustawienia", ustawienia: { tryb: "zespol", testerzy: [ja.email], limity: { dziennie_osoba: 200, dziennie_razem: 500, koszt_dzien_usd: 100 }, retencja_dni: 30 } }, { action: "tlumacz_ru", id: WA }, { action: "czysc" }]) {
+      const z = zaleznosci({ ja, ust: ZESPOL, rows: [{ id: WA, created_at: new Date().toISOString(), kto: ja.email, status: "gotowe", wynik: { odpowiedz: "x" } }] });
+      const r = await obsluz(post(body), z.d);
+      assertEquals([r.status, (await r.json()).kod], [403, "nie_admin"], `${ja.email} / ${body.action}`);
+      assertEquals([z.rows.length, z.wywolania.length], [1, 0]);
+      assertEquals(normalizujUstawienia(await z.d.baza.ustawienia()).limity.dziennie_osoba, 40);
+    }
+  }
+});
+
+Deno.test("tryb zespołu — narzędzie spoza zakresu osoby odmawia („Brak dostępu…”) i niczego nie czyta; dozwolone czyta tylko dozwolone tabele", async () => {
+  for (const [nazwa, ja] of OSOBY) {
+    const kto = ktoZ(ja);
+    for (const n of NARZEDZIA) {
+      const s = sklepZespolu();
+      const r = await wykonaj(n.name, ARG_B[n.name], WSZYSTKIE, ctxS(null, kto), s.store);
+      if (!NARZ[nazwa].includes(n.name)) {
+        assert(r.blad, `${nazwa} / ${n.name} powinno odmówić`);
+        assertStringIncludes(r.tresc, "Brak dostępu", `${nazwa} / ${n.name}`);
+        assertStringIncludes(r.tresc, n.dostep.admin ? "administratora" : "działu", `${nazwa} / ${n.name}`);
+        assertEquals(s.odczyty, [], `${nazwa} / ${n.name}: odczytano mimo odmowy`);
+        for (const t of ["BETA", "Betowski", "Alfowska", "TEMAT-", "ZGL-", "ZADANIE-", "uwaga ", "Testowa Katarzyna"]) assertFalse(r.tresc.includes(t), `${nazwa} / ${n.name} ujawnia „${t}”`);
+        continue;
+      }
+      assertFalse(r.blad, `${nazwa} / ${n.name}: ${r.tresc.slice(0, 200)}`);
+      // every table an allowed tool touched is one this person has in the portal
+      for (const m of s.odczyty) assert(spelnia(kto, (MAGAZYN as Any)[m]), `${nazwa} / ${n.name} czyta „${m}” spoza zakresu`);
+    }
+  }
+});
+
+Deno.test("tryb zespołu — narzędzia mieszane pokazują tylko część należną osobie (poczta, zgłoszenia, zadania, umowy z biurem, grupy z rejestru Kadr)", async () => {
+  const uruchom = async (ja: Ja, nazwa: string, arg: Any) => { const s = sklepZespolu(); const r = await wykonaj(nazwa, arg, WSZYSTKIE, ctxS(null, ktoZ(ja)), s.store); return { ...r, odczyty: s.odczyty }; };
+  // mail: a mailbox by its section; an unknown mailbox for nobody but the administrator
+  let r = await uruchom(J_KADRY, "poczta_lista", { tylko_wymagajace: false });
+  assertStringIncludes(r.tresc, "TEMAT-KADRY"); assertFalse(r.tresc.includes("TEMAT-KSIEGOWOSC")); assertFalse(r.tresc.includes("TEMAT-NIEZNANA"));
+  r = await uruchom(J_KSIEG, "poczta_lista", { tylko_wymagajace: false });
+  assertStringIncludes(r.tresc, "TEMAT-KSIEGOWOSC"); assertFalse(r.tresc.includes("TEMAT-KADRY")); assertFalse(r.tresc.includes("TEMAT-NIEZNANA"));
+  r = await uruchom(SZEF, "poczta_lista", { tylko_wymagajace: false });
+  for (const t of ["TEMAT-KADRY", "TEMAT-KSIEGOWOSC", "TEMAT-NIEZNANA"]) assertStringIncludes(r.tresc, t);
+  r = await uruchom(J_KADRY, "poczta_wiadomosc", { id: MSG_KS });
+  assertStringIncludes(r.tresc, '"znaleziono":false'); assertFalse(r.tresc.includes("TEMAT-")); assertFalse(r.tresc.includes("BETA"));
+  r = await uruchom(J_KSIEG, "poczta_wiadomosc", { id: MSG });
+  assertStringIncludes(r.tresc, '"znaleziono":false'); assertFalse(r.tresc.includes("TEMAT-"));
+  assertStringIncludes((await uruchom(J_KADRY, "poczta_wiadomosc", { id: MSG })).tresc, "TEMAT-KADRY");
+  // clients' requests by category
+  r = await uruchom(J_KADRY, "zgloszenia_klientow", { nip: null, tylko_otwarte: false });
+  assertEquals(["ZGL-KADRY", "ZGL-KSIEGOWOSC", "ZGL-INNE", "ZGL-NIEZNANA"].map((t) => r.tresc.includes(t)), [true, false, true, false]);
+  r = await uruchom(J_KSIEG, "zgloszenia_klientow", { nip: null, tylko_otwarte: false });
+  assertEquals(["ZGL-KADRY", "ZGL-KSIEGOWOSC", "ZGL-INNE", "ZGL-NIEZNANA"].map((t) => r.tresc.includes(t)), [false, true, true, false]);
+  // tasks: one's own only; the administrator sees the team
+  for (const [ja, widzi] of [[J_KADRY, [true, false, false]], [J_KSIEG, [false, true, false]], [J_NIKT, [false, false, false]], [SZEF, [true, true, true]]] as [Ja, boolean[]][]) {
+    r = await uruchom(ja, "zadania_przeglad", { osoba: null });
+    assertEquals(["ZADANIE-KADROWEJ", "ZADANIE-KSIEGOWEJ", "ZADANIE-SZEFA"].map((t) => r.tresc.includes(t)), widzi, ja.email);
+    r = await uruchom(ja, "zadania_przeglad", { osoba: "szef@test.pl" }); // asking for somebody else by name changes nothing
+    assertEquals(r.tresc.includes("ZADANIE-SZEFA"), ja.admin, ja.email);
+  }
+  // the client's card and the onboarding list: contracts with the office and profile accounts are not even read
+  for (const ja of [J_KADRY, J_KSIEG, J_NIKT]) {
+    r = await uruchom(ja, "klient_karta", { nip: A });
+    assertStringIncludes(r.tresc, "FIRMA-ALFA"); assertStringIncludes(r.tresc, "pominieto");
+    for (const t of ["audyt_umow", "profil_klienta", "UMOWA-Z-BIUREM"]) assertFalse(r.tresc.includes(t), `${ja.email}: ${t}`);
+    assertFalse(r.odczyty.includes("umowy") || r.odczyty.includes("konta"), ja.email);
+  }
+  r = await uruchom(SZEF, "klient_karta", { nip: A });
+  assertStringIncludes(r.tresc, "audyt_umow"); assertStringIncludes(r.tresc, "profil_klienta");
+  r = await uruchom(J_KSIEG, "braki_onboardingu", { nip: A });
+  assertFalse(r.blad); assertStringIncludes(r.tresc, "pominieto"); assertStringIncludes(r.tresc, "grupa Telegram");
+  assertFalse(r.tresc.includes("umowy: ")); assertFalse(r.tresc.includes("konto w profilu klienta\"")); assertFalse(r.odczyty.includes("umowy") || r.odczyty.includes("konta"));
+  r = await uruchom(SZEF, "braki_onboardingu", { nip: A });
+  assertStringIncludes(r.tresc, "umowy: "); assertStringIncludes(r.tresc, "konto w profilu klienta");
+  // groups of clients: the ones counted from the Kadry register only with Kadry
+  r = await uruchom(J_KSIEG, "grupy_klientow", { pokaz_grupe: "z_cudzoziemcami" });
+  assertFalse(r.blad); assertFalse(r.odczyty.includes("pracownicy"));
+  for (const t of ["\"z_cudzoziemcami\":", "z_pracownikami_w_rejestrze", "ze_zleceniami", "cudzoziemcow", "osob_zatrudnionych"]) assertFalse(r.tresc.includes(t), t);
+  assertStringIncludes(r.tresc, "Brak dostępu do danych działu Kadry"); assertStringIncludes(r.tresc, "obsluga_ksiegowa");
+  r = await uruchom(J_KADRY, "grupy_klientow", { pokaz_grupe: "z_cudzoziemcami" });
+  assertStringIncludes(r.tresc, "\"z_cudzoziemcami\":2"); assertStringIncludes(r.tresc, "\"cudzoziemcow\":2");
+  // accounting: the closing of the month never for Kadry, the Kadry register never for Księgowość — whatever arguments
+  for (const arg of [{ okres: "2026-09", nip: null, opiekun: null }, { okres: "2026-09", nip: A, opiekun: null }]) { r = await uruchom(J_KADRY, "zamkniecie_miesiaca", arg); assert(r.blad); assertStringIncludes(r.tresc, "Księgowość"); assertEquals(r.odczyty, []); }
+  for (const [n, arg] of [["pracownicy_firmy", { nip: A, tylko_wygasajace_dni: null }], ["pracownik_karta", { id: WA }], ["akta_inwentarz", { nip: A, worker_id: WA }], ["podpisy_pakiety", { nip: null, tylko_otwarte: false }]] as [string, Any][]) {
+    r = await uruchom(J_KSIEG, n, arg); assert(r.blad, n); assertStringIncludes(r.tresc, "Kadry"); assertEquals(r.odczyty, [], n); assertFalse(r.tresc.includes("Alfowska"));
+  }
+});
+
+Deno.test("tryb zespołu — zawężony magazyn: metoda spoza zakresu rzuca przed odczytem; metoda niesklasyfikowana tylko dla administratora", async () => {
+  const ARG: Record<string, unknown[]> = { pracownicy: [null], pracownik: [WA], zamkniecia: ["2026-09"], pocztaJedna: [MSG], pakiety: [null], dokumentyPakietow: [["p-a"]], zgloszenia: [null], akta: [null], umowy: [null], rejestr: [A], sms: ["2026-10-01"], rozsylki: ["2026-10-01"], automat: ["2026-10-01"], powiadomienia: ["2026-10-01"], aktEli: ["DU/2026/734"] };
+  for (const [nazwa, ja] of OSOBY) {
+    const kto = ktoZ(ja);
+    for (const m of Object.keys(MAGAZYN)) {
+      const s = sklepZespolu(), o = ograniczStore(s.store, kto) as Any;
+      const wolno = spelnia(kto, (MAGAZYN as Any)[m]);
+      let rzucil = false;
+      try { await o[m](...(ARG[m] ?? [])); } catch (e) { rzucil = true; assertStringIncludes(String((e as Error).message), "Brak dostępu"); }
+      assertEquals(rzucil, !wolno, `${nazwa} / ${m}`);
+      assertEquals(s.odczyty.length, wolno ? 1 : 0, `${nazwa} / ${m}`);
+    }
+    // a method added to the store later and not classified
+    const s = sklepZespolu();
+    (s.store as Any).wynagrodzenia = () => { s.odczyty.push("wynagrodzenia"); return Promise.resolve([{ kwota: 1 }]); };
+    const o = ograniczStore(s.store, kto) as Any;
+    let rzucil = false;
+    try { await o.wynagrodzenia(); } catch { rzucil = true; }
+    assertEquals([rzucil, s.odczyty.length], ja.admin ? [false, 1] : [true, 0], nazwa);
+    assertFalse(Object.keys(o).some((k) => /zapisz|usun|zmien|wyslij|utworz|insert|update|delete|post|patch|put/i.test(k)));
+  }
+  // tables by department
+  assertEquals(["pracownicy", "pracownik", "akta", "pakiety", "dokumentyPakietow"].map((m) => (MAGAZYN as Any)[m]), Array(5).fill({ sekcje: ["kadry"] }));
+  assertEquals(MAGAZYN.zamkniecia, { sekcje: ["onboarding"] });
+  for (const m of ["umowy", "sms", "rozsylki", "zespol", "konta"]) assertEquals((MAGAZYN as Any)[m], { admin: true }, m);
+});
+
+Deno.test("tryb zespołu — słowniki strony i wiadomość z poczty: tylko zakres osoby", async () => {
+  const z1 = (ja: Ja) => { const s = sklepZespolu(); return { ...zaleznosci({ ja, ust: ZESPOL, store: s.store }), odczyty: s.odczyty }; };
+  let z = z1(J_KSIEG);
+  let r = await obsluz(post({ action: "slownik", co: "pracownicy", nip: A }), z.d);
+  assertEquals([r.status, (await r.json()).kod, z.odczyty.length], [403, "brak_dostepu", 0]);
+  r = await obsluz(post({ action: "slownik", co: "wiadomosci" }), z.d);
+  assertEquals((await r.json()).wiadomosci.map((m: Any) => m.temat), ["TEMAT-KSIEGOWOSC"]);
+  z = z1(J_KADRY);
+  r = await obsluz(post({ action: "slownik", co: "wiadomosci" }), z.d);
+  assertEquals((await r.json()).wiadomosci.map((m: Any) => m.temat), ["TEMAT-KADRY"]);
+  r = await obsluz(post({ action: "slownik", co: "pracownicy", nip: A }), z.d);
+  assertEquals((await r.json()).pracownicy.map((p: Any) => p.nazwa), ["Anna Alfowska"]);
+  z = z1(J_NIKT);
+  r = await obsluz(post({ action: "slownik", co: "wiadomosci" }), z.d);
+  assertEquals(r.status, 403);
+  assertEquals((await obsluz(post({ action: "slownik", co: "klienci" }), z.d)).status, 200);
+  assertEquals((await obsluz(post({ action: "slownik", co: "akty" }), z.d)).status, 200);
+  // the mail secretary with a message from a mailbox the person does not have: no run
+  z = z1(J_KADRY);
+  r = await obsluz(post({ action: "uruchom", asystent: "sekretarz_poczty", wejscie: { wiadomosc_id: MSG_KS } }), z.d);
+  assertEquals([r.status, z.rows.length, z.wywolania.length], [404, 0, 0]);
+  r = await obsluz(post({ action: "uruchom", asystent: "sekretarz_poczty", wejscie: { wiadomosc_id: MSG } }), z.d);
+  assertEquals(r.status, 202);
+  await Promise.all(z.tlo);
+  assertStringIncludes(wszystkoDoModelu(z.wywolania), "TEMAT-KADRY");
+});
+
+Deno.test("tryb zespołu — przebiegi, oceny, pliki i historia: każdy tylko swoje; koszty i zapis tylko dla administratora", async () => {
+  const teraz = new Date().toISOString();
+  const R1 = "11111111-1111-4111-8111-111111111111", R2 = "22222222-2222-4222-8222-222222222222";
+  const wiersze = () => [
+    { id: R1, created_at: teraz, kto: "kadry@test.pl", asystent: "zapytaj_portal", tryb: "staff", model: MODEL_GLOWNY, status: "gotowe", wynik: { odpowiedz: "ODPOWIEDZ-KADROWEJ" }, zapis: { wiadomosc: "ZAPIS-KADROWEJ", narzedzia: [] }, koszt_usd: 0.11, tokeny_we: 100, tokeny_wy: 10, pliki: [R1 + "/1.pdf"], kontekst: { nip: A } },
+    { id: R2, created_at: teraz, kto: "ksiegowa@test.pl", asystent: "zamkniecie_miesiaca", tryb: "staff", model: MODEL_GLOWNY, status: "gotowe", wynik: { odpowiedz: "ODPOWIEDZ-KSIEGOWEJ" }, zapis: { wiadomosc: "ZAPIS-KSIEGOWEJ", narzedzia: [] }, koszt_usd: 0.22, tokeny_we: 200, tokeny_wy: 20, pliki: [R2 + "/1.pdf"], kontekst: { okres: "2026-09" } },
+  ];
+  // the Kadry person: own run without costs and without the record; the other one does not exist
+  let z = zaleznosci({ ja: J_KADRY, ust: ZESPOL, rows: wiersze() });
+  let r = await obsluz(post({ action: "stan", id: R1 }), z.d);
+  let p = (await r.json()).przebieg;
+  assertEquals([r.status, p.wynik.odpowiedz, p.zapis, p.koszt_usd, p.tokeny_we, p.model], [200, "ODPOWIEDZ-KADROWEJ", undefined, undefined, undefined, undefined]);
+  for (const action of ["stan", "wynik", "plik", "ocena", "czysc"]) {
+    r = await obsluz(post({ action, id: R2, ocena: 1 }), z.d);
+    assertEquals(r.status, 404, action);
+    assertFalse(JSON.stringify(await r.json()).includes("KSIEGOWEJ"), action);
+  }
+  assertEquals([z.rows.length, z.rows[1].ocena], [2, undefined]);
+  r = await obsluz(post({ action: "historia", dni: 30 }), z.d);
+  let h = await r.json();
+  assertEquals([h.przebiegi.map((x: Any) => x.id), h.dni], [[R1], []]);
+  assertEquals([h.przebiegi[0].koszt_usd, h.przebiegi[0].tokeny_we, h.przebiegi[0].model], [undefined, undefined, undefined]);
+  assertFalse(JSON.stringify(h).includes("ksiegowa@test.pl"));
+  assertEquals((await obsluz(post({ action: "plik", id: R1 }), z.d)).status, 200);
+  assertEquals((await obsluz(post({ action: "ocena", id: R1, ocena: 1 }), z.d)).status, 200);
+  assertEquals((await obsluz(post({ action: "czysc", id: R1 }), z.d)).status, 200); // one's own run may be removed
+  assertEquals(z.rows.map((x) => x.id), [R2]);
+  // the administrator sees everybody's runs with costs
+  z = zaleznosci({ ja: SZEF, ust: ZESPOL, rows: wiersze() });
+  p = (await (await obsluz(post({ action: "stan", id: R2 }), z.d)).json()).przebieg;
+  assertEquals([p.zapis.wiadomosc, p.koszt_usd], ["ZAPIS-KSIEGOWEJ", 0.22]);
+  h = await (await obsluz(post({ action: "historia", dni: 30 }), z.d)).json();
+  assertEquals([h.przebiegi.length, h.dni[0].przebiegow, h.dni[0].koszt_usd], [2, 2, 0.33]);
+  assertEquals((await obsluz(post({ action: "plik", id: R1 }), z.d)).status, 200);
+});
+
+Deno.test("tryb zespołu — pełny przebieg „Zapytaj portal” kadrowej: model nie dostaje narzędzi ani danych księgowości, zespołu i administratora", async () => {
+  const s = sklepZespolu();
+  let runda = 0;
+  const widziane: Zapytanie[] = [];
+  const model: Model = { wywolaj: (zap) => {
+    widziane.push(structuredClone(zap));
+    runda++;
+    if (runda === 1) return Promise.resolve(narz([["zamkniecie_miesiaca", { okres: "2026-09", nip: null, opiekun: null }], ["przeglad_biura", {}], ["zespol", {}], ["komunikacja_statystyki", { dni: 7 }], ["pracownicy_firmy", { nip: A, tylko_wygasajace_dni: null }], ["rachunki_do_wplat", { nip: A }]]));
+    return Promise.resolve(odp({ odpowiedz: "Gotowe.", zrodla: [{ rodzaj: "dane_portalu", id: "pracownicy_firmy", opis: "" }, { rodzaj: "dane_portalu", id: "przeglad_biura", opis: "" }], nie_znaleziono: ["brak dostępu do danych Księgowości"], wymaga_czlowieka: false }));
+  } };
+  const z = zaleznosci({ ja: J_KADRY, ust: { ...ZESPOL, ru_auto: true }, store: s.store, model });
+  const r = await obsluz(post({ action: "uruchom", asystent: "zapytaj_portal", wejscie: { tekst: "Pokaż zamknięcie miesiąca, zespół i statystyki SMS", nip: A } }), z.d);
+  assertEquals(r.status, 202);
+  await Promise.all(z.tlo);
+  const oferowane = widziane[0].tools.map((t) => t.name).sort();
+  assertEquals(oferowane, NARZ["kadry"].filter((n) => asystent("zapytaj_portal")!.narzedzia.includes(n)).sort());
+  for (const n of ["zamkniecie_miesiaca", "przeglad_biura", "zespol", "komunikacja_statystyki", "rachunki_do_wplat", "braki_onboardingu"]) assertFalse(oferowane.includes(n), n);
+  const doModelu = wszystkoDoModelu(widziane);
+  assertStringIncludes(doModelu, "Alfowska");                                   // her own department's data is there
+  assertStringIncludes(doModelu, "Brak dostępu do danych działu Księgowość");
+  assertStringIncludes(doModelu, "tylko dla administratora portalu");
+  for (const t of ["uwaga ALFA", "uwaga BETA", "Testowa Katarzyna", "tajna tresc", "audyt_umow", "UMOWA-Z-BIUREM", "{{MIKRORACHUNEK:" + A, "ZADANIE-SZEFA", "TEMAT-KSIEGOWOSC", ...TAJNE]) assertFalse(doModelu.includes(t), `do modelu trafiło „${t}”`);
+  for (const m of s.odczyty) assert(spelnia(ktoZ(J_KADRY), (MAGAZYN as Any)[m]), "odczyt spoza zakresu: " + m);
+  const w = z.rows[0];
+  assertEquals([w.status, w.kto, w.tlumaczenie_ru], ["gotowe", "kadry@test.pl", null]);      // the Russian rendering (a paid call) is the administrator's
+  assertEquals(w.wynik.zrodla.map((x: Any) => x.id), ["pracownicy_firmy"]);                  // a refused tool is not a source
+  assertEquals(widziane.length, 2);
+  assertFalse(widziane[0].system.includes("TRYBIE TESTOWYM"));
+});
+
+Deno.test("tryb zespołu — limity dzienne i limit kosztu obowiązują każdego", async () => {
+  const dzis = new Date().toISOString();
+  const moje = (n: number, koszt = 0) => Array.from({ length: n }, (_, i) => ({ id: "m" + i, created_at: dzis, kto: "kadry@test.pl", status: "gotowe", koszt_usd: koszt }));
+  const proba = async (ust: Any, rows: Any[], limit = true) => { const z = zaleznosci({ ja: J_KADRY, ust: { ...ZESPOL, ...ust }, rows, limit }); const r = await obsluz(post({ action: "uruchom", asystent: "zapytaj_portal", wejscie: { tekst: "pytanie" } }), z.d); return [r.status, (await r.json()).kod, z.wywolania.length]; };
+  assertEquals(await proba({ limity: { dziennie_osoba: 2, dziennie_razem: 80, koszt_dzien_usd: 5 } }, moje(2)), [429, "limit_osoba", 0]);
+  assertEquals(await proba({ limity: { dziennie_osoba: 40, dziennie_razem: 3, koszt_dzien_usd: 5 } }, [...moje(1), { id: "a", created_at: dzis, kto: "x@test.pl", status: "gotowe" }, { id: "b", created_at: dzis, kto: "y@test.pl", status: "gotowe" }]), [429, "limit_razem", 0]);
+  assertEquals(await proba({ limity: { dziennie_osoba: 40, dziennie_razem: 80, koszt_dzien_usd: 1 } }, [{ id: "a", created_at: dzis, kto: "szef@test.pl", status: "gotowe", koszt_usd: 1.5 }]), [429, "limit_koszt", 0]);
+  assertEquals(await proba({}, [], false), [429, "limit_licznik", 0]);
+  assertEquals(await proba({ wylaczone: ["zapytaj_portal"] }, []), [409, "wylaczony", 0]);
+  const z = zaleznosci({ ja: J_KADRY, ust: { ...ZESPOL, limity: { dziennie_osoba: 2, dziennie_razem: 80, koszt_dzien_usd: 5 } }, rows: moje(2) });
+  assertEquals((await (await obsluz(post({ action: "lista" }), z.d)).json()).limit.pozostalo, 0);
+});
+
+Deno.test("ustawienia: tryb zapisuje tylko administrator; formularz bez trybu (starsza strona) go nie zmienia; zły tryb odrzucony", async () => {
+  const ids = ASYSTENCI.map((a) => a.id);
+  const f = { testerzy: ["szef@test.pl"], limity: { dziennie_osoba: 5, dziennie_razem: 10, koszt_dzien_usd: 2 }, retencja_dni: 14 };
+  assertEquals(walidujUstawienia(f, SZEF, ids, normalizujUstawienia(ZESPOL)).ust?.tryb, "zespol");
+  assertEquals(walidujUstawienia(f, SZEF, ids).ust?.tryb, "test");
+  assertEquals(walidujUstawienia({ ...f, tryb: "test" }, SZEF, ids, normalizujUstawienia(ZESPOL)).ust?.tryb, "test");
+  assertEquals(walidujUstawienia({ ...f, tryb: "zespol" }, SZEF, ids).ust?.tryb, "zespol");
+  assert(walidujUstawienia({ ...f, tryb: "wszyscy" }, SZEF, ids).bledy.length > 0);
+  const z = zaleznosci({ ust: ZESPOL });
+  assertEquals((await obsluz(post({ action: "ustawienia", ustawienia: f }), z.d)).status, 200);
+  assertEquals((await z.d.baza.ustawienia()).tryb, "zespol");
+  assertEquals((await obsluz(post({ action: "ustawienia", ustawienia: { ...f, tryb: "test" } }), z.d)).status, 200);
+  assertEquals(bramka(J_KADRY, normalizujUstawienia(await z.d.baza.ustawienia()))?.kod, "nie_admin"); // back to the test mode: staff are out again
+});
+
+Deno.test("uruchom równolegle i usuwanie w toku: drugie jednoczesne uruchomienie ustępuje; przebiegu w toku nie da się usunąć; ścieżki plików zapisane od razu", async () => {
+  // two requests at the same moment: the first read shows nothing running, the row of the other request appears after ours is written
+  const INNY = "33333333-3333-4333-8333-333333333333";
+  let z = zaleznosci({ ja: J_KADRY, ust: ZESPOL });
+  const ostatnie = z.d.baza.ostatnie;
+  let odczyt = 0;
+  z.d.baza.ostatnie = async (od) => { if (++odczyt === 2) z.rows.push({ id: INNY, created_at: new Date().toISOString(), kto: "kadry@test.pl", status: "w_toku" }); return await ostatnie(od); };
+  let r = await obsluz(post({ action: "uruchom", asystent: "zapytaj_portal", wejscie: { tekst: "Ilu mamy klientów?" } }), z.d);
+  assertEquals([r.status, (await r.json()).kod, z.wywolania.length, z.tlo.length, z.rows.map((x) => x.id)], [409, "w_toku", 0, 0, [INNY]]);
+  // a run in progress cannot be removed — neither by its owner nor by the administrator
+  for (const ja of [J_KADRY, SZEF]) {
+    z = zaleznosci({ ja, ust: ZESPOL, rows: [{ id: INNY, created_at: new Date().toISOString(), kto: "kadry@test.pl", status: "w_toku" }] });
+    r = await obsluz(post({ action: "czysc", id: INNY }), z.d);
+    assertEquals([r.status, (await r.json()).kod, z.rows.length], [409, "w_toku", 1]);
+  }
+  // kept files: their paths are on the row before the model is called
+  let przed: unknown = null;
+  const zz = zaleznosci({ ja: J_KADRY, ust: ZESPOL, model: { wywolaj: () => { przed = structuredClone(zz.rows[0].pliki); return Promise.resolve(odp({ odpowiedz: "Gotowe.", zrodla: [], nie_znaleziono: [], wymaga_czlowieka: false })); } } });
+  r = await obsluz(post({ action: "uruchom", asystent: "kontroler_dokumentow", wejscie: { tekst: "umowa zlecenia testowa" }, pliki: [{ nazwa: "t.pdf", data: btoa("%PDF-1.4 test ") }], zachowaj_plik: true }), zz.d);
+  assertEquals(r.status, 202);
+  await Promise.all(zz.tlo);
+  assertEquals(przed, [zz.rows[0].id + "/1.pdf"]);
 });

@@ -1,7 +1,7 @@
 // Asystenci AI — the 14 definitions: who it is for, what it reads, its form, its tools, the shape of
 // its answer and its instruction. An assistant PREPARES; a person decides. None of them can act.
 
-import { type Any, digits, isDate, type Jezyk, JEZYK_NAZWA, type Ksztalt, niezaufane, okNip, okOkres, okresPlus, okUuid, type Plik } from "./logic.ts";
+import { type Any, digits, isDate, type Jezyk, JEZYK_NAZWA, type Ksztalt, type Kto, niezaufane, okNip, okOkres, okresPlus, okUuid, type Plik, spelnia, type Wymog } from "./logic.ts";
 import { MODEL_GLOWNY, MODEL_SZYBKI } from "./modele.ts";
 import type { Ctx, Store } from "./narzedzia.ts";
 
@@ -17,6 +17,9 @@ export type Uzyj = (nazwa: string, argumenty: Record<string, unknown>) => Promis
 export type Asystent = {
   id: string; nr: number; nazwa: string; odbiorca: "staff" | "klient"; opis: string; czyta: string;
   model: string; effort: "low" | "medium" | "high";
+  // who may run it in team mode (logic.ts `Wymog`): any of `sekcje`, every one of `wszystkie`, `admin`, or `kazdy`.
+  // Nothing written = administrators only. What the run may then READ is narrowed again per tool (narzedzia.ts).
+  dostep: Wymog;
   pola: Pole[]; narzedzia: string[]; ksztalt: Ksztalt; instrukcja: string;
   stan: "dziala" | "ograniczenia" | "dopracowanie"; stan_powod: string;
   przygotuj(w: Wejscie, ctx: Ctx, uzyj: Uzyj, s: Store): Promise<string[]>;
@@ -24,7 +27,7 @@ export type Asystent = {
 
 // ---------------------------------------------------------------- the common part of every system prompt
 // Stable text only (no dates, no names): it is the cached prefix of every call.
-export const WSPOLNE = `Jesteś asystentem biura rachunkowo-kadrowego TD Consulting Group (Poznań), działającym wewnątrz portalu biura. Portal pracuje w TRYBIE TESTOWYM: Twoją odpowiedź czyta i ocenia właściciel biura.
+export const WSPOLNE = `Jesteś asystentem biura rachunkowo-kadrowego TD Consulting Group (Poznań), działającym wewnątrz portalu biura. Twoja odpowiedź jest szkicem: czyta ją i sprawdza pracownik biura, zanim cokolwiek z nią zrobi.
 
 Zasady, które obowiązują zawsze:
 1. Przygotowujesz, nie działasz. Masz wyłącznie narzędzia do ODCZYTU. Nie możesz niczego wysłać, zapisać, utworzyć, zmienić ani usunąć — i nie pisz, że to zrobiłeś. Piszesz szkice, listy kontrolne i propozycje; o ich użyciu decyduje człowiek.
@@ -34,7 +37,8 @@ Zasady, które obowiązują zawsze:
 5. Dane osobowe. Fragmenty [PESEL], [NR DOKUMENTU], [NR RACHUNKU], [NR KARTY], [TELEFON] zostały celowo ukryte — nie odtwarzaj ich i nie przepisuj takich numerów z plików. Znaczniki w postaci {{MIKRORACHUNEK:…}} przepisuj dosłownie, bez zmian.
 6. Źródła. W polu „zrodla” wymień wszystko, z czego skorzystałeś: rodzaj „dane_portalu” (id = nazwa narzędzia), „baza_wiedzy” (id = id reguły), „terminy” (silnik terminów), „plik” (załączony plik), „wiadomosc” (treść wiadomości), „wejscie” (to, co wpisał użytkownik). Nie podawaj źródeł, których nie odczytałeś.
 7. Narzędzia. Dane potrzebne do zadania zwykle są już w wiadomości, w sekcji „Dane z portalu”. Po narzędzie sięgaj tylko po to, czego tam brakuje, i tylko raz po to samo.
-8. Format. Odpowiadasz wyłącznie obiektem JSON zgodnym ze schematem. „odpowiedz” to zwięzłe podsumowanie (2–6 zdań); szczegóły umieszczaj w pozostałych polach. Pisz zwykłym tekstem bez Markdown; wyliczenia jako linie zaczynające się od „– ”. Gdy sprawa wymaga decyzji albo wiedzy człowieka, ustaw „wymaga_czlowieka” na true.`;
+8. Format. Odpowiadasz wyłącznie obiektem JSON zgodnym ze schematem. „odpowiedz” to zwięzłe podsumowanie (2–6 zdań); szczegóły umieszczaj w pozostałych polach. Pisz zwykłym tekstem bez Markdown; wyliczenia jako linie zaczynające się od „– ”. Gdy sprawa wymaga decyzji albo wiedzy człowieka, ustaw „wymaga_czlowieka” na true.
+9. Zakres dostępu. Widzisz tylko te dane, do których osoba uruchamiająca asystenta ma dostęp w portalu. Gdy narzędzie odpowie „Brak dostępu…” albo wynik zawiera pole „pominieto”, nie szukaj tych danych innym narzędziem i niczego nie zgaduj — wpisz w „nie_znaleziono”, do jakich danych użytkownik nie ma dostępu.`;
 
 export const DODATEK_STAFF = `Odbiorcą jest pracownik biura. Pisz po polsku; szkice wiadomości do klienta pisz w języku klienta podanym w danych (pl / ru / uk), w tonie biura: uprzejmie, konkretnie, krótko, bez żargonu, z podpisem „Zespół TD Consulting Group” (bez nazwiska).`;
 
@@ -100,7 +104,7 @@ const STRONY = `Strony portalu, do których możesz odsyłać (podawaj samą naz
 // ---------------------------------------------------------------- the assistants
 export const ASYSTENCI: Asystent[] = [
   {
-    id: "sekretarz_poczty", nr: 1, nazwa: "Sekretarz poczty", odbiorca: "staff", model: MODEL_GLOWNY, effort: "medium",
+    id: "sekretarz_poczty", nr: 1, nazwa: "Sekretarz poczty", odbiorca: "staff", dostep: { sekcje: ["kadry", "onboarding"] }, model: MODEL_GLOWNY, effort: "medium",
     opis: "Z wiadomości (z listy poczty albo wklejonej) przygotowuje szkic odpowiedzi w języku nadawcy, wypisuje brakujące dane i dokumenty, proponuje zadanie.",
     czyta: "fragment i rozbiór wiadomości z modułu Poczta (portal nie przechowuje pełnej treści), wklejony tekst, kartę rozpoznanego klienta, bazę wiedzy, terminy",
     pola: [
@@ -127,7 +131,7 @@ export const ASYSTENCI: Asystent[] = [
     },
   },
   {
-    id: "asystent_kadrowy", nr: 2, nazwa: "Asystent kadrowy", odbiorca: "staff", model: MODEL_GLOWNY, effort: "medium",
+    id: "asystent_kadrowy", nr: 2, nazwa: "Asystent kadrowy", odbiorca: "staff", dostep: { sekcje: ["kadry"] }, model: MODEL_GLOWNY, effort: "medium",
     opis: "a) Z wiadomości o zatrudnieniu buduje szkic danych zgłoszenia i listę braków. b) Kontrola kompletu przed wysyłką: dokument pobytowy a okres umowy, stawka a minimalna, wersja dwujęzyczna, zgłoszenia ZUS i urzędu pracy — lista ok / brak / nieznane z regułą z bazy wiedzy.",
     czyta: "kartę pracownika z rejestru Kadr (bez PESEL i numerów dokumentów), tabelę stawek minimalnych, reguły bazy wiedzy (Cudzoziemcy, ZUS, Wynagrodzenie), wklejoną wiadomość",
     pola: [
@@ -161,7 +165,7 @@ Wariant „zgloszenie”: z wklejonej wiadomości wypisz w sekcji „dane_zglosz
     },
   },
   {
-    id: "zamkniecie_miesiaca", nr: 3, nazwa: "Asystent zamknięcia miesiąca", odbiorca: "staff", model: MODEL_GLOWNY, effort: "medium",
+    id: "zamkniecie_miesiaca", nr: 3, nazwa: "Asystent zamknięcia miesiąca", odbiorca: "staff", dostep: { sekcje: ["onboarding"] }, model: MODEL_GLOWNY, effort: "medium",
     opis: "Poranna sprawa dla opiekuna: komu brakuje dokumentów i kroków zamknięcia, kto jest zaległy, jakie terminy ustawowe w tym tygodniu — i szkice przypomnień dla klientów w ich języku (bez kwot).",
     czyta: "stan kroków zamknięcia miesiąca (Księgowość), bazę klientów (opiekun, język), silnik terminów ustawowych",
     pola: [
@@ -180,7 +184,7 @@ Wariant „zgloszenie”: z wklejonej wiadomości wypisz w sekcji „dane_zglosz
     },
   },
   {
-    id: "kontroler_dokumentow", nr: 4, nazwa: "Kontroler dokumentów", odbiorca: "staff", model: MODEL_GLOWNY, effort: "medium",
+    id: "kontroler_dokumentow", nr: 4, nazwa: "Kontroler dokumentów", odbiorca: "staff", dostep: { sekcje: ["kadry"] }, model: MODEL_GLOWNY, effort: "medium",
     opis: "Sprawdza wgrany skan albo podpisany plik: czy to właściwy dokument, strony, daty, podpisy, czytelność. Dla pracownika podpowiada, czego brakuje w aktach — tylko według reguł z bazy wiedzy.",
     czyta: "wgrany plik (tylko na czas tego uruchomienia), opis oczekiwanego dokumentu, kartę pracownika i spis akt (rodzaje i części, bez treści), bazę wiedzy",
     pola: [
@@ -203,7 +207,7 @@ Wariant „zgloszenie”: z wklejonej wiadomości wypisz w sekcji „dane_zglosz
     },
   },
   {
-    id: "prawnik_obserwator", nr: 5, nazwa: "Prawnik-obserwator", odbiorca: "staff", model: MODEL_GLOWNY, effort: "medium",
+    id: "prawnik_obserwator", nr: 5, nazwa: "Prawnik-obserwator", odbiorca: "staff", dostep: { kazdy: true }, model: MODEL_GLOWNY, effort: "medium",
     opis: "Objaśnia odnotowaną zmianę aktu prawnego po polsku i po rosyjsku: co się zmieniło, których grup klientów dotyczy (policzone z danych), co zrobić i do kiedy; proponuje zadanie.",
     czyta: "wpis monitora prawa (akt, akty zmieniające, daty), metadane aktu z rejestru ELI (tytuł, daty), reguły bazy wiedzy oparte na tym akcie, grupy klientów policzone z bazy, wklejony opis zmiany",
     pola: [
@@ -227,7 +231,7 @@ Wariant „zgloszenie”: z wklejonej wiadomości wypisz w sekcji „dane_zglosz
     },
   },
   {
-    id: "asystent_legalizacji", nr: 6, nazwa: "Asystent legalizacji", odbiorca: "staff", model: MODEL_GLOWNY, effort: "medium",
+    id: "asystent_legalizacji", nr: 6, nazwa: "Asystent legalizacji", odbiorca: "staff", dostep: { wszystkie: ["legalizacja", "kadry"] }, model: MODEL_GLOWNY, effort: "medium",
     opis: "Dla pracownika-cudzoziemca: lista kontrolna dokumentów i terminów w sprawach pobytu i pracy — wyłącznie w zakresie zweryfikowanych reguł bazy wiedzy. Czego baza nie ma, tego asystent nie wymyśla.",
     czyta: "kartę pracownika (obywatelstwo, daty ważności dokumentów, umowa — bez numerów dokumentów), wszystkie reguły działu „Cudzoziemcy” bazy wiedzy",
     pola: [
@@ -249,7 +253,7 @@ Wariant „zgloszenie”: z wklejonej wiadomości wypisz w sekcji „dane_zglosz
     },
   },
   {
-    id: "asystent_onboardingu", nr: 7, nazwa: "Asystent onboardingu", odbiorca: "staff", model: MODEL_SZYBKI, effort: "medium",
+    id: "asystent_onboardingu", nr: 7, nazwa: "Asystent onboardingu", odbiorca: "staff", dostep: { sekcje: ["onboarding", "rejestracja"] }, model: MODEL_SZYBKI, effort: "medium",
     opis: "Dla firmy z bazy klientów: czego brakuje do kompletnej kartoteki (umowa, powierzenie, pełnomocnictwa, Telegram, dane rejestrowe, kontakty) i jakie są następne kroki.",
     czyta: "bazę klientów, audyt umów z biurem, dane rejestrowe (KRS / GUS), audyt grupy Telegram, konta profilu klienta — pozycje policzone przez portal",
     pola: [POLE_KLIENT(true)],
@@ -262,7 +266,7 @@ Wariant „zgloszenie”: z wklejonej wiadomości wypisz w sekcji „dane_zglosz
     },
   },
   {
-    id: "zapytaj_portal", nr: 8, nazwa: "Zapytaj portal", odbiorca: "staff", model: MODEL_GLOWNY, effort: "medium",
+    id: "zapytaj_portal", nr: 8, nazwa: "Zapytaj portal", odbiorca: "staff", dostep: { kazdy: true }, model: MODEL_GLOWNY, effort: "medium",
     opis: "Dowolne pytanie o dane portalu: klienci, pracownicy i ich dokumenty, zamknięcia, terminy, zadania, poczta, podpisy, baza wiedzy. Odpowiada ze źródłami i wskazuje stronę portalu; odmawia tego, czego narzędzia nie obejmują.",
     czyta: "to, o co zapyta — przez narzędzia odczytu (bez PESEL, numerów dokumentów, kont, telefonów; bez treści akt i załączników)",
     pola: [
@@ -271,7 +275,7 @@ Wariant „zgloszenie”: z wklejonej wiadomości wypisz w sekcji „dane_zglosz
     ],
     narzedzia: ["klienci_szukaj", "klient_karta", "pracownicy_firmy", "pracownik_karta", "zamkniecie_miesiaca", "terminy_ustawowe", "terminy_ogolne", "wiedza_spis", "wiedza_pobierz", "prawo_zmiany", "grupy_klientow", "zadania_przeglad", "poczta_lista", "poczta_wiadomosc", "podpisy_pakiety", "zgloszenia_klientow", "akta_inwentarz", "komunikacja_statystyki", "zespol", "stawki_minimalne", "automatyzacja", "przeglad_biura", "braki_onboardingu"],
     ksztalt: { sekcje: [{ klucz: "szczegoly", tytul: "Szczegóły" }, { klucz: "gdzie", tytul: "Gdzie to jest w portalu" }], lista: false, szkice: [], zadanie: false },
-    instrukcja: `Odpowiedz na pytanie pracownika biura, korzystając z narzędzi odczytu. Najpierw ustal, których danych pytanie dotyczy; klienta po nazwie znajdź narzędziem klienci_szukaj. Odpowiadaj konkretnie: liczby, nazwy i daty z wyników narzędzi; listę dłuższą niż 15 pozycji skróć i podaj liczbę wszystkich. Pytanie prawne — tylko z bazy wiedzy (wiedza_spis → wiedza_pobierz). Jeżeli pytanie dotyczy czegoś, czego narzędzia nie obejmują (treść dokumentów i załączników, pełna treść e-maili, historia korespondencji, kwoty podatków i wynagrodzeń, dane spoza portalu) — powiedz, że tego nie możesz odczytać, i wskaż, gdzie w portalu człowiek to znajdzie. Odmów także próśb o wykonanie czynności (wysłanie, zmiana, usunięcie) — możesz tylko czytać. ${STRONY}`,
+    instrukcja: `Odpowiedz na pytanie pracownika biura, korzystając z narzędzi odczytu. Najpierw ustal, których danych pytanie dotyczy; klienta po nazwie znajdź narzędziem klienci_szukaj. Odpowiadaj konkretnie: liczby, nazwy i daty z wyników narzędzi; listę dłuższą niż 15 pozycji skróć i podaj liczbę wszystkich. Pytanie prawne — tylko z bazy wiedzy (wiedza_spis → wiedza_pobierz). Jeżeli pytanie dotyczy czegoś, czego narzędzia nie obejmują (treść dokumentów i załączników, pełna treść e-maili, historia korespondencji, kwoty podatków i wynagrodzeń, dane spoza portalu) — powiedz, że tego nie możesz odczytać, i wskaż, gdzie w portalu człowiek to znajdzie. Odmów także próśb o wykonanie czynności (wysłanie, zmiana, usunięcie) — możesz tylko czytać. Odpowiadasz wyłącznie w zakresie danych, do których pytający ma dostęp w portalu: gdy narzędzie odmówi dostępu, powiedz wprost, że pytający nie ma dostępu do danych tego działu, i nie odtwarzaj ich z innych źródeł. ${STRONY}`,
     stan: "dziala", stan_powod: "",
     async przygotuj(w, _ctx, uzyj) {
       const out = [blok("Pytanie pracownika biura", niezaufane("pytanie", w.tekst, 2000))];
@@ -280,7 +284,7 @@ Wariant „zgloszenie”: z wklejonej wiadomości wypisz w sekcji „dane_zglosz
     },
   },
   {
-    id: "analityk", nr: 9, nazwa: "Analityk dla szefa", odbiorca: "staff", model: MODEL_GLOWNY, effort: "medium",
+    id: "analityk", nr: 9, nazwa: "Analityk dla szefa", odbiorca: "staff", dostep: { admin: true }, model: MODEL_GLOWNY, effort: "medium",
     opis: "Tygodniowe podsumowanie dla właściciela: obciążenie i zaległości osób, klienci z ryzykiem (zaległe zamknięcia, wygasające dokumenty, brak umowy), co zrobiła automatyzacja, anomalie. Liczby liczy portal, nie model.",
     czyta: "zestawienia policzone z bazy klientów, zadań, zamknięć, rejestru pracowników, audytu umów i Telegrama, dzienników automatyzacji, statystyk SMS / rozsyłek, profili zespołu (bez danych prywatnych)",
     pola: [],
@@ -298,7 +302,7 @@ Wariant „zgloszenie”: z wklejonej wiadomości wypisz w sekcji „dane_zglosz
     },
   },
   {
-    id: "konsjerz", nr: 10, nazwa: "Konsjerż klienta", odbiorca: "klient", model: MODEL_GLOWNY, effort: "low",
+    id: "konsjerz", nr: 10, nazwa: "Konsjerż klienta", odbiorca: "klient", dostep: { admin: true }, model: MODEL_GLOWNY, effort: "low",
     opis: "Odpowiada klientowi w jego języku na pytania o terminy, rachunki do wpłat, potrzebne dokumenty i stan jego spraw — tylko z danych tego klienta i bazy wiedzy. Przedstawia się jako automat; sprawy dla człowieka zamienia w szkic zgłoszenia do biura.",
     czyta: "wyłącznie dane wybranego klienta: kartę, pracowników (bez identyfikatorów), terminy ustawowe, stan zamknięcia, pakiety podpisów, zgłoszenia; bazę wiedzy",
     pola: [POLE_TESTUJ, { id: "tekst", typ: "tekst", etykieta: "Pytanie klienta", wymagane: true, podpowiedz: "np. Когда платить ZUS и на какой счёт платить налоги?", max: 2000 }],
@@ -311,7 +315,7 @@ Wariant „zgloszenie”: z wklejonej wiadomości wypisz w sekcji „dane_zglosz
     },
   },
   {
-    id: "przewodnik_zatrudnienia", nr: 11, nazwa: "Przewodnik zatrudnienia", odbiorca: "klient", model: MODEL_GLOWNY, effort: "low",
+    id: "przewodnik_zatrudnienia", nr: 11, nazwa: "Przewodnik zatrudnienia", odbiorca: "klient", dostep: { admin: true }, model: MODEL_GLOWNY, effort: "low",
     opis: "Krok po kroku: co klient musi dostarczyć, żeby zatrudnić pracownika (obywatel Polski / cudzoziemiec). Ze zdjęcia paszportu wypisuje, które pola dało się odczytać — niczego nie zgłasza.",
     czyta: "wariant (obywatel Polski / cudzoziemiec), opcjonalne zdjęcie dokumentu (tylko na czas uruchomienia), reguły bazy wiedzy o zatrudnianiu, kartę klienta",
     pola: [
@@ -335,7 +339,7 @@ Wariant „zgloszenie”: z wklejonej wiadomości wypisz w sekcji „dane_zglosz
     },
   },
   {
-    id: "przyjmowanie_dokumentow", nr: 12, nazwa: "Przyjmowanie dokumentów księgowych", odbiorca: "klient", model: MODEL_GLOWNY, effort: "low",
+    id: "przyjmowanie_dokumentow", nr: 12, nazwa: "Przyjmowanie dokumentów księgowych", odbiorca: "klient", dostep: { admin: true }, model: MODEL_GLOWNY, effort: "low",
     opis: "Ze zdjęć / PDF-ów faktur i paragonów: rodzaj, miesiąc, czytelność, duplikaty w paczce i to, czego w paczce za dany miesiąc nie widać (np. wyciąg bankowy). To lista — nic nie jest księgowane.",
     czyta: "wgrane pliki (tylko na czas uruchomienia), wskazany miesiąc, stan kroku „dokumenty od klienta” dla tego klienta",
     pola: [
@@ -352,7 +356,7 @@ Wariant „zgloszenie”: z wklejonej wiadomości wypisz w sekcji „dane_zglosz
     },
   },
   {
-    id: "tlumacz_objasniacz", nr: 13, nazwa: "Tłumacz-objaśniacz", odbiorca: "klient", model: MODEL_GLOWNY, effort: "medium",
+    id: "tlumacz_objasniacz", nr: 13, nazwa: "Tłumacz-objaśniacz", odbiorca: "klient", dostep: { admin: true }, model: MODEL_GLOWNY, effort: "medium",
     opis: "Pismo urzędowe (ZUS, urząd skarbowy, kontrahent) → tłumaczenie na język klienta i objaśnienie prostymi słowami: co to jest, czy pilne, co zrobić, termin — tylko jeśli jest w piśmie. Z zastrzeżeniem, że to nie tłumaczenie przysięgłe ani porada prawna.",
     czyta: "wgrane pismo albo wklejony tekst (tylko na czas uruchomienia), język klienta z bazy",
     pola: [
@@ -372,7 +376,7 @@ Wariant „zgloszenie”: z wklejonej wiadomości wypisz w sekcji „dane_zglosz
     },
   },
   {
-    id: "przypominacz", nr: 14, nazwa: "Przypominacz", odbiorca: "klient", model: MODEL_GLOWNY, effort: "low", // texts that may go to a client: the fast model made spelling slips in Russian
+    id: "przypominacz", nr: 14, nazwa: "Przypominacz", odbiorca: "klient", dostep: { admin: true }, model: MODEL_GLOWNY, effort: "low", // texts that may go to a client: the fast model made spelling slips in Russian
     opis: "O czym przypomnieć temu klientowi w tym tygodniu: jego terminy, wygasające dokumenty pracowników, na co czeka biuro — jako gotowe krótkie wiadomości do bota, SMS i e-mail w języku klienta (same szkice).",
     czyta: "policzone przez portal: terminy ustawowe klienta na 10 dni (bez kwot), dokumenty i umowy pracowników kończące się w 60 dni, brakujące dokumenty księgowe, dokumenty do podpisu",
     pola: [POLE_TESTUJ],
@@ -387,6 +391,8 @@ Wariant „zgloszenie”: z wklejonej wiadomości wypisz w sekcji „dane_zglosz
 ];
 
 export const asystent = (id: unknown) => ASYSTENCI.find((a) => a.id === id) ?? null;
+// May this person run this assistant? (the client-facing ones stay with the administrator while they are tested)
+export const mozeAsystent = (a: Pick<Asystent, "dostep"> | { dostep?: Wymog }, kto: Kto | null | undefined) => spelnia(kto, a?.dostep);
 
 // ---------------------------------------------------------------- the form the page sent -> a checked input
 export function walidujWejscie(a: Asystent, raw: Any, pliki: Plik[], dzis: string): { wejscie?: Wejscie; blad?: string } {
@@ -418,5 +424,5 @@ export function walidujWejscie(a: Asystent, raw: Any, pliki: Plik[], dzis: strin
 
 // what a card on the page needs (no instruction text, no tool internals)
 export function publiczne(a: Asystent) {
-  return { id: a.id, nr: a.nr, nazwa: a.nazwa, odbiorca: a.odbiorca, opis: a.opis, czyta: a.czyta, model: a.model, pola: a.pola, narzedzia: a.narzedzia, ksztalt: a.ksztalt, stan: a.stan, stan_powod: a.stan_powod };
+  return { id: a.id, nr: a.nr, nazwa: a.nazwa, odbiorca: a.odbiorca, dostep: a.dostep, opis: a.opis, czyta: a.czyta, model: a.model, pola: a.pola, narzedzia: a.narzedzia, ksztalt: a.ksztalt, stan: a.stan, stan_powod: a.stan_powod };
 }

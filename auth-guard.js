@@ -34,7 +34,7 @@
     'onboarding.html': 'onboarding', 'ksiegowosc.html': 'onboarding', 'terminy-ksiegowe.html': 'onboarding', 'narzedzia-ksiegowe.html': 'onboarding',
     // a list = any of these sections is enough; '@admin' = administrators only
     'sms.html': ['kadry', 'onboarding'], 'rozsylka.html': ['kadry', 'onboarding'], 'poczta.html': ['kadry', 'onboarding'], 'zgloszenia-klientow.html': ['kadry', 'onboarding'],
-    'pulpit.html': '@admin', 'umowy.html': '@admin', 'asystenci.html': '@admin', 'zespol.html': '@admin', 'dostep.html': '@admin',
+    'pulpit.html': '@admin', 'umowy.html': '@admin', 'zespol.html': '@admin', 'dostep.html': '@admin',
   };
   function hasSection(user, section) {
     var m = (user && user.app_metadata) || {};

@@ -3,9 +3,9 @@
 
 import type Anthropic from "npm:@anthropic-ai/sdk@0.132.1";
 import { type Asystent, liniaJezyka, systemDla, type Uzyj, type Wejscie } from "./definicje.ts";
-import { type Any, dodaj, type Jezyk, kosztUsd, maskuj, nowySlad, schematWyniku, tokenyRazem, walidujWynik, wstawMikrorachunki, type Wynik, ZERO, type Zuzycie, zuzycieZ } from "./logic.ts";
+import { type Any, dodaj, type Jezyk, kosztUsd, maSekcje, maskuj, nowySlad, schematWyniku, tokenyRazem, walidujWynik, wstawMikrorachunki, type Wynik, ZERO, type Zuzycie, zuzycieZ } from "./logic.ts";
 import { BUDZET_MS, MAX_ITERACJI, MAX_NARZEDZI_W_RUNDZIE, MAX_TOKENOW_PRZEBIEGU, MODEL_SZYBKI, TIMEOUT_WYWOLANIA_MS } from "./modele.ts";
-import { type Ctx, definicjeDla, NARZEDZIA, type Store, wykonaj } from "./narzedzia.ts";
+import { type Ctx, definicjeDla, NARZEDZIA, ograniczStore, type Store, wykonaj } from "./narzedzia.ts";
 
 export type Zapytanie = {
   model: string; system: string; effort: "low" | "medium" | "high";
@@ -43,7 +43,7 @@ export async function przebieg(a: Asystent, w: Wejscie, ctx: Ctx, d: Zaleznosci)
   };
   await krok("Odczyt danych z portalu");
   let bloki: string[];
-  try { bloki = await a.przygotuj(w, ctx, uzyj, d.store); } catch { return koniec("blad", null, [], "Nie udało się odczytać danych z portalu."); }
+  try { bloki = await a.przygotuj(w, ctx, uzyj, ograniczStore(d.store, ctx.kto)); } catch { return koniec("blad", null, [], "Nie udało się odczytać danych z portalu."); }
   if (w.pliki.length) ctx.slad.pliki = w.pliki.length;
 
   // 2. the request: the stable system prompt is the cached prefix; everything that varies is in the user turn
@@ -63,7 +63,7 @@ export async function przebieg(a: Asystent, w: Wejscie, ctx: Ctx, d: Zaleznosci)
     { type: "text", text: tekst },
   ];
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: tresc }];
-  const zap: Zapytanie = { model: d.modelId, system: systemDla(a), effort: a.effort, tools: definicjeDla(a.narzedzia, ctx.tryb), messages, schemat: schematWyniku(a.ksztalt) };
+  const zap: Zapytanie = { model: d.modelId, system: systemDla(a), effort: a.effort, tools: definicjeDla(a.narzedzia, ctx.tryb, ctx.kto), messages, schemat: schematWyniku(a.ksztalt) };
 
   // 3. the loop — bounded in rounds, tokens and time
   for (let i = 0; i < MAX_ITERACJI; i++) {
@@ -104,7 +104,8 @@ export async function przebieg(a: Asystent, w: Wejscie, ctx: Ctx, d: Zaleznosci)
     const { wynik, uwagi } = walidujWynik(a.ksztalt, surowy, ctx.slad);
     if (!wynik) return koniec("blad", null, uwagi, uwagi[0] ?? "Niepoprawna odpowiedź modelu.");
     // tax micro-accounts are put in by the server; in a client conversation only that client's own
-    const gotowy = wstawMikrorachunki(wynik, (nip) => ctx.tryb === "staff" || nip === ctx.nip);
+    // (for staff: only when the person has Księgowość — the section the tool rachunki_do_wplat belongs to)
+    const gotowy = wstawMikrorachunki(wynik, (nip) => (ctx.tryb === "staff" ? maSekcje(ctx.kto, "onboarding") : nip === ctx.nip));
     return koniec("gotowe", gotowy, uwagi);
   }
   return koniec("limit", null, [], "Model nie zakończył w dozwolonej liczbie rund narzędzi.");

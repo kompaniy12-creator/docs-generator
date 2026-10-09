@@ -1,18 +1,21 @@
-// Asystenci AI — TEST MODE. 14 assistants (9 for staff, 5 for clients — the latter only simulated by
-// the owner for a chosen client). PORTAL ONLY, and only for a portal administrator who is listed in
-// portal_ustawienia['asystenci'].testerzy. There is no cron path, no client path and no bot path.
+// Asystenci AI. 14 assistants (9 for staff, 5 for clients — the latter only simulated by the owner for a
+// chosen client). PORTAL ONLY. portal_ustawienia['asystenci'].tryb decides who gets in:
+//   "test"   — only a portal administrator who is listed in .testerzy;
+//   "zespol" — every portal user: each sees and runs the assistants their sections allow (definicje.ts
+//              `dostep`), and every tool reads only what that person could see in the portal (narzedzia.ts).
+// There is no cron path, no client path and no bot path.
 // Every action is a POST with { action, ... }:
 //
-//   lista                               definitions + on/off + today's usage + settings
+//   lista                               the caller's assistants + on/off + runs left today (+ settings, costs: administrator)
 //   slownik    { co, nip? }             pickers for the page: klienci | pracownicy | wiadomosci | akty
 //   uruchom    { asystent, wejscie, pliki?, zachowaj_plik? }  -> 202 { id }  (the run goes on in the background)
 //   stan | wynik { id }                 -> { przebieg } — the page polls until status is not "w_toku"
-//   historia   { dni?, asystent? }      runs with tokens and estimated cost, and totals per day
+//   historia   { dni?, asystent? }      the caller's own runs (administrator: everybody's, with tokens, cost and totals per day)
 //   ocena      { id, ocena: 1|0|-1, komentarz? }
-//   tlumacz_ru { id }                   Russian rendering of a finished answer (for the owner)
-//   ustawienia { ustawienia }           testers, on/off, daily caps, retention, model per assistant
-//   czysc      { id? }                  removes runs older than the retention (or one run) with their files
-//   plik       { id, nr? }              a 60-second link to a file kept for review
+//   tlumacz_ru { id }                   Russian rendering of a finished answer (administrator)
+//   ustawienia { ustawienia }           administrator: mode, testers, on/off, daily caps, retention, model per assistant
+//   czysc      { id? }                  one's own run with its files; without id (administrator): everything older than the retention
+//   plik       { id, nr? }              a 60-second link to a file kept with one's own run
 //
 // What an assistant can do is fixed in code: narzedzia.ts has read-only tools only, scoped by the run's
 // context; the answer is a draft shown on the page. Nothing is sent, created or changed anywhere.
@@ -60,7 +63,8 @@ async function ja(req: Request): Promise<Ja | null> {
   const u = await r.json();
   const m = u?.app_metadata ?? {};
   if (!u?.email) return null;
-  return { email: String(u.email), portal: m.portal === true, admin: m.portal_admin === true };
+  // sections as the rest of the portal reads them: no list = every section (has_portal_section() in the database)
+  return { email: String(u.email), portal: m.portal === true, admin: m.portal_admin === true, sekcje: Array.isArray(m.portal_sections) ? m.portal_sections.map(String) : null };
 }
 
 // ---------------------------------------------------------------- what the tools read (GET only)
