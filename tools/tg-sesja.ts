@@ -59,18 +59,62 @@ function dostep(): { id: number; hash: string } {
   if (!Number.isInteger(id) || id <= 0 || !/^[0-9a-f]{32}$/i.test(hash)) { console.error("Nieprawidłowe api id albo api hash (hash to 32 znaki szesnastkowe)."); Deno.exit(1); }
   return { id, hash };
 }
+// Where Telegram says it sent the code — shown so nobody waits for an SMS that was sent into the app (or the other way round)
+const GDZIE: Record<string, string> = {
+  "auth.SentCodeTypeApp": "wiadomością w aplikacji Telegram tego konta (czat „Telegram”, powiadomienia serwisowe) — nie SMS-em",
+  "auth.SentCodeTypeSms": "SMS-em na ten numer", "auth.SentCodeTypeCall": "połączeniem głosowym na ten numer",
+  "auth.SentCodeTypeFlashCall": "krótkim połączeniem (kod to końcówka numeru dzwoniącego)", "auth.SentCodeTypeMissedCall": "nieodebranym połączeniem (kod to końcówka numeru dzwoniącego)",
+  "auth.SentCodeTypeEmailCode": "e-mailem na adres logowania przypisany do konta", "auth.SentCodeTypeFragmentSms": "na Fragment (numer anonimowy)",
+  "auth.SentCodeTypeFirebaseSms": "SMS-em na ten numer", "auth.SentCodeTypeSetUpEmailRequired": "— Telegram wymaga najpierw ustawienia e-maila logowania w aplikacji",
+};
 async function zaloguj(id: number, hash: string): Promise<TelegramClient> {
   const tg = new TelegramClient(new StringSession(""), id, hash, { connectionRetries: 3, deviceModel: URZADZENIE, systemVersion: "Supabase Edge", appVersion: "telegram-grupa" });
   tg.setLogLevel("none" as never);
-  let bledow = 0;
-  await tg.start({
-    phoneNumber: () => Promise.resolve(pytaj("Numer telefonu konta biura (z +48…):")),
-    phoneCode: (wAplikacji?: boolean) => Promise.resolve(pytaj(wAplikacji === false ? "Kod logowania z SMS-a:" : "Kod logowania — przyszedł w aplikacji Telegram tego konta, w czacie „Telegram” (nie SMS-em):")),
-    forceSMS: Deno.args.includes("--sms"),
-    password: () => Promise.resolve(ukryte("Hasło weryfikacji dwuetapowej (nie będzie widoczne):")),
-    onError: (e) => { console.error("Telegram odmówił: " + kod(e)); if (++bledow >= 3) { console.error("Za dużo nieudanych prób — przerwano."); Deno.exit(1); } },
-  });
-  return tg;
+  await tg.connect();
+  const telefon = pytaj("Numer telefonu konta biura (z +48…):").replace(/[^\d+]/g, "");
+  // deno-lint-ignore no-explicit-any
+  let w: any;
+  const wyslij = async () => {
+    for (let i = 0; i < 3; i++) {
+      try { return await tg.invoke(new Api.auth.SendCode({ phoneNumber: telefon, apiId: id, apiHash: hash, settings: new Api.CodeSettings({}) })); }
+      catch (e) {
+        const m = String((e as { errorMessage?: string })?.errorMessage ?? "").match(/^(?:PHONE|NETWORK|USER)_MIGRATE_(\d+)$/);
+        if (!m) throw e;
+        // deno-lint-ignore no-explicit-any
+        await (tg as any)._switchDC(Number(m[1]));
+      }
+    }
+    throw new Error("migracja");
+  };
+  try { w = await wyslij(); }
+  catch (e) {
+    const s = Number((e as { seconds?: number })?.seconds) || 0;
+    console.error("Telegram odmówił wysłania kodu: " + kod(e) + (s ? " — spróbuj ponownie za " + Math.ceil(s / 60) + " min. Nie uruchamiaj logowania wcześniej, bo blokada się wydłuża." : ""));
+    Deno.exit(1);
+  }
+  for (let proba = 0; proba < 4; proba++) {
+    console.log("Telegram wysłał kod " + (GDZIE[w.type?.className] ?? "(" + String(w.type?.className) + ")") + "." + (w.nextType ? " Jeśli nie dojdzie: zostaw puste i naciśnij Enter" + (w.timeout ? " (najwcześniej za " + w.timeout + " s)" : "") + ", a Telegram wyśle go inną drogą." : ""));
+    const k = pytaj("Kod logowania:").replace(/\D/g, "");
+    if (!k) {
+      try { w = await tg.invoke(new Api.auth.ResendCode({ phoneNumber: telefon, phoneCodeHash: w.phoneCodeHash })); }
+      catch (e) { console.error("Telegram odmówił ponownego wysłania: " + kod(e) + ". Poczekaj chwilę i spróbuj jeszcze raz."); }
+      continue;
+    }
+    try { await tg.invoke(new Api.auth.SignIn({ phoneNumber: telefon, phoneCodeHash: w.phoneCodeHash, phoneCode: k })); return tg; }
+    catch (e) {
+      const c = kod(e);
+      if (c === "SESSION_PASSWORD_NEEDED") {
+        for (let i = 0; i < 3; i++) {
+          try { await tg.signInWithPassword({ apiId: id, apiHash: hash }, { password: () => Promise.resolve(ukryte("Hasło weryfikacji dwuetapowej (nie będzie widoczne):")), onError: (er) => { throw er; } }); return tg; }
+          catch (er) { console.error("Telegram odmówił: " + kod(er)); }
+        }
+        break;
+      }
+      console.error("Telegram odmówił: " + c + (c === "PHONE_CODE_INVALID" ? " — kod się nie zgadza, wpisz ponownie." : ""));
+      if (c === "PHONE_CODE_EXPIRED") break;
+    }
+  }
+  console.error("Logowanie nieudane — przerwano."); Deno.exit(1);
 }
 // `supabase secrets …` with nothing secret in its arguments; its own output is not shown
 async function supabase(args: string[], stdin?: string): Promise<boolean> {
