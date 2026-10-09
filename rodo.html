@@ -163,6 +163,38 @@
   </ul>
   <p>Takie podmioty przetwarzają dane na podstawie umowy z nami i wyłącznie zgodnie z naszymi poleceniami.</p>
 
+  <h3>Usługi i narzędzia wykorzystywane przy obsłudze</h3>
+  <p>Przy świadczeniu usług korzystamy z portalu biura oraz z usług zewnętrznych. W związku z tym dane trafiają do:</p>
+  <ul>
+    <li>dostawcy bazy danych i hostingu portalu — dane przechowywane są w centrum danych na terenie Unii Europejskiej;</li>
+    <li>dostawcy poczty elektronicznej biura — przy korespondencji z klientem, wysyłce dokumentów, przypomnień i linków logowania;</li>
+    <li>dostawcy programu księgowego (wFirma) — dane kontrahentów i faktur;</li>
+    <li>dostawcy bramki SMS (SMSAPI.pl — LINK Mobility Poland sp. z o.o.) — numer telefonu i treść wiadomości, jeżeli wysyłamy powiadomienie SMS;</li>
+    <li>dostawcy usługi automatycznej analizy dokumentów i korespondencji (Anthropic) — w zakresie opisanym poniżej; dostawca ma siedzibę w USA, a przekazanie odbywa się na podstawie standardowych klauzul umownych zatwierdzonych przez Komisję Europejską (art. 46 ust. 2 lit. c RODO);</li>
+    <li>komunikatora Telegram — jeżeli klient korzysta z grupy lub bota biura w tym komunikatorze (zob. niżej).</li>
+  </ul>
+
+  <h3>Automatyczna analiza dokumentów i korespondencji</h3>
+  <p>Do dostawcy usługi automatycznej analizy (Anthropic) przekazujemy:</p>
+  <ul>
+    <li>wiadomości e-mail przychodzące na skrzynki biura (kadry, księgowość), jeżeli analiza poczty jest włączona — adres i nazwę nadawcy, temat, treść oraz nazwy załączników, w celu opisania sprawy i zaproponowania zadania pracownikowi biura; w portalu zapisujemy jedynie początkowy fragment treści (do 600 znaków), a oryginał wiadomości pozostaje w skrzynce pocztowej;</li>
+    <li>skany umów i pełnomocnictw zawartych z klientem — w celu odczytania rodzaju dokumentu, dat i zakresu usług;</li>
+    <li>dane wskazane przez pracownika biura, który korzysta w portalu z asystentów AI — fragmenty wiadomości e-mail i wklejony tekst, dane z bazy klientów (m.in. nazwa, NIP, forma prawna i forma opodatkowania, miasto, osoby prowadzące obsługę, stan spraw i terminów) oraz załączone skany — w celu przygotowania dla tego pracownika szkicu odpowiedzi, podsumowania lub listy kontrolnej.</li>
+  </ul>
+  <p>Przed przekazaniem tekstu wiadomości i danych z portalu usuwamy z nich rozpoznane automatycznie numery rachunków bankowych, numery kart płatniczych, numery PESEL oraz numery dokumentów tożsamości i dokumentów pobytowych, a w przypadku asystentów AI — także numery telefonów. Maskowanie nie obejmuje treści skanów (obrazów i plików PDF).</p>
+  <p>Zapis uruchomienia asystenta AI (dane przekazane do analizy po zamaskowaniu oraz odpowiedź) przechowujemy w portalu przez czas określony w jego ustawieniach — obecnie 30 dni; starsze zapisy są usuwane przy kolejnych uruchomieniach asystentów.</p>
+  <p>Wynik automatycznej analizy jest wyłącznie propozycją lub szkicem — sprawdza go pracownik biura. Nie podejmujemy decyzji opartych wyłącznie na zautomatyzowanym przetwarzaniu.</p>
+
+  <h3>Dane z rejestrów publicznych</h3>
+  <p>Dane rejestrowe firm i przedsiębiorców pobieramy z rejestrów publicznych: Krajowego Rejestru Sądowego (za pośrednictwem serwisu rejestr.io), Centralnej Ewidencji i Informacji o Działalności Gospodarczej (CEIDG), rejestru REGON prowadzonego przez GUS (za pośrednictwem serwisu DataPort) oraz Wykazu podatników VAT prowadzonego przez Ministerstwo Finansów. Przy pobieraniu danych przekazujemy tym źródłom wyłącznie numer NIP albo KRS.</p>
+  <p>W przypadku spółek są to m.in. dane członków zarządu, wspólników i prokurentów ujawnione w rejestrze. W przypadku osoby prowadzącej jednoosobową działalność gospodarczą zapisujemy: firmę, imię i nazwisko właściciela, adres wykonywania działalności, NIP, REGON, kody PKD, daty i status działalności oraz status w Wykazie podatników VAT.</p>
+  <p>Przy sprawdzaniu kontrahenta w Wykazie podatników VAT oraz w systemie VIES Komisji Europejskiej przekazujemy NIP, REGON albo numer VAT UE, a przy weryfikacji rachunku — także numer rachunku bankowego.</p>
+
+  <h3>Komunikator Telegram</h3>
+  <p>Dla klientów, którzy korzystają z tego kanału, biuro zakłada grupę w komunikatorze Telegram. W grupie zamieszczamy i przypinamy instrukcje zawierające dane klienta: mikrorachunek podatkowy (zawiera numer NIP) oraz indywidualny rachunek składkowy ZUS. Treści te są widoczne dla wszystkich uczestników grupy oraz dla bota biura. Tym kanałem biuro może także przekazywać klientowi informacje i dokumenty.</p>
+  <p>Osoba, która zapisuje się do bota biura z linku otrzymanego od biura, przekazuje nam: identyfikator użytkownika Telegram, imię, nazwisko i nazwę użytkownika w brzmieniu podanym przez Telegram oraz język; zapisujemy także datę zapisu, klienta, którego dotyczy zaproszenie, daty wypisania lub zablokowania bota i historię doręczeń. Bot nie poznaje numeru telefonu, a treść wiadomości pisanych do bota nie jest zapisywana. Powiadomienia bota można wyłączyć w każdej chwili poleceniem /stop.</p>
+  <p>Usługę Telegram świadczy podmiot spoza Europejskiego Obszaru Gospodarczego, który jest odrębnym administratorem danych swoich użytkowników.</p>
+
   <h3>Prawa związane z przetwarzaniem danych</h3>
   <p>Przysługują Panu/Pani następujące prawa:</p>
   <ul>
@@ -197,14 +229,23 @@
   <h3>Odbiorcy i dalsi przetwarzający</h3>
   <ul>
     <li>dostawca hostingu i bazy danych — dane przechowywane są w centrum danych na terenie Unii Europejskiej, w postaci zaszyfrowanej, a dostęp do nich mają wyłącznie upoważnieni pracownicy biura;</li>
-    <li>dostawca usługi automatycznego odczytu i tłumaczenia dokumentów (Anthropic) — skany dokumentów i treść dokumentów są przekazywane w celu odczytania danych i przygotowania wersji dwujęzycznej; dostawca ma siedzibę w USA, a przekazanie odbywa się na podstawie standardowych klauzul umownych zatwierdzonych przez Komisję Europejską (art. 46 ust. 2 lit. c RODO);</li>
+    <li>dostawca usługi automatycznego odczytu, porządkowania i tłumaczenia dokumentów (Anthropic) — skany dokumentów z formularza zgłoszenia i z akt osobowych oraz treść dokumentów są przekazywane w celu odczytania danych, przypisania dokumentu do właściwej osoby i części akt oraz przygotowania wersji dwujęzycznej, a dane wskazane przez pracownika biura — także w celu przygotowania dla niego szkiców i list kontrolnych (zob. „Asystenci AI” poniżej); dostawca ma siedzibę w USA, a przekazanie odbywa się na podstawie standardowych klauzul umownych zatwierdzonych przez Komisję Europejską (art. 46 ust. 2 lit. c RODO);</li>
     <li>dostawca poczty elektronicznej biura — przy wysyłce dokumentów i przypomnień do pracodawcy;</li>
+    <li>dostawca bramki SMS (SMSAPI.pl — LINK Mobility Poland sp. z o.o.) — jeżeli przypomnienie o terminie jest wysyłane do pracodawcy także SMS-em; wiadomość zawiera co najwyżej inicjały pracownika, rodzaj dokumentu i datę;</li>
+    <li>komunikator Telegram — jeżeli komplet dokumentów zatrudnienia jest wysyłany na czat pracodawcy w tym komunikatorze: plik PDF kompletu wraz z opisem (imię i nazwisko pracownika, rodzaj umowy, firma); usługę Telegram świadczy podmiot spoza Europejskiego Obszaru Gospodarczego, który jest odrębnym administratorem danych swoich użytkowników;</li>
     <li>organy i instytucje, którym dane przekazuje się na podstawie przepisów prawa (ZUS, urząd skarbowy, urząd pracy).</li>
   </ul>
-  <p>Powiadomienia wysyłane przez komunikator do pracowników biura nie zawierają danych osobowych osób zatrudnianych.</p>
+  <p>Powiadomienia wysyłane przez komunikator do pracowników biura, tworzone automatycznie, zawierają nazwę firmy, rodzaj sprawy i termin. Tytuł zadania wpisany przez pracownika biura oraz temat zgłoszenia wpisany przez klienta są przekazywane w takim brzmieniu, w jakim zostały wpisane. Do powiadomień nie są dołączane skany dokumentów.</p>
 
   <h3>Automatyczny odczyt dokumentów</h3>
-  <p>Dane odczytane automatycznie ze skanów są jedynie propozycją wypełnienia formularza — sprawdza je osoba wypełniająca formularz, a następnie pracownik działu kadr. Nie podejmujemy wobec osób zatrudnianych decyzji opartych wyłącznie na zautomatyzowanym przetwarzaniu.</p>
+  <p>Dane odczytane automatycznie ze skanów są jedynie propozycją wypełnienia formularza — sprawdza je osoba wypełniająca formularz, a następnie pracownik działu kadr. Przypisanie skanu do akt osobowych, które nie jest jednoznaczne, zatwierdza pracownik działu kadr. Nie podejmujemy wobec osób zatrudnianych decyzji opartych wyłącznie na zautomatyzowanym przetwarzaniu.</p>
+
+  <h3>Asystenci AI dla pracowników biura</h3>
+  <p>Pracownicy biura mogą korzystać w portalu z asystentów AI, którzy przygotowują dla nich szkice, podsumowania i listy kontrolne. Do dostawcy usługi analizy (Anthropic) przekazywane są wówczas: dane z karty osoby w rejestrze kadr — imię i nazwisko, obywatelstwo, pracodawca, warunki umowy (rodzaj, okres, stanowisko, stawka, wymiar), terminy ważności dokumentów oraz spis dokumentów w aktach — a także tekst i skany wskazane przez pracownika biura. Karta przekazywana jest bez numeru PESEL, numerów dokumentów, adresu, rachunku bankowego i telefonu; z tekstu usuwane są rozpoznane automatycznie numery rachunków bankowych, kart płatniczych, PESEL, numery dokumentów i telefonów. Maskowanie nie obejmuje treści skanów (obrazów i plików PDF).</p>
+  <p>Odpowiedź asystenta jest szkicem, który sprawdza pracownik biura; asystent niczego nie wysyła ani nie zmienia w danych. Zapis uruchomienia przechowujemy w portalu przez czas określony w jego ustawieniach — obecnie 30 dni; starsze zapisy są usuwane przy kolejnych uruchomieniach asystentów.</p>
+
+  <h3>Podpisywanie dokumentów przez link</h3>
+  <p>Gdy dokumenty do podpisu udostępniamy przez indywidualny link, w dzienniku czynności zapisujemy datę i godzinę otwarcia linku, pobrania dokumentu, przesłania podpisanego pliku i potwierdzenia odbioru, a także adres IP oraz rodzaj przeglądarki, z której wykonano czynność.</p>
 
   <h3>Prawa</h3>
   <p>Osoba, której dane dotyczą, może skorzystać z prawa dostępu do danych, ich sprostowania, usunięcia, ograniczenia przetwarzania oraz wniesienia skargi do Prezesa UODO — zwracając się do swojego pracodawcy albo do nas: <a href="mailto:rodo@td-group.pl">rodo@td-group.pl</a>.</p>
@@ -214,6 +255,7 @@
   <div class="section-label">Klauzula 4</div>
   <h2>Informacje o przetwarzaniu danych użytkowników portalu — polityka cookies</h2>
   <p>Poniższa Polityka Cookies określa zasady zapisywania i uzyskiwania dostępu do danych na urządzeniach użytkowników korzystających z serwisu do celów świadczenia usług drogą elektroniczną przez Administratora.</p>
+  <p>Polityka dotyczy serwisu td-group.pl. Zasady dotyczące portalu docgenerator.td-group.pl i profilu klienta opisuje klauzula 5.</p>
 
   <h3>§ 1 Definicje</h3>
   <ul>
@@ -265,6 +307,34 @@
 
   <h3>§ 8 Zmiany w polityce cookies</h3>
   <p>Administrator zastrzega sobie prawo do zmiany niniejszej Polityki Cookies. Wprowadzone zmiany będą publikowane na tej stronie i wchodzą w życie w dniu publikacji.</p>
+
+  <hr />
+
+  <!-- ============ SECTION 5: Portal and client profile ============ -->
+  <div class="section-label">Klauzula 5</div>
+  <h2>Portal docgenerator.td-group.pl i profil klienta</h2>
+
+  <h3>Dane zapisywane w przeglądarce</h3>
+  <p>Strony portalu (docgenerator.td-group.pl) nie zapisują plików cookies i nie korzystają z narzędzi analitycznych ani reklamowych. W pamięci przeglądarki (localStorage / sessionStorage) zapisywane są wyłącznie dane potrzebne do działania portalu:</p>
+  <ul>
+    <li>sesja logowania pracownika biura,</li>
+    <li>sesja profilu klienta (ważna 30 dni) i wybrany język,</li>
+    <li>dostęp z indywidualnego linku do podpisu dokumentów — do zamknięcia karty przeglądarki,</li>
+    <li>ustawienia wyglądu, układ menu i filtry list,</li>
+    <li>wersje robocze wypełnianych formularzy — pozostają na urządzeniu użytkownika.</li>
+  </ul>
+  <p>Dane te można usunąć w każdej chwili, czyszcząc dane strony w przeglądarce; usunięcie sesji oznacza wylogowanie.</p>
+  <p>Strony portalu są udostępniane przez usługę GitHub Pages, a część bibliotek programistycznych na stronach dla pracowników biura jest pobierana z sieci CDN (jsDelivr, unpkg, cdnjs). Podmioty te otrzymują adres IP urządzenia i dane techniczne przeglądarki w zakresie niezbędnym do dostarczenia plików. Moduł onboardingu klientów, dostępny dla pracowników biura, jest odrębną aplikacją osadzoną w portalu (hosting Vercel) i prowadzi własną sesję logowania.</p>
+
+  <h3>Profil klienta</h3>
+  <p>Profil klienta (docgenerator.td-group.pl/klient/) udostępnia klientowi informacje i dokumenty dotyczące jego firmy. Administratorem danych osób korzystających z profilu jest TD CONSULTING GROUP sp. z o.o.; dane przetwarzamy w ramach obsługi klienta opisanej w klauzuli 2.</p>
+  <p>W związku z korzystaniem z profilu przetwarzamy:</p>
+  <ul>
+    <li>adres e-mail konta oraz hasło — wyłącznie w postaci skrótu, z którego nie da się go odczytać;</li>
+    <li>dziennik konta: logowania (także nieudane), pobrania plików, odsłonięcia ukrytych danych pracowników (np. numeru PESEL, numeru dokumentu, rachunku bankowego) oraz wysłane zgłoszenia;</li>
+    <li>treść zgłoszeń kierowanych do biura wraz z załącznikami (do 3 plików, każdy do 15 MB).</li>
+  </ul>
+  <p>Dane pracowników widoczne w profilu obejmują wyłącznie firmy przypisane do konta. Zasady przetwarzania danych osób zatrudnianych opisuje klauzula 3.</p>
 
   <footer>
     TD CONSULTING GROUP SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ<br />
