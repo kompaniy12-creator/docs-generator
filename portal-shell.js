@@ -55,6 +55,7 @@
       { href: 'pulpit.html', ico: '📊', text: 'Pulpit', short: 'Pulpit', admin: true, wide: true },
       { href: 'zadania.html', ico: '✅', text: 'Zadania', short: 'Zadania', wide: true, tasks: true },
       { href: 'poczta.html', ico: '✉️', text: 'Poczta', short: 'Poczta', wide: true, secAny: ['kadry', 'onboarding'] },
+      { href: 'asystenci.html', ico: '🤖', text: 'Asystenci AI (test)', short: 'Asystenci', admin: true, wide: true },
       { href: 'zespol.html', ico: '👥', text: 'Zespół', short: 'Zespół', admin: true, wide: true },
       { href: 'dostep.html', ico: '🔑', text: 'Dostęp do portalu', short: 'Dostęp', admin: true, wide: true },
     ] },
@@ -228,6 +229,7 @@
     '✉️': '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
     '📣': '<path d="M4 10v4h3l6 4V6l-6 4z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11"/>',
     '📨': '<path d="M3 12l3-7h12l3 7v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M3 12h5l1.5 3h5L16 12h5"/>',
+    '🤖': '<rect x="5" y="8" width="14" height="11" rx="2"/><path d="M12 4v4M9 13h.01M15 13h.01M9 16h6M3 13v2M21 13v2"/>',
     '📇': '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5a3 3 0 0 1 0 6M21 20a6 6 0 0 0-4-5.6"/>',
     '⚙️': '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>',
     '🎨': '<path d="M12 3a9 9 0 0 0 0 18c1.5 0 2-1 2-2 0-1.5 1-2 2-2h2a3 3 0 0 0 3-3c0-6-4-11-9-11z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/>',
@@ -286,7 +288,7 @@
       '<button type="button" class="ps-top" data-pt-open title="Wygląd — motywy, tło i kolory">' + ico('🎨') + '</button>' +
       '<div class="ps-menu"><button type="button" class="ps-top" id="psGear" aria-haspopup="true" aria-expanded="false" title="Ustawienia">' + ico('⚙️') + ' Ustawienia</button>' +
         '<div class="ps-drop" id="psDrop" hidden>' +
-          (user.admin ? '<a href="zespol.html">' + ico('👥') + ' Zespół — profile i odpowiedzialność</a><a href="dostep.html">' + ico('🔑') + ' Użytkownicy i dostęp do modułów</a><a href="zadania.html#settings">' + ico('🔔') + ' Powiadomienia Telegram i eskalacje</a>' : '') +
+          (user.admin ? '<a href="asystenci.html">' + ico('🤖') + ' Asystenci AI — tryb testowy</a><a href="zespol.html">' + ico('👥') + ' Zespół — profile i odpowiedzialność</a><a href="dostep.html">' + ico('🔑') + ' Użytkownicy i dostęp do modułów</a><a href="zadania.html#settings">' + ico('🔔') + ' Powiadomienia Telegram i eskalacje</a>' : '') +
           (acc.has('kadry') ? '<a href="kontrola.html#rem">' + ico('✉️') + ' Przypomnienia dla klientów</a><a href="wiedza.html">' + ico('⚖️') + ' Baza wiedzy — przepisy</a>' : '') +
           '<a href="#" data-pt-open>' + ico('🎨') + ' Wygląd — motywy, tło i kolory</a>' +
           '<a href="rodo.html" target="_blank" rel="noopener">' + ico('🛡️') + ' Informacja RODO</a>' +
