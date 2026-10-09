@@ -11,6 +11,11 @@
 //      { action: "password", id, password }
 //      { action: "admin", id, on }
 //      { action: "sections", id, sections }    array of section keys, or null = all
+// Zespół (staff profiles, table portal_pracownicy — written only here):
+//      { action: "team" }                       portal users + profiles + short names used in the clients base
+//      { action: "profile_save", profile, nowy? }   create (nowy: true) or update a profile
+//      { action: "profile_delete", email }      removes the profile only, never the account
+//      { action: "profile_history", email }     last changes of the profile and of the access
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -69,6 +74,68 @@ async function getUser(id: string): Promise<AuthUser | null> {
   const r = await admin(`users/${id}`);
   return r.ok ? await r.json() : null;
 }
+function db(path: string, init: RequestInit = {}) {
+  return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...init,
+    headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, "Content-Type": "application/json", ...(init.headers ?? {}) },
+  });
+}
+// who changed whose access — best effort, never blocks the change itself
+async function logAccess(email: string, kto: string, zmiany: Record<string, unknown>) {
+  try {
+    await db("portal_pracownicy_historia", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ email: email.toLowerCase(), kto, op: "dostep", zmiany }) });
+  } catch (e) { console.error("historia", e); }
+}
+
+// ---- staff profiles
+const MAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const DZIALY = ["kadry", "ksiegowosc", "legalizacja", "spolka", "zarzad"];
+const ODPOWIADA = ["domyslny_kadry", "domyslny_ksiegowosc", "sms", "akta", "podpisy_weryfikacja"];
+const str = (v: unknown, max: number) => String(v ?? "").trim().slice(0, max);
+const date = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
+const list = (v: unknown, max: number, len: number) =>
+  [...new Set((Array.isArray(v) ? v : []).map((x) => str(x, len)).filter(Boolean))].slice(0, max);
+
+// the row to store, or the reason it cannot be stored
+// deno-lint-ignore no-explicit-any
+function cleanProfile(p: any): { row?: Record<string, unknown>; error?: string } {
+  const email = str(p?.email, 200).toLowerCase();
+  if (!MAIL.test(email)) return { error: "Nieprawidłowy e-mail." };
+  const telefon = str(p.telefon, 30);
+  if (telefon && !/^\+?[0-9 ()-]{5,30}$/.test(telefon)) return { error: "Telefon: tylko cyfry, spacje, + ( ) -." };
+  const chat = str(p.telegram_chat, 25);
+  if (chat && !/^-?\d{4,20}$/.test(chat)) return { error: "ID czatu Telegram to same cyfry (grupa — z minusem na początku)." };
+  const skrzynki = list(p.skrzynki, 10, 200).map((x) => x.toLowerCase());
+  if (skrzynki.some((x) => !MAIL.test(x))) return { error: "Skrzynka musi być adresem e-mail." };
+  const zastepca = str(p.zastepca, 200).toLowerCase();
+  if (zastepca && !MAIL.test(zastepca)) return { error: "Zastępca: nieprawidłowy e-mail." };
+  if (zastepca === email) return { error: "Nie można być własnym zastępcą." };
+  const od = date(p.nieobecny_od), doo = date(p.nieobecny_do);
+  if (od && doo && od > doo) return { error: "Nieobecność: data „od” jest późniejsza niż „do”." };
+  const odp: Record<string, unknown> = {};
+  for (const k of ODPOWIADA) if (p.odpowiada?.[k] === true) odp[k] = true;
+  const uwagi = str(p.odpowiada?.uwagi, 500);
+  if (uwagi) odp.uwagi = uwagi;
+  return {
+    row: {
+      email, imie_nazwisko: str(p.imie_nazwisko, 120), aliasy: list(p.aliasy, 20, 60), stanowisko: str(p.stanowisko, 120) || null,
+      telefon: telefon || null, telegram_chat: chat || null, dzialy: DZIALY.filter((d) => Array.isArray(p.dzialy) && p.dzialy.includes(d)),
+      skrzynki, odpowiada: odp, aktywny: p.aktywny !== false, nieobecny_od: od, nieobecny_do: doo, zastepca: zastepca || null,
+      notatki: str(p.notatki, 2000) || null,
+    },
+  };
+}
+// the database's own refusals (short name taken, deputy without a profile) in words for the form
+async function dbError(r: Response): Promise<string> {
+  const e = await r.json().catch(() => ({}));
+  if (e.code === "P0001") return String(e.message ?? "Nie udało się zapisać profilu.");
+  if (e.code === "23503") return "Zastępca musi mieć własny profil.";
+  if (e.code === "23505") return "Profil z tym adresem już istnieje.";
+  if (e.code === "42P01" || e.code === "PGRST205") return "Brak tabeli profili — migracja portal_pracownicy nie została wykonana.";
+  console.error("portal_pracownicy", r.status, e.code, e.message);
+  return "Nie udało się zapisać profilu.";
+}
+
 const isPortal = (u: AuthUser) => u.app_metadata?.portal === true;
 const view = (u: AuthUser) => ({
   id: u.id, email: u.email ?? "", admin: u.app_metadata?.portal_admin === true,
@@ -85,7 +152,8 @@ Deno.serve(async (req) => {
   const me = await caller(req);
   if (!me || me.app_metadata?.portal_admin !== true) return json({ error: "Brak uprawnień administratora." }, 403, origin);
 
-  let body: { action?: string; email?: string; password?: string; id?: string; on?: boolean; sections?: unknown };
+  // deno-lint-ignore no-explicit-any
+  let body: { action?: string; email?: string; password?: string; id?: string; on?: boolean; sections?: unknown; profile?: any; nowy?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -99,6 +167,72 @@ Deno.serve(async (req) => {
       return json({ users, me: me.id }, 200, origin);
     }
 
+    const kto = String(me.email ?? "").toLowerCase();
+
+    if (body.action === "team") {
+      const all = await allUsers();
+      const byMail = new Map(all.filter((u) => u.email).map((u) => [u.email!.toLowerCase(), u]));
+      const pr = await db("portal_pracownicy?select=*&order=imie_nazwisko.asc,email.asc");
+      const tabela = pr.ok;
+      // deno-lint-ignore no-explicit-any
+      const profiles = (tabela ? await pr.json() : []).map((p: any) => {
+        const u = byMail.get(p.email);
+        // "inne" = the address has an account from another app of the office, without portal access
+        return { ...p, konto: u ? (isPortal(u) ? "portal" : "inne") : "brak" };
+      });
+      // short names as the clients base has them, with the number of clients still served
+      const skroty = new Map<string, { nazwa: string; opiekun: number; kadrowy: number }>();
+      const kb = await db("klienci_baza?select=opiekun,kadrowy,status");
+      for (const k of (kb.ok ? await kb.json() : []) as { opiekun: string | null; kadrowy: string | null; status: string }[]) {
+        if (k.status === "zakonczony") continue;
+        for (const pole of ["opiekun", "kadrowy"] as const) {
+          const n = (k[pole] ?? "").trim();
+          if (!n) continue;
+          const s = skroty.get(n) ?? { nazwa: n, opiekun: 0, kadrowy: 0 };
+          s[pole]++;
+          skroty.set(n, s);
+        }
+      }
+      // what the Zadania settings still hold, so the administrator can move it into the profiles
+      const zs = await db("portal_ustawienia?key=eq.zadania&select=value");
+      const zv = zs.ok ? (await zs.json())[0]?.value ?? {} : {};
+      return json({
+        me: me.id, email: kto, tabela, profiles,
+        users: all.filter(isPortal).map(view).sort((a, b) => a.email.localeCompare(b.email)),
+        skroty: [...skroty.values()].sort((a, b) => a.nazwa.localeCompare(b.nazwa, "pl")), klienci: kb.ok,
+        zadania: { telegram: zv.telegram ?? {}, kadry: zv.kadry ?? "" },
+      }, 200, origin);
+    }
+
+    if (body.action === "profile_save") {
+      const c = cleanProfile(body.profile);
+      if (!c.row) return json({ error: c.error }, 400, origin);
+      const row: Record<string, unknown> = { ...c.row, updated_by: kto };
+      const r = body.nowy === true
+        ? await db("portal_pracownicy", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(row) })
+        : await db(`portal_pracownicy?email=eq.${encodeURIComponent(String(row.email))}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(row) });
+      if (!r.ok) return json({ error: await dbError(r) }, 400, origin);
+      const saved = (await r.json())[0];
+      if (!saved) return json({ error: "Nie ma takiego profilu." }, 404, origin);
+      return json({ ok: true, profile: saved }, 200, origin);
+    }
+
+    if (body.action === "profile_delete" || body.action === "profile_history") {
+      const email = str(body.email, 200).toLowerCase();
+      if (!MAIL.test(email)) return json({ error: "Nieprawidłowy e-mail." }, 400, origin);
+      const q = encodeURIComponent(email);
+      if (body.action === "profile_history") {
+        const r = await db(`portal_pracownicy_historia?email=eq.${q}&select=at,kto,op,zmiany&order=id.desc&limit=40`);
+        return json({ historia: r.ok ? await r.json() : [] }, 200, origin);
+      }
+      const r = await db(`portal_pracownicy?email=eq.${q}`, { method: "DELETE", headers: { Prefer: "return=representation" } });
+      if (!r.ok) return json({ error: await dbError(r) }, 400, origin);
+      if (!(await r.json()).length) return json({ error: "Nie ma takiego profilu." }, 404, origin);
+      // the delete trigger has no session to read the name from
+      await db(`portal_pracownicy_historia?email=eq.${q}&op=eq.usunieto&kto=is.null`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ kto }) }).catch((e) => console.error("historia", e));
+      return json({ ok: true }, 200, origin);
+    }
+
     if (body.action === "add") {
       const email = (body.email ?? "").trim().toLowerCase();
       const password = body.password ?? "";
@@ -108,6 +242,7 @@ Deno.serve(async (req) => {
         // the account already exists (maybe from another app) — grant access, keep its password
         const r = await admin(`users/${existing.id}`, { method: "PUT", body: JSON.stringify({ app_metadata: { portal: true, portal_sections: cleanSections(body.sections) } }) });
         if (!r.ok) return json({ error: "Nie udało się nadać dostępu." }, 502, origin);
+        await logAccess(email, kto, { portal: true, sekcje: cleanSections(body.sections), konto: "istniejące" });
         return json({ ok: true, existed: true }, 200, origin);
       }
       if (password.length < MIN_PASSWORD) return json({ error: `Hasło musi mieć co najmniej ${MIN_PASSWORD} znaków.` }, 400, origin);
@@ -119,6 +254,7 @@ Deno.serve(async (req) => {
         const e = await r.json().catch(() => ({}));
         return json({ error: e.msg || e.message || "Nie udało się utworzyć konta." }, 400, origin);
       }
+      await logAccess(email, kto, { portal: true, sekcje: cleanSections(body.sections), konto: "nowe" });
       return json({ ok: true, existed: false }, 200, origin);
     }
 
@@ -129,6 +265,7 @@ Deno.serve(async (req) => {
     if (body.action === "revoke") {
       if (target.id === me.id) return json({ error: "Nie można odebrać dostępu samemu sobie." }, 400, origin);
       const r = await admin(`users/${target.id}`, { method: "PUT", body: JSON.stringify({ app_metadata: { portal: false, portal_admin: false } }) });
+      if (r.ok) await logAccess(target.email ?? "", kto, { portal: false });
       return r.ok ? json({ ok: true }, 200, origin) : json({ error: "Nie udało się odebrać dostępu." }, 502, origin);
     }
     if (body.action === "password") {
@@ -139,11 +276,13 @@ Deno.serve(async (req) => {
     }
     if (body.action === "sections") {
       const r = await admin(`users/${target.id}`, { method: "PUT", body: JSON.stringify({ app_metadata: { portal_sections: cleanSections(body.sections) } }) });
+      if (r.ok) await logAccess(target.email ?? "", kto, { sekcje: cleanSections(body.sections) });
       return r.ok ? json({ ok: true }, 200, origin) : json({ error: "Nie udało się zmienić sekcji." }, 502, origin);
     }
     if (body.action === "admin") {
       if (target.id === me.id) return json({ error: "Nie można zmienić własnych uprawnień administratora." }, 400, origin);
       const r = await admin(`users/${target.id}`, { method: "PUT", body: JSON.stringify({ app_metadata: { portal_admin: body.on === true } }) });
+      if (r.ok) await logAccess(target.email ?? "", kto, { administrator: body.on === true });
       return r.ok ? json({ ok: true }, 200, origin) : json({ error: "Nie udało się zmienić uprawnień." }, 502, origin);
     }
     return json({ error: "Nieznana akcja." }, 400, origin);

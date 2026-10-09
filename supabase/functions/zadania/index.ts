@@ -75,6 +75,23 @@ async function settings(): Promise<Settings> {
   const v = r.ok ? (await r.json())[0]?.value ?? {} : {};
   return { telegram: v.telegram ?? {}, szef: v.szef ?? "", kadry: v.kadry ?? "" };
 }
+// What is in force: the staff profiles (portal_pracownicy, page Zespół) win over the settings key —
+// a person's Telegram chat, and the default HR person (the deputy while that person is away).
+// No table, no profile or any error leaves the stored settings in force.
+async function effective(): Promise<Settings> {
+  const set = await settings();
+  try {
+    const r = await db("portal_pracownicy?aktywny=is.true&telegram_chat=not.is.null&select=email,telegram_chat");
+    for (const p of (r.ok ? await r.json() : []) as { email: string; telegram_chat: string }[]) {
+      if (/^-?\d{4,20}$/.test(p.telegram_chat ?? "")) set.telegram[p.email] = p.telegram_chat;
+    }
+    const d = await db("rpc/portal_pracownik_domyslny", { method: "POST", body: JSON.stringify({ p_dzial: "kadry" }) });
+    const who = d.ok ? await d.json() : null;
+    // tasks may only go to somebody who can sign in to the portal
+    if (typeof who === "string" && who && who !== set.kadry && (await portalUsers()).some((u) => u.email === who)) set.kadry = who;
+  } catch (e) { console.error("pracownicy", e); }
+  return set;
+}
 async function tgSend(chat: string, text: string): Promise<boolean> {
   if (!TG || !/^-?\d{4,20}$/.test(chat)) return false;
   const r = await fetch(`https://api.telegram.org/bot${TG}/sendMessage`, {
@@ -150,7 +167,7 @@ const STATUTORY = /^(zus|pup|umowa|dok):/;
 
 async function run(dry: boolean) {
   const dzis = today();
-  const set = await settings();
+  const set = await effective();
   const rows = await pageAll<Row>("zatrudnienie_zgloszenia?select=id,worker_name,status,created_at,payload&status=neq.archiwum&order=created_at.asc");
   let all = await pageAll<Zad>("portal_zadania?select=id,created_by,assignee,tytul,opis,termin,pilne,status,zrodlo,klucz,przypomniano,eskalacja,done_by&order=created_at.asc");
   const want = desired(rows, dzis);
@@ -257,14 +274,14 @@ Deno.serve(async (req) => {
 
     const me = await portalUser(req);
     if (!me) return json({ error: "Brak dostępu (portal)." }, 403, origin);
-    const set = await settings();
+    const set = await effective();
 
     if (body.action === "team") {
       const users = await portalUsers();
       return json({
         me: me.email, admin: me.admin,
         team: users.map((u) => ({ email: u.email, admin: u.admin, telegram: !!set.telegram[u.email] })),
-        settings: me.admin ? set : undefined, szef: !!set.szef, bot: !!TG,
+        settings: me.admin ? await settings() : undefined, szef: !!set.szef, bot: !!TG,
       }, 200, origin);
     }
     if (body.action === "notify") {
