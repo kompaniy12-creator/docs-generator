@@ -163,6 +163,7 @@
   </aside>
 
   <main class="content">
+    <div id="brakInfo" class="status" style="margin:0 0 20px;max-width:640px">To konto nie ma dostępu do wybranej strony. W sprawie dostępu skontaktuj się z administratorem portalu.</div>
     <!-- Rejestracja -->
     <section class="panel" id="panel-rejestracja" data-panel="rejestracja">
       <div class="content-head">
@@ -204,7 +205,7 @@
           <p>Uchwała Zgromadzenia Wspólników o ustanowieniu pełnomocnika Spółki uprawnionego do zawierania umów w jej imieniu (art. 210 § 1¹ KSH). Dane spółki z KRS, dane pełnomocnika wprowadzane ręcznie.</p>
           <span class="card-cta">Wygeneruj →</span>
         </a>
-        <a href="zalacznik-pobyt.html" class="card">
+        <a href="zalacznik-pobyt.html" class="card" data-sec="legalizacja">
           <div class="card-icon">🛂</div>
           <h3>Załącznik nr 1 do wniosku o pobyt czasowy</h3>
           <p>Oficjalny załącznik wypełniany przez spółkę dla cudzoziemca pełniącego funkcję w zarządzie — do wniosku o zezwolenie na pobyt czasowy i pracę. Dane spółki z KRS, informacje o pracy i wynagrodzeniu wprowadzane ręcznie.</p>
@@ -286,6 +287,10 @@
         navItems.forEach(function (b) { if (b.getAttribute('data-target') === s) b.style.display = 'none'; });
         valid = valid.filter(function (v) { return v !== s; });
       });
+      // cards that lead to a page of another section this account does not have
+      Array.prototype.forEach.call(document.querySelectorAll('.card[data-sec]'), function (c) {
+        if (!acc.has(c.getAttribute('data-sec'))) c.style.display = 'none';
+      });
       if (valid.indexOf(DEFAULT) === -1) DEFAULT = valid[0];
       // nothing on this page for this account (e.g. only Księgowość) — go to the tasks
       if (!valid.length) { location.replace('zadania.html'); return; }
@@ -301,6 +306,10 @@
       activate(location.hash.replace('#', '') || DEFAULT);
     }
     document.addEventListener('portal:access', applyAccess);
+    // sent back here by auth-guard.js (index.html?brak=1) from a page this account may not open
+    if (/[?&]brak=1/.test(location.search)) {
+      document.getElementById('brakInfo').className = 'status error';
+    }
 
     function activate(target) {
       if (valid.indexOf(target) === -1) target = DEFAULT;

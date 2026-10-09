@@ -87,6 +87,16 @@ async function logAccess(email: string, kto: string, zmiany: Record<string, unkn
   } catch (e) { console.error("historia", e); }
 }
 
+// Row level security reads the claims from the token: after access is taken away or narrowed the person's
+// sessions are ended, so nothing can be refreshed with the old rights. Best effort — the change itself stands.
+async function endSessions(id: string) {
+  try {
+    const r = await db("rpc/portal_zakoncz_sesje", { method: "POST", body: JSON.stringify({ p_user: id }) });
+    if (!r.ok) console.error("sesje", r.status);
+    await r.body?.cancel();
+  } catch (_e) { console.error("sesje: błąd"); }
+}
+
 // ---- staff profiles
 const MAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const DZIALY = ["kadry", "ksiegowosc", "legalizacja", "spolka", "zarzad"];
@@ -265,7 +275,7 @@ Deno.serve(async (req) => {
     if (body.action === "revoke") {
       if (target.id === me.id) return json({ error: "Nie można odebrać dostępu samemu sobie." }, 400, origin);
       const r = await admin(`users/${target.id}`, { method: "PUT", body: JSON.stringify({ app_metadata: { portal: false, portal_admin: false } }) });
-      if (r.ok) await logAccess(target.email ?? "", kto, { portal: false });
+      if (r.ok) { await logAccess(target.email ?? "", kto, { portal: false }); await endSessions(target.id); }
       return r.ok ? json({ ok: true }, 200, origin) : json({ error: "Nie udało się odebrać dostępu." }, 502, origin);
     }
     if (body.action === "password") {
@@ -276,13 +286,13 @@ Deno.serve(async (req) => {
     }
     if (body.action === "sections") {
       const r = await admin(`users/${target.id}`, { method: "PUT", body: JSON.stringify({ app_metadata: { portal_sections: cleanSections(body.sections) } }) });
-      if (r.ok) await logAccess(target.email ?? "", kto, { sekcje: cleanSections(body.sections) });
+      if (r.ok) { await logAccess(target.email ?? "", kto, { sekcje: cleanSections(body.sections) }); if (target.id !== me.id) await endSessions(target.id); }
       return r.ok ? json({ ok: true }, 200, origin) : json({ error: "Nie udało się zmienić sekcji." }, 502, origin);
     }
     if (body.action === "admin") {
       if (target.id === me.id) return json({ error: "Nie można zmienić własnych uprawnień administratora." }, 400, origin);
       const r = await admin(`users/${target.id}`, { method: "PUT", body: JSON.stringify({ app_metadata: { portal_admin: body.on === true } }) });
-      if (r.ok) await logAccess(target.email ?? "", kto, { administrator: body.on === true });
+      if (r.ok) { await logAccess(target.email ?? "", kto, { administrator: body.on === true }); if (body.on !== true) await endSessions(target.id); }
       return r.ok ? json({ ok: true }, 200, origin) : json({ error: "Nie udało się zmienić uprawnień." }, 502, origin);
     }
     return json({ error: "Nieznana akcja." }, 400, origin);

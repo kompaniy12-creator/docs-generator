@@ -182,10 +182,16 @@ function transport() {
 }
 // deno-lint-ignore no-explicit-any
 async function tg(method: string, body?: unknown): Promise<any> {
-  const r = await fetch(`https://api.telegram.org/bot${TG}/${method}`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}),
-  });
-  return await r.json().catch(() => ({ ok: false }));
+  // a network error's text carries the request URL, and the URL carries the bot token: never let it out
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${TG}/${method}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}),
+    });
+    return await r.json().catch(() => ({ ok: false }));
+  } catch (_e) {
+    console.error("telegram: brak połączenia (" + method + ")");
+    return { ok: false, description: "brak połączenia z Telegramem" };
+  }
 }
 async function setting(k: string) {
   const r = await db(`portal_ustawienia?key=eq.${k}&select=value`);
@@ -502,7 +508,7 @@ Deno.serve(async (req) => {
       if (klienciBlad) return json({ error: klienciBlad }, 502, origin);
       const p = plans.find((x) => x.nip === nip);
       if (!p) return json({ error: "Dla tej firmy nie ma nic do wysłania (już wysłano albo terminy się zmieniły)." }, 200, origin);
-      if (!p.email) return json({ error: "Brak e-maila tej firmy w bazie klientów — uzupełnij go w arkuszu klientów." }, 200, origin);
+      if (!p.email) return json({ error: "Brak e-maila tej firmy w bazie klientów — uzupełnij go w Bazie klientów." }, 200, origin);
       const r = await sendFirm({ nazwa: p.firma, email: p.email, chat: "" }, p.firma, p.nip, p.items, me.email);
       return r === "ok" ? json({ ok: true, to: p.email, n: p.items.length }, 200, origin) : json({ error: "Błąd wysyłki: " + r }, 200, origin);
     }

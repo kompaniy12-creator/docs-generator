@@ -1,0 +1,2 @@
+-- kadry-dokument (Generator dokumentów) belongs to the Kadry section
+create or replace function public.portal_doc_section(doc_type text) returns text language sql immutable set search_path to '' as $f$ select case when doc_type = 'umowa-zlecenie' then 'kadry' when doc_type = 'kadry-dokument' then 'kadry' when doc_type = 'rejestracja-s24' then 'rejestracja' when doc_type = 'zalacznik-pobyt' then 'legalizacja' else 'biezaca' end $f$;

@@ -124,21 +124,23 @@
   function badge() { if (window.PortalShell && window.PortalShell.refreshTasks) window.PortalShell.refreshTasks(); }
 
   // ---------------- settings (admin) ----------------
+  // Telegram chats of the staff are kept in their profiles (page Zespół); the chats still stored
+  // under the old settings key are sent back untouched, so nobody loses a working chat.
+  var storedTg = {};
   function renderSettings(s) {
     $('settings').hidden = false;
+    storedTg = s.telegram || {};
     $('setUsers').innerHTML = team.map(function (u) {
       return '<div class="set"><div>' + esc(u.email) + (u.admin ? ' <span class="pill p-navy">admin</span>' : '') + '</div>' +
-        '<input type="text" inputmode="numeric" placeholder="ID czatu Telegram" data-tg="' + esc(u.email) + '" value="' + esc(s.telegram[u.email] || '') + '" />' +
-        '<button type="button" class="mini" data-test="' + esc(u.email) + '">Test</button></div>';
+        '<div>' + (u.telegram ? '<span class="pill p-ok">Telegram podpięty</span>' : '<span class="pill p-amber">brak czatu Telegram</span>') + '</div>' +
+        '<button type="button" class="mini" data-test="' + esc(u.email) + '"' + (u.telegram ? '' : ' disabled') + ' title="Wiadomość testowa do tej osoby">Test</button></div>';
     }).join('');
     $('setSzef').value = s.szef || '';
     $('setKadry').innerHTML = '<option value="">— pierwszy administrator —</option>' + team.map(function (u) { return '<option' + (u.email === s.kadry ? ' selected' : '') + '>' + esc(u.email) + '</option>'; }).join('');
   }
   async function saveSettings() {
-    var tg = {};
-    document.querySelectorAll('[data-tg]').forEach(function (i) { if (i.value.trim()) tg[i.getAttribute('data-tg')] = i.value.trim(); });
-    var out = await call({ action: 'settings', telegram: tg, szef: $('setSzef').value.trim(), kadry: $('setKadry').value });
-    team.forEach(function (u) { u.telegram = !!out.settings.telegram[u.email]; });
+    var out = await call({ action: 'settings', telegram: storedTg, szef: $('setSzef').value.trim(), kadry: $('setKadry').value });
+    storedTg = out.settings.telegram || storedTg;
     return out;
   }
   $('setSave').addEventListener('click', async function () {
@@ -159,7 +161,7 @@
   function warn() {
     var mine = team.filter(function (t) { return t.email === me; })[0];
     $('warn').innerHTML = mine && !mine.telegram
-      ? '<div class="warnbox">Twoje konto nie ma jeszcze podpiętego Telegrama — przypomnienia zobaczysz tylko w portalu.' + (admin ? ' Uzupełnij ID czatu w ustawieniach na dole strony.' : ' Poproś administratora o podpięcie.') + '</div>' : '';
+      ? '<div class="warnbox">Twoje konto nie ma jeszcze podpiętego Telegrama — przypomnienia zobaczysz tylko w portalu.' + (admin ? ' Uzupełnij ID czatu w swoim profilu na stronie <a href="zespol.html">Zespół</a>.' : ' Poproś administratora o podpięcie.') + '</div>' : '';
   }
 
   async function load() {

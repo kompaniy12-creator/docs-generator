@@ -283,7 +283,22 @@ function drawField(page, label, value, x, y, w, font, bold, opts = {}) {
   page.drawText(label, { x: x + 4, y: y - 8, font, size: 7, color: rgb(0.35, 0.35, 0.35) });
   // value, large
   if (value) {
-    page.drawText(value, { x: x + 6, y: y - fh + 8, font: opts.valueBold ? bold : font, size: opts.valueSize || 11 });
+    // long values (company names, offices, functions) must stay inside the box:
+    // first a smaller size on one line, then two lines
+    const vFont = opts.valueBold ? bold : font;
+    const maxW = w - 12;
+    let size = opts.valueSize || 11;
+    while (size > 7.5 && vFont.widthOfTextAtSize(value, size) > maxW) size -= 0.5;
+    if (vFont.widthOfTextAtSize(value, size) <= maxW) {
+      page.drawText(value, { x: x + 6, y: y - fh + 8, font: vFont, size });
+    } else {
+      size = 7;
+      let lines = wrapLines(value, vFont, size, maxW);
+      while (lines.length > 2 && size > 4.5) { size -= 0.5; lines = wrapLines(value, vFont, size, maxW); }
+      lines.slice(0, 2).forEach((l, i) => {
+        page.drawText(l, { x: x + 6, y: y - fh + 3.5 + (lines.length > 1 ? (1 - i) * (size + 0.6) : 4), font: vFont, size });
+      });
+    }
   }
   return y - fh;
 }
@@ -538,6 +553,15 @@ form.addEventListener('submit', async (e) => {
   if (!form.checkValidity()) {
     form.reportValidity();
     if (firstInvalid) firstInvalid.focus();
+    // a filled field in a wrong format (NIP, PESEL, kod pocztowy…) gets its own message
+    const bad = firstInvalid ? null : form.querySelector('input:invalid, select:invalid');
+    if (bad && !bad.validity.valueMissing) {
+      const lab = bad.closest('.field') && bad.closest('.field').querySelector('label');
+      const name = lab ? lab.textContent.replace(/\(poz\.[^)]*\)/, '').trim() : '';
+      bad.focus();
+      showStatus('Popraw pole' + (name ? ' „' + name + '”' : '') + (bad.title ? ' — ' + bad.title : ' — nieprawidłowy format') + '.', 'error');
+      return;
+    }
     showStatus('Uzupełnij wszystkie wymagane pola.', 'error');
     return;
   }
@@ -550,7 +574,8 @@ form.addEventListener('submit', async (e) => {
     await loadFonts();
     const data = collectData();
     const bytes = await generateWniosek(data);
-    const safe = data.userNazwisko.toLowerCase().replace(/[^a-z]/g, '');
+    const plMap = { ą: 'a', ć: 'c', ę: 'e', ł: 'l', ń: 'n', ó: 'o', ś: 's', ź: 'z', ż: 'z' };
+    const safe = data.userNazwisko.toLowerCase().replace(/[ąćęłńóśźż]/g, c => plMap[c]).replace(/[^a-z]/g, '').slice(0, 40);
     const res = await saveAndDownload({
       docType: 'e-urzad', title: 'Wniosek do e-Urzędu Skarbowego',
       subject: data.nazwa || `${data.userImie} ${data.userNazwisko}`.trim(),

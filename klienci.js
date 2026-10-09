@@ -273,8 +273,11 @@
     var kt = k.kontakt || {};
     h += dl([['Forma prawna', k.forma], ['Opodatkowanie', k.opodatkowanie], ['Adres', [k.adres, k.miasto].filter(Boolean).join(', ')], ['Opiekun księgowy', k.opiekun], ['Kadrowy', k.kadrowy],
       ['Osoba kontaktowa', kt.kontakt], ['Telefon', kt.telefon], ['E-mail', kt.email], ['Język', kt.jezyk]]) || '<p class="hint">Brak danych.</p>';
+    // one click to the SMS page with this client chosen (the number is read there from the base)
+    var smsLink = /^\d{10}$/.test(k.nip || '') && k.status !== 'zakonczony' ? '<a class="mini" href="sms.html?nip=' + esc(k.nip) + '">SMS</a>' : '';
+    if (!(ja.admin && k.dane && k.w_arkuszu) && smsLink) h += '<div class="acts" style="margin-top:8px">' + smsLink + '</div>';
     if (ja.admin && k.dane && k.w_arkuszu) {
-      h += '<div class="acts" style="margin-top:8px"><button type="button" class="mini" data-c="edytuj">Edytuj dane…</button></div>';
+      h += '<div class="acts" style="margin-top:8px"><button type="button" class="mini" data-c="edytuj">Edytuj dane…</button>' + smsLink + '</div>';
       if ((k.zmiany || []).length) h += '<details style="margin-top:8px"><summary class="sub" style="cursor:pointer">Historia zmian danych (' + k.zmiany.length + ')</summary><table><thead><tr><th>Kiedy</th><th>Kto</th><th>Co się zmieniło</th></tr></thead><tbody>' + k.zmiany.map(function (x) {
         return '<tr><td>' + pl(x.created_at) + '</td><td>' + esc(x.kto) + '</td><td>' + (x.akcja === 'dodanie' ? '<b>klient dodany w portalu</b>' : x.akcja === 'zmiana_id' ? '<b>zmiana identyfikatora klienta</b>' : '') +
           (x.zmiany || []).map(function (z) { return '<small><b>' + esc(z.pole) + '</b>: ' + esc(z.bylo) + ' → ' + esc(z.jest) + '</small>'; }).join('') + '</td></tr>';
@@ -316,7 +319,7 @@
       if (r.zrodlo === 'gus') h += '<p class="hint" style="margin-top:8px">Działalność jednoosobowa nie figuruje w KRS — rejestr REGON podaje nazwę, numer i adres. Beneficjentów rzeczywistych (CRBR) portal nie pobiera.</p>';
       if ((r.zmiany || []).length) h += '<p class="sub" style="margin:10px 0 2px">Zmiany od poprzedniego pobrania (' + pl(r.fetched_at) + '):</p>' + zmianyHtml(r.zmiany);
       (k.rej_historia || []).filter(function (x) { return (x.zmiany || []).length; }).forEach(function (x) { h += '<p class="sub" style="margin:10px 0 2px">Wcześniej, ' + pl(x.fetched_at) + ':</p>' + zmianyHtml(x.zmiany); });
-    } else if (!r) h += '<p class="hint">Dane z rejestru nie zostały jeszcze pobrane.</p>';
+    } else if (!r && !(k.ostrzezenia || []).some(function (o) { return /nie zostały jeszcze pobrane/.test(o); })) h += '<p class="hint">Dane z rejestru nie zostały jeszcze pobrane.</p>';
     var akcje = '';
     if (ja.admin && k.nip) akcje += '<button type="button" class="mini" data-c="rej">Odśwież z rejestru</button>';
     if (r && r.krs) akcje += k.odpis ? '<button type="button" class="mini" data-c="odpis">Odpis aktualny KRS (PDF) — z bazy, pobrany ' + pl(k.odpis) + '</button>'
@@ -352,6 +355,12 @@
     } catch (e) { alert('Nie udało się pobrać odpisu: ' + (e.message || e)); }
     b.disabled = false;
   }
+  // the provider's refusal in words: sole traders are read from REGON through DataPort, whose key may be switched off
+  function bladRejestru(t) {
+    t = String(t || '');
+    return /DataPort/i.test(t) && /nieaktywn|brak konfiguracji|inactive/i.test(t)
+      ? t + '. Dane działalności jednoosobowych (REGON) będą dostępne po aktywacji klucza DataPort biura — to nie jest błąd danych klienta; spółki z KRS pobierają się normalnie.' : t;
+  }
   $('kartaBody').addEventListener('click', async function (e) {
     var k = klient(otwarta), b = e.target.closest('[data-c]');
     if (b && k) {
@@ -372,7 +381,7 @@
         b.disabled = true; b.textContent = 'Pobieram…';
         var r = await api('rejestr', { id: k.id });
         await wczytaj();
-        var m = $('kMsg'); if (m) m.textContent = r.error || r.blad ? 'Nie udało się: ' + (r.error || r.blad) : r.zmiany ? 'Pobrano — są zmiany (' + r.zmiany + ').' : 'Pobrano — bez zmian.';
+        var m = $('kMsg'); if (m) m.textContent = r.error || r.blad ? 'Nie udało się: ' + bladRejestru(r.error || r.blad) : r.zmiany ? 'Pobrano — są zmiany (' + r.zmiany + ').' : 'Pobrano — bez zmian.';
       }
       return;
     }
@@ -576,7 +585,7 @@
     rjTrwa = false; $('rjDni').disabled = $('rjZak').disabled = false; $('rjCancel').disabled = false; $('rjCancel').textContent = 'Zamknij';
     $('rjTxt').textContent = (przerwano ? 'Przerwano — dostawca danych odmówił. ' : rjStop ? 'Zatrzymano. ' : 'Gotowe. ') + 'Pobrano ' + zrobione + ' z ' + razem + (zmiany ? ' · zmiany w rejestrze: ' + zmiany : '') + (bledy.length ? ' · błędy: ' + bledy.length : '');
     await wczytaj(); await rjPlan();
-    $('rjMsg').textContent = przerwano ? 'Pobieranie przerwane: ' + przerwano : bledy.slice(0, 8).join('; ');
+    $('rjMsg').textContent = przerwano ? 'Pobieranie przerwane: ' + bladRejestru(przerwano) : bledy.slice(0, 8).join('; ');
   });
   $('rej').addEventListener('click', function (e) { if (e.target === $('rej') && !rjTrwa) $('rej').hidden = true; });
 
@@ -691,17 +700,22 @@
   });
 
   // ---------------- page events ----------------
-  $('tiles').addEventListener('click', function (e) {
-    var b = e.target.closest('[data-tile]'); if (!b) return;
-    var t = b.getAttribute('data-tile');
+  function kafelek(t) {
     if (t === 'spr') { f.tab = 'umowy'; f.utab = 'spr'; }
     else {
       f.tab = 'klienci'; f.umowy = ''; f.rejestr = ''; f.zakres = ''; f.telegram = ''; f.status = 'czynni';
       if (t === 'obs') f.status = 'obslugiwany'; else if (t === 'wstrz') f.status = 'wstrzymany'; else if (t === 'zak') f.status = 'zakonczony';
       else if (t === 'bezU') f.umowy = 'bez_umowy'; else if (t === 'bezP') f.umowy = 'bez_powierzenia'; else if (t === 'ostrz') f.rejestr = 'ostrz'; else if (t === 'nikt') f.zakres = 'brak'; else if (t === 'tg') f.telegram = 'problem';
     }
+  }
+  $('tiles').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-tile]'); if (!b) return;
+    kafelek(b.getAttribute('data-tile'));
     zapamietaj(); rysuj();
   });
+  // a link from the dashboard opens the list already narrowed: klienci.html?k=bezU
+  var naStart = new URLSearchParams(location.search).get('k') || '';
+  if (/^(obs|wstrz|zak|bezU|bezP|ostrz|nikt|tg|spr)$/.test(naStart)) kafelek(naStart);
   $('tabs').addEventListener('click', function (e) { var b = e.target.closest('[data-t]'); if (!b) return; f.tab = b.getAttribute('data-t'); zapamietaj(); rysuj(); });
   $('utabs').addEventListener('click', function (e) { var b = e.target.closest('[data-ut]'); if (!b) return; f.utab = b.getAttribute('data-ut'); zapamietaj(); rysujUmowy(); });
   $('fQ').addEventListener('input', function () { f.q = this.value; zapamietaj(); rysujListe(); });

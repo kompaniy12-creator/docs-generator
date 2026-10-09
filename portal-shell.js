@@ -157,6 +157,9 @@
     '#psBar strong{font-size:15px;color:var(--ps-navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}',
     '#psBar nav{display:flex;align-items:center;gap:6px;flex:0 0 auto}',
     '.ps-top{position:relative;display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:9px;border:none;background:none;font:inherit;font-size:13.5px;font-weight:600;color:#3a4759;text-decoration:none;cursor:pointer;white-space:nowrap}',
+    // narrower screens: the bar keeps every item — the e-mail goes first, then the labels tighten
+    '@media(max-width:1560px){#psBar .ps-who{display:none}}',
+    '@media(max-width:1360px){#psBar .ps-top{padding:8px 8px;font-size:13px;gap:5px}}',
     '.ps-top:hover{background:var(--ps-tint);color:var(--ps-navy)}',
     '.ps-top.on{background:var(--ps-navy);color:#fff}',
     '.ps-top .ps-badge{margin-left:2px}',

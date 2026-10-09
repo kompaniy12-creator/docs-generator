@@ -91,6 +91,19 @@ function drawText(page, text, box, font, size) {
   let s = size || 9;
   const maxWidth = box[3] - 2;
   while (s > 5 && widthOf(text, font, s) > maxWidth) s -= 0.25;
+  if (widthOf(text, font, s) > maxWidth) {
+    // still too long at the smallest size (very long company names): two lines inside the box
+    s = 5.5;
+    const words = text.split(/\s+/);
+    let first = '';
+    while (words.length && widthOf((first ? first + ' ' : '') + words[0], font, s) <= maxWidth) first = (first ? first + ' ' : '') + words.shift();
+    let rest = words.join(' ');
+    let s2 = s;
+    while (s2 > 4 && widthOf(rest, font, s2) > maxWidth) s2 -= 0.25;
+    if (first) page.drawText(first, { x: box[1], y: box[2] + 6, size: s, font, color: rgb(0, 0, 0) });
+    page.drawText(rest, { x: box[1], y: box[2] - (first ? 0.5 : 0), size: s2, font, color: rgb(0, 0, 0) });
+    return;
+  }
   page.drawText(text, { x: box[1], y: box[2], size: s, font, color: rgb(0, 0, 0) });
 }
 
@@ -188,7 +201,7 @@ $('nipBtn').addEventListener('click', async () => {
       if (!out || out.error) throw new Error(out && out.error ? out.error : 'Nie znaleziono firmy.');
     }
     applyCompany(out);
-    setNipStatus('✅ Wczytano z ' + source + ': ' + (out.nazwa || '') + '. Uzupełnij KRS i dane uzupełniające.', 'success');
+    setNipStatus('✅ Wczytano z ' + source + ': ' + String(out.nazwa || '').replace(/\.+$/, '') + '. Uzupełnij KRS i dane uzupełniające.', 'success');
   } catch (err) {
     setNipStatus('Nie udało się pobrać danych: ' + (err.message || err), 'error');
   } finally {
@@ -501,6 +514,15 @@ form.addEventListener('submit', async (e) => {
   if (!form.checkValidity()) {
     form.reportValidity();
     if (firstInvalid) firstInvalid.focus();
+    // a filled field in a wrong format (NIP, PESEL, kod pocztowy…) gets its own message
+    const bad = firstInvalid ? null : form.querySelector('input:invalid, select:invalid');
+    if (bad && !bad.validity.valueMissing) {
+      const lab = bad.closest('.field') && bad.closest('.field').querySelector('label');
+      const name = lab ? lab.textContent.replace(/\(poz\.[^)]*\)/, '').trim() : '';
+      bad.focus();
+      showStatus('Popraw pole' + (name ? ' „' + name + '”' : '') + (bad.title ? ' — ' + bad.title : ' — nieprawidłowy format') + '.', 'error');
+      return;
+    }
     showStatus('Uzupełnij wszystkie wymagane pola.', 'error');
     return;
   }
@@ -525,7 +547,8 @@ form.addEventListener('submit', async (e) => {
   try {
     await loadFonts();
     const bytes = await generate(d);
-    const safe = (d.nazwaSkrocona.split(' ')[0] || 'spolka').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const plMap = { ą: 'a', ć: 'c', ę: 'e', ł: 'l', ń: 'n', ó: 'o', ś: 's', ź: 'z', ż: 'z' };
+    const safe = (d.nazwaSkrocona.split(' ')[0] || 'spolka').toLowerCase().replace(/[ąćęłńóśźż]/g, c => plMap[c]).replace(/[^a-z0-9]/g, '');
     const res = await saveAndDownload({
       docType: 'nip-8',
       title: 'NIP-8 — zgłoszenie w zakresie danych uzupełniających',

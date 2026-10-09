@@ -291,7 +291,7 @@
       return '<div class="op' + (f.op === name ? ' on' : '') + '" data-op="' + esc(name) + '" role="button" tabindex="0"><div class="l"><b>' + esc(name === '—' ? 'Bez opiekuna' : name) + '</b>' +
         '<small>' + o.zamk + ' / ' + o.all + ' zamkniętych' + (o.zal ? ' · ' + o.zal + ' zaległych' : '') + '</small></div>' +
         '<div class="bar"><i class="g" style="width:' + (o.zamk / o.all * 100).toFixed(1) + '%"></i><i class="a" style="width:' + (o.wtoku / o.all * 100).toFixed(1) + '%"></i></div></div>';
-    }).join('') : '<div class="empty">Brak klientów.</div>';
+    }).join('') : '<div class="empty">' + (gotowe ? 'Brak klientów.' : 'Ładowanie…') + '</div>';
   }
   function rysujFiltry() {
     var opcje = function (vals, cur, all) {

@@ -262,7 +262,7 @@
   function profil(klient) {
     klient = klient || {};
     var f = norm(klient.forma), o = norm(klient.opodatkowanie), typ = null;
-    if (/komandyt/.test(f)) typ = 'kom';
+    if (/komandyt|(^|[^a-z])sp\. ?k\.?($|[^a-z])/.test(f)) typ = 'kom'; // also the abbreviation "sp. k."
     else if (/z ?o\.? ?o\.?($|[^a-z])|z ograniczona|akcyjn|(^|[^a-z])p?\.?s\.? ?a\.?($|[^a-z])/.test(f)) typ = 'kap';
     else if (/jawn|sp\. ?j|partnersk|cywiln|(^|[^a-z])s\. ?c\.?($|[^a-z])/.test(f)) typ = 'osob';
     else if (/budzet/.test(f)) typ = 'budzet';

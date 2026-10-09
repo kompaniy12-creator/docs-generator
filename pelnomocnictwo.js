@@ -211,7 +211,18 @@ function wrapLines(text, font, size, maxWidth) {
   const out = [];
   if (!text) return out;
   for (const para of String(text).split('\n')) {
-    const words = para.split(/\s+/).filter(Boolean);
+    const words = [];
+    para.split(/\s+/).filter(Boolean).forEach(w => {
+      // a single word wider than the line is cut (after a hyphen where possible)
+      while (font.widthOfTextAtSize(w, size) > maxWidth && w.length > 1) {
+        let n = 1;
+        while (n < w.length && font.widthOfTextAtSize(w.slice(0, n + 1), size) <= maxWidth) n++;
+        const hy = w.lastIndexOf('-', n - 1);
+        if (hy > 0) n = hy + 1;
+        words.push(w.slice(0, n)); w = w.slice(n);
+      }
+      words.push(w);
+    });
     let line = '';
     for (const w of words) {
       const test = line ? line + ' ' + w : w;
@@ -264,7 +275,7 @@ async function generateUchwala(data) {
   const font = await doc.embedFont(fontRegular);
   const bold = await doc.embedFont(fontBold);
 
-  const page = doc.addPage([595.28, 841.89]); // A4
+  let page = doc.addPage([595.28, 841.89]); // A4
   const W = page.getWidth();
   const margin = 60;
   const innerW = W - margin * 2;
@@ -318,25 +329,32 @@ async function generateUchwala(data) {
   page.drawText('Podpisy wspólników:', { x: margin, y, font: bold, size: sz });
   y -= 56;
 
+  // 2 signature blocks per row; long names (legal persons) wrap inside their block
   const blockW = innerW / 2;
-  for (let i = 0; i < data.podpisujacy.length; i++) {
-    const col = i % 2;
-    if (col === 0 && i > 0) { y -= 64; }
-    const xCenter = margin + blockW * col + blockW / 2;
-    const lineLen = 200;
-    page.drawLine({
-      start: { x: xCenter - lineLen / 2, y },
-      end: { x: xCenter + lineLen / 2, y },
-      thickness: 0.5, color: rgb(0, 0, 0),
-    });
-    const s = data.podpisujacy[i];
-    const name = `${s.imie} ${s.nazwisko}`;
-    const nW = font.widthOfTextAtSize(name, sz);
-    page.drawText(name, { x: xCenter - nW / 2, y: y - 14, font, size: sz });
-    if (s.funkcja) {
-      const rW = font.widthOfTextAtSize(s.funkcja, sz);
-      page.drawText(s.funkcja, { x: xCenter - rW / 2, y: y - 28, font, size: sz });
+  const nameLines = data.podpisujacy.map(s => wrapLines(`${s.imie} ${s.nazwisko}`.trim(), font, sz, blockW - 24));
+  for (let i = 0; i < data.podpisujacy.length; i += 2) {
+    const rowLines = Math.max(nameLines[i].length, nameLines[i + 1] ? nameLines[i + 1].length : 1);
+    if (i > 0 && y - (14 + rowLines * 13 + 16) < 50) { page = doc.addPage([595.28, 841.89]); y = page.getHeight() - 90; }
+    for (let col = 0; col < 2 && i + col < data.podpisujacy.length; col++) {
+      const xCenter = margin + blockW * col + blockW / 2;
+      const lineLen = 200;
+      page.drawLine({
+        start: { x: xCenter - lineLen / 2, y },
+        end: { x: xCenter + lineLen / 2, y },
+        thickness: 0.5, color: rgb(0, 0, 0),
+      });
+      const s = data.podpisujacy[i + col];
+      let ty = y - 14;
+      nameLines[i + col].forEach(l => {
+        page.drawText(l, { x: xCenter - font.widthOfTextAtSize(l, sz) / 2, y: ty, font, size: sz });
+        ty -= 13;
+      });
+      if (s.funkcja) {
+        const fl = wrapLines(s.funkcja, font, sz, blockW - 24)[0] || '';
+        page.drawText(fl, { x: xCenter - font.widthOfTextAtSize(fl, sz) / 2, y: ty - 1, font, size: sz });
+      }
     }
+    y -= 36 + rowLines * 13 + 15;
   }
 
   return await doc.save();
@@ -375,6 +393,15 @@ form.addEventListener('submit', async (e) => {
   if (!form.checkValidity()) {
     form.reportValidity();
     if (firstInvalid) firstInvalid.focus();
+    // a filled field in a wrong format (NIP, PESEL, kod pocztowy…) gets its own message
+    const bad = firstInvalid ? null : form.querySelector('input:invalid, select:invalid');
+    if (bad && !bad.validity.valueMissing) {
+      const lab = bad.closest('.field') && bad.closest('.field').querySelector('label');
+      const name = lab ? lab.textContent.replace(/\(poz\.[^)]*\)/, '').trim() : '';
+      bad.focus();
+      showStatus('Popraw pole' + (name ? ' „' + name + '”' : '') + (bad.title ? ' — ' + bad.title : ' — nieprawidłowy format') + '.', 'error');
+      return;
+    }
     showStatus('Uzupełnij wszystkie wymagane pola.', 'error');
     return;
   }

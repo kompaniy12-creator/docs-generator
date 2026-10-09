@@ -134,10 +134,11 @@ Deno.serve(async (req) => {
     const missing = !list.some((x) => x.valid_from <= today) ||
       (now.getUTCMonth() >= 7 && !list.some((x) => x.valid_from.startsWith(String(nextYear))));
     if (missing && ANTHROPIC_KEY) {
-      const c = await db("portal_stawki_check?id=eq.1&select=checked_at");
-      const last = c.ok ? new Date((await c.json())[0]?.checked_at ?? 0).getTime() : 0;
-      if (Date.now() - last > 20 * 3600 * 1000) {
-        await db("portal_stawki_check?id=eq.1", { method: "PATCH", body: JSON.stringify({ checked_at: now.toISOString() }) });
+      // one conditional update decides who checks: of many callers at the same moment only one gets the row back
+      const prog = new Date(Date.now() - 20 * 3600 * 1000).toISOString();
+      const c = await db(`portal_stawki_check?id=eq.1&checked_at=lt.${encodeURIComponent(prog)}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ checked_at: now.toISOString() }) });
+      const moja = c.ok ? ((await c.json()) as unknown[]).length > 0 : false;
+      if (moja) {
         try {
           if (await refresh(list)) list = await rows();
         } catch (e) { console.error("refresh failed", e); }

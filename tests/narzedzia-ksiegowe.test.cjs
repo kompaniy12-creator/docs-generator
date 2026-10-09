@@ -70,3 +70,17 @@ test('filtr tekstowy: nic poza literami, cyframi, spacją, kropką i myślnikiem
   assert.equal(N.filtrOr('783-191 63'), 'nazwa.ilike."%783-191 63%",request_id.ilike."%783-191 63%",nip.ilike."%78319163%"');
   assert.ok(!/[()\\]/.test(N.filtrOr('a(b)c\\d')));
 });
+
+test('vat: kwota ponad zakres dokładnych groszy jest odrzucana, graniczna liczy się dokładnie', () => {
+  assert.deepStrictEqual(N.vat('90071992547409,91', 23, 'netto'), { blad: 'Kwota jest zbyt duża.' });
+  assert.deepStrictEqual(N.vat('100000000000,00', 23, 'netto'), { nettoGr: 10000000000000, vatGr: 2300000000000, bruttoGr: 12300000000000, stawka: 23 });
+  assert.deepStrictEqual(N.vat('123', 23, 'brutto'), { nettoGr: 10000, vatGr: 2300, bruttoGr: 12300, stawka: 23 });
+});
+
+test('odsetki podatkowe: okres sprzed tabeli — komunikat bez podwójnej spacji; wynik zgodny z ręcznym rachunkiem', () => {
+  const b = N.odsetkiPodatkowe({ kwota: '1000', termin: '2014-10-07', zaplata: '2026-10-09' });
+  assert.ok(b.blad && !/ {2}/.test(b.blad) && b.potrzebnaStawka);
+  // 10 000 zł × (43 dni × 11% + 47 dni × 10,5%) / 365 = 264,79 zł -> 265 zł
+  const r = N.odsetkiPodatkowe({ kwota: '10 000,00', termin: '2026-01-20', zaplata: '2026-04-20' });
+  assert.strictEqual(r.odsetkiGr, 26500); assert.strictEqual(r.dni, 90); assert.strictEqual(r.naliczane, true);
+});

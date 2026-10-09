@@ -54,12 +54,20 @@ function numberToWordsPL(n) {
   if (rest) parts.push(under1000(rest));
   return parts.join(' ');
 }
+// Accepts "5000", "5000,50", "5000.50", "5 000,50", "5.000,50", "5,000.50", "5000 zł".
+// Anything else (letters, three decimals, a minus) is rejected instead of being guessed.
 function parseAmount(input) {
-  const cleaned = String(input).replace(/\s/g, '').replace(',', '.');
-  const n = parseFloat(cleaned);
-  if (isNaN(n) || n < 0) return null;
-  const zl = Math.floor(n);
-  const gr = Math.round((n - zl) * 100);
+  let t = String(input == null ? '' : input).replace(/[\s\u00a0]/g, '').replace(/(zł|pln)\.?$/i, '');
+  if (!t) return null;
+  let m;
+  if ((m = t.match(/^(\d{1,3}(?:\.\d{3})+)(?:,(\d{1,2}))?$/))) t = m[1].replace(/\./g, '') + '.' + (m[2] || '0');
+  else if ((m = t.match(/^(\d{1,3}(?:,\d{3})+)\.(\d{1,2})$/))) t = m[1].replace(/,/g, '') + '.' + m[2];
+  else if ((m = t.match(/^(\d+)(?:[.,](\d{1,2}))?$/))) t = m[1] + '.' + (m[2] || '0');
+  else return null;
+  const parts = t.split('.');
+  const zl = parseInt(parts[0], 10);
+  const gr = parseInt((parts[1] + '0').slice(0, 2), 10);
+  if (isNaN(zl) || isNaN(gr)) return null;
   return { zl, gr };
 }
 function formatAmountZL({ zl, gr }) {
@@ -67,7 +75,7 @@ function formatAmountZL({ zl, gr }) {
   return `${zlStr},${gr.toString().padStart(2, '0')} zł`;
 }
 function amountInWords({ zl, gr }) {
-  return `${numberToWordsPL(zl)} złotych ${gr.toString().padStart(2, '0')}/100`;
+  return `${numberToWordsPL(zl)} ${plPlural(zl, 'złoty', 'złote', 'złotych')} ${gr.toString().padStart(2, '0')}/100`;
 }
 
 // ---------------- Polish date formatter ----------------
@@ -365,7 +373,18 @@ function wrapLines(text, font, size, maxWidth) {
   const out = [];
   if (!text) return out;
   for (const para of String(text).split('\n')) {
-    const words = para.split(/\s+/).filter(Boolean);
+    const words = [];
+    para.split(/\s+/).filter(Boolean).forEach(w => {
+      // a single word wider than the line is cut (after a hyphen where possible)
+      while (font.widthOfTextAtSize(w, size) > maxWidth && w.length > 1) {
+        let n = 1;
+        while (n < w.length && font.widthOfTextAtSize(w.slice(0, n + 1), size) <= maxWidth) n++;
+        const hy = w.lastIndexOf('-', n - 1);
+        if (hy > 0) n = hy + 1;
+        words.push(w.slice(0, n)); w = w.slice(n);
+      }
+      words.push(w);
+    });
     let line = '';
     for (const w of words) {
       const test = line ? line + ' ' + w : w;
@@ -420,12 +439,24 @@ async function generateUchwala(data) {
   const font = await doc.embedFont(fontRegular);
   const bold = await doc.embedFont(fontBold);
 
-  const page = doc.addPage([595.28, 841.89]); // A4
+  let page = doc.addPage([595.28, 841.89]); // A4
   const W = page.getWidth();
   const margin = 60;
   const innerW = W - margin * 2;
   const sz = 10;
   const lh = 14;
+  const BOTTOM = 56;
+  // a long resolution (many shareholders / board members) continues on the next page
+  const ensure = (h) => { if (y - h < BOTTOM) { page = doc.addPage([595.28, 841.89]); y = page.getHeight() - 60; } };
+  const drawWrapped = (_pg, text, x, yy, maxW, size, f, lineH) => {
+    y = yy;
+    for (const l of wrapLines(text, f, size, maxW)) {
+      ensure(lineH);
+      page.drawText(l, { x, y, font: f, size });
+      y -= lineH;
+    }
+    return y;
+  };
 
   // ----- TOP: place + date (right-aligned)
   let y = page.getHeight() - 50;
@@ -457,6 +488,7 @@ async function generateUchwala(data) {
   y -= 8;
 
   // ----- § 2 — list of wspólnicy with udziały
+  ensure(lh * 2);
   page.drawText('§ 2. ', { x: margin, y, font: bold, size: sz });
   const headerText = 'Na posiedzeniu obecni byli następujący wspólnicy Spółki, posiadający łącznie 100% kapitału zakładowego:';
   y = drawWrapped(page, headerText, margin + 18, y, innerW - 18, sz, font, lh);
@@ -473,6 +505,7 @@ async function generateUchwala(data) {
   y -= 8;
 
   // ----- § 3 — uchwały
+  ensure(lh * 2);
   page.drawText('§ 3. ', { x: margin, y, font: bold, size: sz });
   y = drawWrapped(page, 'Zgromadzenie Wspólników, działając na podstawie przepisów Kodeksu spółek handlowych, uchwala, co następuje:', margin + 18, y, innerW - 18, sz, font, lh);
   y -= 2;
@@ -501,6 +534,7 @@ async function generateUchwala(data) {
   y -= 8;
 
   // ----- § 5 — głosowanie
+  ensure(lh * 2);
   page.drawText('§ 5. ', { x: margin, y, font: bold, size: sz });
   y = drawWrapped(page, 'Uchwała została podjęta jednogłośnie, przy 100% głosów za jej przyjęciem:', margin + 18, y, innerW - 18, sz, font, lh);
   ['a) głosów za: 100,', 'b) głosów przeciw: 0,', 'c) głosów wstrzymujących się: 0.'].forEach(t => {
@@ -509,30 +543,34 @@ async function generateUchwala(data) {
   y -= 20;
 
   // ----- Signatures
+  ensure(50 + 60);
   page.drawText('Podpisy wspólników:', { x: margin, y, font: bold, size: sz });
   y -= 50;
 
-  // Sign blocks — up to 2 per row
+  // Sign blocks — 2 per row; long names (legal persons) wrap inside their block
   const blockW = innerW / 2;
-  let row = 0;
-  for (let i = 0; i < data.wspolnicy.length; i++) {
-    const col = i % 2;
-    if (col === 0 && i > 0) { row += 1; y -= 60; }
-    const xCenter = margin + blockW * col + blockW / 2;
-    const lineLen = 200;
-    page.drawLine({
-      start: { x: xCenter - lineLen / 2, y },
-      end: { x: xCenter + lineLen / 2, y },
-      thickness: 0.5, color: rgb(0, 0, 0),
-    });
-    const w = data.wspolnicy[i];
-    const name = `${w.imie} ${w.nazwisko}`;
-    const nW = font.widthOfTextAtSize(name, sz);
-    page.drawText(name, { x: xCenter - nW / 2, y: y - 14, font, size: sz });
-    // Always "Wspólnik" — the salary resolution is always signed by shareholders, not the board
-    const role = 'Wspólnik';
-    const rW = font.widthOfTextAtSize(role, sz);
-    page.drawText(role, { x: xCenter - rW / 2, y: y - 28, font, size: sz });
+  const nameLines = data.wspolnicy.map(w => wrapLines(`${w.imie} ${w.nazwisko}`.trim(), font, sz, blockW - 24));
+  for (let i = 0; i < data.wspolnicy.length; i += 2) {
+    const rowLines = Math.max(nameLines[i].length, nameLines[i + 1] ? nameLines[i + 1].length : 1);
+    if (i > 0 && y - (14 + rowLines * 12 + 14) < 36) { page = doc.addPage([595.28, 841.89]); y = page.getHeight() - 90; }
+    for (let col = 0; col < 2 && i + col < data.wspolnicy.length; col++) {
+      const xCenter = margin + blockW * col + blockW / 2;
+      const lineLen = 200;
+      page.drawLine({
+        start: { x: xCenter - lineLen / 2, y },
+        end: { x: xCenter + lineLen / 2, y },
+        thickness: 0.5, color: rgb(0, 0, 0),
+      });
+      let ty = y - 14;
+      nameLines[i + col].forEach(l => {
+        page.drawText(l, { x: xCenter - font.widthOfTextAtSize(l, sz) / 2, y: ty, font, size: sz });
+        ty -= 12;
+      });
+      // Always "Wspólnik" — the salary resolution is always signed by shareholders, not the board
+      const role = 'Wspólnik';
+      page.drawText(role, { x: xCenter - font.widthOfTextAtSize(role, sz) / 2, y: ty - 2, font, size: sz });
+    }
+    y -= 34 + rowLines * 12 + 14;
   }
 
   return await doc.save();
@@ -540,9 +578,14 @@ async function generateUchwala(data) {
 
 function guessHonorific(imie) {
   // Polish: feminine names typically end with 'a'
-  if (!imie) return 'Pana';
-  const lastCh = imie[imie.length - 1].toLowerCase();
-  return lastCh === 'a' ? 'Pani' : 'Pana';
+  // the FIRST given name decides ("Jan Maria" is a man); men's names ending in -a are listed
+  const first = String(imie || '').trim().split(/\s+/)[0].toLowerCase();
+  if (!first) return 'Pana';
+  const MALE_A = ['kuba', 'barnaba', 'bonawentura', 'kosma', 'jarema', 'dyzma', 'saba', 'mykola', 'mykoła', 'nikita', 'mikita',
+    'ilya', 'ilia', 'illia', 'ilja', 'danila', 'danyla', 'luka', 'luca', 'andrea', 'nicola', 'joshua', 'sasha', 'sasza', 'misha',
+    'kostia', 'kola', 'foma', 'savva', 'sawa', 'mustafa', 'musa', 'isa', 'yahya', 'zakaria', 'elia', 'noa', 'ezra', 'jona', 'juda'];
+  if (MALE_A.indexOf(first) !== -1) return 'Pana';
+  return first[first.length - 1] === 'a' ? 'Pani' : 'Pana';
 }
 
 // ---------------- Submit ----------------
@@ -571,6 +614,15 @@ form.addEventListener('submit', async (e) => {
   if (!form.checkValidity()) {
     form.reportValidity();
     if (firstInvalid) firstInvalid.focus();
+    // a filled field in a wrong format (NIP, PESEL, kod pocztowy…) gets its own message
+    const bad = firstInvalid ? null : form.querySelector('input:invalid, select:invalid');
+    if (bad && !bad.validity.valueMissing) {
+      const lab = bad.closest('.field') && bad.closest('.field').querySelector('label');
+      const name = lab ? lab.textContent.replace(/\(poz\.[^)]*\)/, '').trim() : '';
+      bad.focus();
+      showStatus('Popraw pole' + (name ? ' „' + name + '”' : '') + (bad.title ? ' — ' + bad.title : ' — nieprawidłowy format') + '.', 'error');
+      return;
+    }
     showStatus('Uzupełnij wszystkie wymagane pola.', 'error');
     return;
   }
@@ -583,6 +635,16 @@ form.addEventListener('submit', async (e) => {
   }
   // Validate amounts
   const data = collectData();
+  for (const w of data.wspolnicy) {
+    if (!w.udzialy || w.udzialy < 1) {
+      showStatus(`Podaj liczbę udziałów wspólnika ${(w.imie + ' ' + w.nazwisko).trim()}.`, 'error');
+      return;
+    }
+  }
+  if (!(data.payDay >= 1 && data.payDay <= 31)) {
+    showStatus('Dzień płatności musi być liczbą od 1 do 31.', 'error');
+    return;
+  }
   for (const z of data.zarzad.filter(z => z.hasWynagr)) {
     if (!z.kwota || (z.kwota.zl === 0 && z.kwota.gr === 0)) {
       showStatus(`Wprowadź prawidłową kwotę wynagrodzenia dla ${z.imie} ${z.nazwisko}.`, 'error');
@@ -601,7 +663,8 @@ form.addEventListener('submit', async (e) => {
   try {
     await loadFonts();
     const bytes = await generateUchwala(data);
-    const safe = data.company.split(' ')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+    const plMap = { ą: 'a', ć: 'c', ę: 'e', ł: 'l', ń: 'n', ó: 'o', ś: 's', ź: 'z', ż: 'z' };
+    const safe = data.company.split(' ')[0].toLowerCase().replace(/[ąćęłńóśźż]/g, c => plMap[c]).replace(/[^a-z0-9]/g, '');
     const res = await saveAndDownload({
       docType: 'wynagrodzenie', title: 'Uchwała o wynagrodzeniu zarządu',
       subject: data.company, filename: `Uchwala_wynagrodzenie_${safe || 'spolka'}_${data.resDate}.pdf`,

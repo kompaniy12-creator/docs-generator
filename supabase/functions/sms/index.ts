@@ -63,7 +63,9 @@ const isDate = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{
 // ---------------------------------------------------------------- delivery reports
 async function raport(p: URLSearchParams): Promise<Response> {
   const tak = new Response("OK", { status: 200, headers: { "Content-Type": "text/plain" } });
-  const lista = (k: string) => (p.get(k) ?? "").split(",").slice(0, 5);
+  // reports are taken only while the administrator has them switched on; nothing is read or written otherwise
+  if (!(await ustawieniaSms()).raporty) return tak;
+  const lista = (k: string) => (p.get(k) ?? "").slice(0, 400).split(",").slice(0, 5);
   const ids = lista("MsgId"), st = lista("status"), idx = lista("idx"), done = lista("donedate");
   for (let i = 0; i < ids.length; i++) {
     // anything that is not shaped like our own message is dropped before the database is asked

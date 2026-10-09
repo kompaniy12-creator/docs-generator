@@ -65,6 +65,10 @@ function makePersonGroup(prefix, idx, kind) {
   return wrapper;
 }
 
+function escHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
 function refreshCopyFromWspDropdowns() {
   const wspGroups = document.querySelectorAll('#wspolnicy .subgroup');
   const options = [];
@@ -78,7 +82,7 @@ function refreshCopyFromWspDropdowns() {
   document.querySelectorAll('#zarzad .copy-from-wsp').forEach(sel => {
     const prev = sel.value;
     sel.innerHTML = '<option value="">— wybierz wspólnika —</option>' +
-      options.map(o => `<option value="${o.idx}">${o.label}</option>`).join('');
+      options.map(o => `<option value="${o.idx}">${escHtml(o.label)}</option>`).join('');
     if (options.find(o => String(o.idx) === prev)) sel.value = prev;
   });
 }
@@ -236,11 +240,32 @@ function drawCentered(page, text, y, size, font, color = rgb(0, 0, 0)) {
   page.drawText(text, { x, y, font, size, color });
 }
 
+// A single word wider than the column (e.g. a long hyphenated surname) is cut into
+// pieces that fit — after a hyphen where possible — so it never runs into the next cell.
+function splitLongWord(word, font, size, maxWidth) {
+  if (font.widthOfTextAtSize(word, size) <= maxWidth) return [word];
+  const out = [];
+  let rest = word;
+  while (rest && font.widthOfTextAtSize(rest, size) > maxWidth) {
+    let n = 1;
+    while (n < rest.length && font.widthOfTextAtSize(rest.slice(0, n + 1), size) <= maxWidth) n++;
+    const hy = rest.lastIndexOf('-', n - 1);
+    if (hy > 0) n = hy + 1;
+    out.push(rest.slice(0, n));
+    rest = rest.slice(n);
+  }
+  if (rest) out.push(rest);
+  return out;
+}
+
 function wrapLines(text, font, size, maxWidth) {
   const lines = [];
   if (!text) return lines;
   for (const paragraph of String(text).split('\n')) {
-    const words = paragraph.split(/\s+/).filter(Boolean);
+    const words = [];
+    paragraph.split(/\s+/).filter(Boolean).forEach(w => {
+      splitLongWord(w, font, size, maxWidth).forEach(part => words.push(part));
+    });
     let line = '';
     for (const word of words) {
       const test = line ? line + ' ' + word : word;
@@ -386,7 +411,15 @@ function drawTable(page, x, y, colWidths, headerLines, rowsData, font, bold, row
   let cy = y - headerHeight;
 
   // Data rows
+  const minRowHeight = rowHeight;
   for (let r = 0; r < rowsData.length; r++) {
+    // a row is as tall as its longest cell needs (long addresses, names of legal persons)
+    let maxLines = 1;
+    for (let c = 0; c < rowsData[r].length; c++) {
+      const n = wrapLines(rowsData[r][c], c === 0 ? bold : font, 10, colWidths[c] - cellPad * 2).length;
+      if (n > maxLines) maxLines = n;
+    }
+    rowHeight = Math.max(minRowHeight, maxLines * lineHeight + 12);
     page.drawRectangle({ x, y: cy - rowHeight, width: totalW, height: rowHeight, borderColor: rgb(0, 0, 0), borderWidth: 0.8 });
     // Column dividers
     let dx = x;
@@ -539,8 +572,8 @@ async function generateZgoda(data, member) {
 
   // Left block: imię nazwisko / adres / PESEL
   const fullName = `${member.imie} ${member.nazwisko}`.trim();
-  page.drawText(fullName, { x: margin, y: cy, font, size }); cy -= lh;
-  page.drawText(member.adres || '', { x: margin, y: cy, font, size }); cy -= lh;
+  cy = drawWrapped(page, fullName, margin, cy, innerW, size, font, lh);
+  cy = drawWrapped(page, member.adres || '', margin, cy, innerW, size, font, lh);
   const peselLine = member.noPesel
     ? `Nr identyfikacyjny (brak PESEL): ${member.peselAlt || ''}`
     : `PESEL: ${member.pesel || ''}`;
@@ -570,8 +603,8 @@ async function generateZgoda(data, member) {
   cy -= lh / 2;
 
   // Address
-  page.drawText(member.adres || '', { x: margin, y: cy, font, size });
-  cy -= lh * 1.5;
+  cy = drawWrapped(page, member.adres || '', margin, cy, innerW, size, font, lh);
+  cy -= lh * 0.5;
 
   // "Ponadto oświadczam, że:"
   page.drawText('Ponadto oświadczam, że:', { x: margin, y: cy, font, size });
@@ -602,8 +635,8 @@ async function generateZgoda(data, member) {
 
   // Signature
   const sigName = fullName;
-  const sigW = font.widthOfTextAtSize(sigName, size);
-  page.drawText(sigName, { x: W - margin - sigW, y: cy, font, size });
+  const sigW = Math.min(font.widthOfTextAtSize(sigName, size), innerW);
+  drawWrapped(page, sigName, W - margin - sigW, cy, innerW, size, font, lh);
 
   return await doc.save();
 }
@@ -637,6 +670,15 @@ form.addEventListener('submit', async (e) => {
   if (!form.checkValidity()) {
     form.reportValidity();
     if (firstInvalid) firstInvalid.focus();
+    // a filled field in a wrong format (NIP, PESEL, kod pocztowy…) gets its own message
+    const bad = firstInvalid ? null : form.querySelector('input:invalid, select:invalid');
+    if (bad && !bad.validity.valueMissing) {
+      const lab = bad.closest('.field') && bad.closest('.field').querySelector('label');
+      const name = lab ? lab.textContent.replace(/\(poz\.[^)]*\)/, '').trim() : '';
+      bad.focus();
+      showStatus('Popraw pole' + (name ? ' „' + name + '”' : '') + (bad.title ? ' — ' + bad.title : ' — nieprawidłowy format') + '.', 'error');
+      return;
+    }
     showStatus('Uzupełnij wszystkie wymagane pola.', 'error');
     return;
   }

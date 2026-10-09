@@ -50,9 +50,19 @@
     o_postep: { m: 'Księgowość', t: 'średni postęp onboardingu', c: 'green', h: 'onboarding.html', v: function (d) { return d.onboarding.sredni_postep; }, f: function (n) { return n + '%'; } },
     o_po: { m: 'Księgowość', t: 'kroki onboardingu po terminie', c: 'red', h: 'onboarding.html?p=/deadlines', v: function (d) { return d.onboarding.zadania_po_terminie; } },
     o_czek: { m: 'Księgowość', t: 'kroków czeka na klienta', c: 'amber', h: 'onboarding.html?p=/deadlines', v: function (d) { return d.onboarding.czekamy_na_klienta; } },
-    c_firmy: { m: 'Klienci', t: 'firm w bazie klientów', c: 'green', h: 'rejestr.html', v: function (d) { return d.klienci.wszystkie; } },
+    c_firmy: { m: 'Klienci', t: 'firm w bazie klientów', c: 'green', h: 'klienci.html', v: function (d) { return d.klienci.wszystkie; } },
     c_konta: { m: 'Klienci', t: 'kont w profilu klienta', c: '', h: 'dostep.html', v: function (d) { return d.klienci.konta_aktywne; } },
     c_log: { m: 'Klienci', t: 'logowań klientów w 7 dni', c: 'green', h: 'dostep.html', v: function (d) { return d.klienci.logowania_7dni; } },
+    // modules added later: the function may be older than the page, so a missing branch reads as zero
+    c_obsl: { m: 'Klienci', t: 'klientów obsługiwanych', c: 'green', h: 'klienci.html?k=obs', v: function (d) { return d.klienci.obslugiwani || 0; } },
+    c_bezu: { m: 'Klienci', t: 'klientów bez umowy w bazie', c: 'red', h: 'klienci.html?k=bezU', v: function (d) { return d.klienci.bez_umowy || 0; } },
+    c_bezp: { m: 'Klienci', t: 'klientów bez umowy powierzenia', c: 'red', h: 'klienci.html?k=bezP', v: function (d) { return d.klienci.bez_powierzenia || 0; } },
+    c_tg: { m: 'Klienci', t: 'grup Telegram z problemem', c: 'amber', h: 'klienci.html?k=tg', v: function (d) { return d.klienci.telegram_problemy || 0; } },
+    c_umspr: { m: 'Klienci', t: 'umów klientów do sprawdzenia', c: 'amber', h: 'klienci.html?k=spr', v: function (d) { return d.klienci.umowy_do_sprawdzenia || 0; } },
+    pd_wer: { m: 'Kadry', t: 'podpisów czeka na weryfikację', c: 'amber', h: 'podpisy.html', v: function (d) { return (d.podpisy || {}).do_weryfikacji || 0; } },
+    m_prop: { m: 'Poczta', t: 'wiadomości czeka na decyzję', c: 'amber', h: 'poczta.html', v: function (d) { return (d.poczta || {}).propozycje || 0; } },
+    s_dzis: { m: 'SMS', t: 'SMS-ów wysłanych dziś', c: 'green', h: 'sms.html', v: function (d) { return (d.sms || {}).dzis || 0; } },
+    t_bezprof: { m: 'Zespół', t: 'kont bez profilu pracownika', c: 'amber', h: 'zespol.html', v: function (d) { return (d.zespol || {}).bez_profilu || 0; } },
     d_all: { m: 'Dokumenty', t: 'dokumentów wygenerowanych w 30 dni', c: 'green', h: 'historia.html?s=spolka', v: function (d) { return sum(d.dokumenty_30dni, function (x) { return x.ile; }); } },
     d_kadry: { m: 'Dokumenty', t: 'kompletów kadrowych w 30 dni', c: 'green', h: 'historia.html?s=kadry', v: function (d) { return docCount(d, 'umowa-zlecenie'); } },
     d_leg: { m: 'Legalizacja pobytu', t: 'załączników do pobytu w 30 dni', c: 'green', h: 'historia.html?s=legalizacja', v: function (d) { return docCount(d, 'zalacznik-pobyt'); } },
@@ -102,8 +112,24 @@
         return '<div class="line"><a class="n" href="onboarding.html?p=/clients/' + esc(x.id) + '">' + esc(x.nazwa) + '</a>' + (x.po_terminie ? '<span class="pill p-red">' + x.po_terminie + ' po terminie</span>' : '') + '<span class="bar g"><i style="width:' + x.pct + '%"></i></span><b>' + x.pct + '%</b></div>';
       }).join('') : '<div class="empty">Brak firm w onboardingu.</div>');
     } },
-    opiekunowie: { m: 'Klienci', t: 'Klienci według opiekuna', link: ['rejestr.html', 'rejestr'], hint: 'Ile firm prowadzi każdy opiekun.', r: function (d, n) { return bars(d.klienci.opiekunowie.slice(0, n)); } },
-    formy: { m: 'Klienci', t: 'Formy prawne klientów', link: ['rejestr.html', 'rejestr'], hint: 'Struktura bazy klientów.', r: function (d, n) { return bars(d.klienci.formy.slice(0, n)); } },
+    opiekunowie: { m: 'Klienci', t: 'Klienci według opiekuna', link: ['klienci.html', 'baza klientów'], hint: 'Ile firm prowadzi każdy opiekun.', r: function (d, n) { return bars(d.klienci.opiekunowie.slice(0, n)); } },
+    formy: { m: 'Klienci', t: 'Formy prawne klientów', link: ['klienci.html', 'baza klientów'], hint: 'Struktura bazy klientów.', r: function (d, n) { return bars(d.klienci.formy.slice(0, n)); } },
+    klienci_stan: { m: 'Klienci', t: 'Baza klientów — stan', link: ['klienci.html', 'baza klientów'], hint: 'Obsługa, umowy w bazie i grupy Telegram klientów.', r: function (d) {
+      var c = d.klienci, n = function (v, zly) { return '<span class="pill ' + (v ? zly : 'p-ok') + '">' + (v || 0) + '</span>'; };
+      if (c.obslugiwani == null) return '<div class="empty">Brak danych.</div>';
+      return line('Obsługiwani', '<b>' + c.obslugiwani + '</b>') + line('Wstrzymani', '<b>' + c.wstrzymani + '</b>') + line('Obsługa zakończona', '<b>' + c.zakonczeni + '</b>') +
+        line('<a href="klienci.html?k=bezU">Bez umowy w bazie</a>', n(c.bez_umowy, 'p-red')) + line('<a href="klienci.html?k=bezP">Bez umowy powierzenia</a>', n(c.bez_powierzenia, 'p-red')) +
+        line('<a href="klienci.html?k=tg">Grupy Telegram z problemem</a>', n(c.telegram_problemy, 'p-amber')) + line('<a href="klienci.html?k=spr">Dokumenty do sprawdzenia</a>', n(c.umowy_do_sprawdzenia, 'p-amber')) +
+        line('<a href="klienci.html?k=nikt">Bez opiekuna i kadrowej</a>', n(c.bez_opieki, 'p-amber'));
+    } },
+    nowe_moduly: { m: 'Ogólne', t: 'Podpisy, poczta, SMS, zespół', link: null, hint: 'Co czeka na człowieka w nowszych modułach.', r: function (d) {
+      var p = d.podpisy || {}, m = d.poczta || {}, s = d.sms || {}, z = d.zespol || {}, n = function (v) { return '<span class="pill ' + (v ? 'p-amber' : 'p-ok') + '">' + (v || 0) + '</span>'; };
+      return line('<a href="podpisy.html">Podpisy do weryfikacji</a>', n(p.do_weryfikacji)) + line('<a href="podpisy.html">Otwarte pakiety podpisów</a>', '<b>' + (p.pakiety_otwarte || 0) + '</b>') +
+        line('<a href="poczta.html">Poczta — czeka na decyzję</a>', n(m.propozycje)) +
+        line('<a href="sms.html">SMS dziś' + (s.wlaczone ? '' : ' (tryb testowy)') + '</a>', (s.dzis_test ? '<span class="pill p-grey">próbne ' + s.dzis_test + '</span>' : '') + '<b>' + (s.dzis || 0) + '</b>') +
+        line('<a href="sms.html">SMS — błędy w 7 dni</a>', '<span class="pill ' + (s.bledy_7dni ? 'p-red' : 'p-ok') + '">' + (s.bledy_7dni || 0) + '</span>') +
+        line('<a href="zespol.html">Konta bez profilu pracownika</a>', n(z.bez_profilu)) + line('<a href="zespol.html">Profile bez czatu Telegram</a>', n(z.bez_telegrama));
+    } },
     konta: { m: 'Klienci', t: 'Profil klienta', link: ['dostep.html', 'konta klientów'], hint: 'Konta klientów i ich aktywność.', r: function (d) {
       var c = d.klienci;
       return line('Aktywne konta', '<b>' + c.konta_aktywne + '</b>') + line('Z ustawionym hasłem', '<b>' + c.konta_z_haslem + '</b>') + line('Logowania w 7 dni', '<b>' + c.logowania_7dni + '</b>') + line('Firm w bazie klientów', '<b>' + c.wszystkie + '</b>');
@@ -128,8 +154,8 @@
   };
 
   var DEFAULT = {
-    tiles: ['k_nowe', 'z_po', 'k_dokpo', 'o_po', 'k_term30', 'z_otw', 'k_prac', 'c_firmy'],
-    widgets: [['decyzje', 1, 6], ['zespol', 1, 6], ['terminy', 1, 6], ['zgloszenia', 1, 6], ['onboarding', 1, 8], ['opiekunowie', 1, 6], ['automaty', 1, 6], ['aktywnosc', 1, 8]],
+    tiles: ['k_nowe', 'z_po', 'k_dokpo', 'o_po', 'k_term30', 'z_otw', 'k_prac', 'c_firmy', 'm_prop', 'pd_wer'],
+    widgets: [['decyzje', 1, 6], ['zespol', 1, 6], ['terminy', 1, 6], ['zgloszenia', 1, 6], ['onboarding', 1, 8], ['klienci_stan', 1, 8], ['nowe_moduly', 1, 8], ['opiekunowie', 1, 6], ['automaty', 1, 6], ['aktywnosc', 1, 8]],
     refresh: 0, dense: false,
   };
   function load() {

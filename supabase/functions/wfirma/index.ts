@@ -54,6 +54,8 @@ async function requirePortalUser(req: Request): Promise<{ ok: true } | { ok: fal
   return { ok: true };
 }
 
+// ids of wFirma records are numbers: nothing else may reach the path of a request
+const ID = /^\d{1,15}$/;
 // Call wFirma with API-Key headers, JSON in/out.
 async function wf(module: string, action: string, opts: { id?: string; companyId?: string; body?: unknown } = {}) {
   let url = `${WF_BASE}/${module}/${action}`;
@@ -131,12 +133,12 @@ Deno.serve(async (req) => {
         name: c?.name ?? c?.altname ?? "",
         nip: c?.nip ?? "",
       })).filter((c: any) => c.id);
-      return json({ companies, raw: companies.length ? undefined : r.data }, 200, origin);
+      return json({ companies }, 200, origin);
     }
 
     if (action === "company") {
       const id = param("id") ?? "";
-      if (!id) return json({ error: "Brak parametru id." }, 400, origin);
+      if (!ID.test(id)) return json({ error: "Brak albo nieprawidłowy parametr id." }, 400, origin);
       const r = await wf("companies", "get", { id, companyId: id });
       const comp = extractRecords(r.data, "companies", "company")[0] ?? {};
       const a = await wf("company_addresses", "findmain", { companyId: id, body: {} });
@@ -151,13 +153,13 @@ Deno.serve(async (req) => {
           zip: addr.zip ?? "",
           city: addr.city ?? "",
         },
-        _debug: { comp, addr },
       }, 200, origin);
     }
 
     if (action === "contractors") {
-      const q = param("q") ?? "";
+      const q = (param("q") ?? "").slice(0, 100);
       const companyId = param("company_id") ?? "";
+      if (companyId && !ID.test(companyId)) return json({ error: "Nieprawidłowy parametr company_id." }, 400, origin);
       const body = q
         ? { contractors: { parameters: { conditions: { condition: { field: "name", operator: "like", value: q } }, limit: 50 } } }
         : { contractors: { parameters: { limit: 50 } } };
@@ -179,6 +181,7 @@ Deno.serve(async (req) => {
       // Discover employees + e-akta folders by mining existing staff documents.
       // (wFirma has no employees read endpoint; documents(set=staff) is the only route.)
       const companyId = param("company_id") ?? "";
+      if (companyId && !ID.test(companyId)) return json({ error: "Nieprawidłowy parametr company_id." }, 400, origin);
       const body = {
         documents: {
           parameters: {
@@ -207,18 +210,10 @@ Deno.serve(async (req) => {
       }, 200, origin);
     }
 
-    if (action === "raw") {
-      const module = param("module") ?? "";
-      const act = param("act") ?? "find";
-      const id = param("id") ?? undefined;
-      const companyId = param("company_id") ?? undefined;
-      if (!module) return json({ error: "Brak parametru module." }, 400, origin);
-      const r = await wf(module, act, { id, companyId, body: {} });
-      return json({ httpStatus: r.httpStatus, data: r.data }, 200, origin);
-    }
-
+    // (the debugging action "raw" — any wFirma method with the office's keys — is gone: only the fixed reads above)
     return json({ error: "Nieznana akcja." }, 400, origin);
   } catch (e) {
-    return json({ error: "Błąd wywołania wFirma: " + (e?.message ?? String(e)) }, 502, origin);
+    console.error("wfirma", action, String((e as Error)?.message ?? e).slice(0, 200));
+    return json({ error: "Błąd wywołania wFirma — spróbuj ponownie." }, 502, origin);
   }
 });

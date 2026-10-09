@@ -85,7 +85,7 @@
     if (k) {
       h = k.telefon ? pill('telefon w bazie: ' + k.telefon, 'p-ok') : pill(k.brak || 'brak numeru komórkowego w bazie klientów', 'p-red');
       if (k.zakonczony) h += pill('obsługa tego klienta jest zakończona', 'p-amber');
-      if (!k.telefon) h += '<span class="sub">Numer uzupełnia się w arkuszu klientów (kolumna „Telefon”).</span>';
+      if (!k.telefon) h += '<span class="sub">Numer uzupełnia się w <a href="klienci.html">Bazie klientów</a> (dane klienta → Telefon).</span>';
     } else if (st && st.ja.numer_reczny && $('numer').value.trim()) h = pill('numer wpisany ręcznie', 'p-navy');
     $('klInfo').innerHTML = h;
   }

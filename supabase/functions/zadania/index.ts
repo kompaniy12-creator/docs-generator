@@ -128,13 +128,21 @@ async function pageAll<T>(path: string): Promise<T[]> {
   return all;
 }
 
+// Free text typed into the public form (firm, worker) before it becomes a task title or a Telegram line:
+// one line, no links or mentions, and short enough for the table's limits whatever was sent.
+export function czysty(v: unknown, max: number): string {
+  return String(v ?? "").replace(/[\u0000-\u001f\u007f\u200b-\u200f\u2028\u2029\ufeff]/g, " ")
+    .replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+|\bwww\.\S+|\bt\.me\/\S+/gi, "[link]").replace(/@(?=\w)/g, "@ ")
+    .replace(/\s+/g, " ").trim().slice(0, max);
+}
 // what the system wants open right now
 function desired(rows: Row[], dzis: string): Spec[] {
   const out: Spec[] = [];
   for (const w of rows) {
     const p = w.payload ?? {};
-    const firma = p.z_nazwa || "firma bez nazwy";
-    const kto = w.worker_name ? `Pracownik: ${w.worker_name}.` : "";
+    const firma = czysty(p.z_nazwa, 120) || "firma bez nazwy";
+    const osoba = czysty(w.worker_name, 120);
+    const kto = osoba ? `Pracownik: ${osoba}.` : "";
     if (w.status === "nowe" && Date.now() - Date.parse(w.created_at) > 20 * 3600000) {
       out.push({ klucz: `zgl:${w.id}`, tytul: `Sprawdź nowe zgłoszenie — ${firma}`, opis: `${kto} Zgłoszenie czeka na sprawdzenie od ${pl(w.created_at.slice(0, 10))}.`, termin: dzis, pilne: false, link: "zatrudnienie.html" });
     }
@@ -195,7 +203,17 @@ async function run(dry: boolean) {
       method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
       body: JSON.stringify(fresh.map((s) => ({ ...s, created_by: "system", assignee: owner, zrodlo: "system" }))),
     });
-    if (!ins.ok) throw new Error("zadania insert " + ins.status + " " + (await ins.text()).slice(0, 200));
+    // one bad row must not stop the reminders and the escalation below: try the rows one by one
+    if (!ins.ok) {
+      await ins.body?.cancel();
+      let odrzucone = 0;
+      for (const s of fresh) {
+        const one = await db("portal_zadania?on_conflict=klucz", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=minimal" }, body: JSON.stringify({ ...s, created_by: "system", assignee: owner, zrodlo: "system" }) });
+        if (!one.ok) odrzucone++;
+        await one.body?.cancel();
+      }
+      if (odrzucone) console.error("zadania insert: odrzucone wiersze:", odrzucone);
+    }
   }
   // 1c. the reason is gone -> the system closes its own task
   const stale = all.filter((z) => z.zrodlo === "system" && z.klucz && ["nowe", "w_toku"].includes(z.status) && !wantKeys.has(z.klucz));

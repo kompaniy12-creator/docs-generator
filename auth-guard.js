@@ -32,9 +32,14 @@
     'zalacznik-pobyt.html': 'legalizacja', 'nip-8.html': 'biezaca',
     'umowa-zlecenie.html': 'kadry', 'rejestr.html': 'kadry', 'zatrudnienie.html': 'kadry', 'import.html': 'kadry', 'kontrola.html': 'kadry', 'wiedza.html': 'kadry', 'akta.html': 'kadry', 'dokumenty.html': 'kadry', 'podpisy.html': 'kadry',
     'onboarding.html': 'onboarding', 'ksiegowosc.html': 'onboarding', 'terminy-ksiegowe.html': 'onboarding', 'narzedzia-ksiegowe.html': 'onboarding',
+    // a list = any of these sections is enough; '@admin' = administrators only
+    'sms.html': ['kadry', 'onboarding'], 'rozsylka.html': ['kadry', 'onboarding'], 'poczta.html': ['kadry', 'onboarding'],
+    'pulpit.html': '@admin', 'zespol.html': '@admin', 'dostep.html': '@admin',
   };
   function hasSection(user, section) {
     var m = (user && user.app_metadata) || {};
+    if (section === '@admin') return m.portal_admin === true;
+    if (Array.isArray(section)) return section.some(function (x) { return hasSection(user, x); });
     if (m.portal_admin === true || !Array.isArray(m.portal_sections)) return true;
     return m.portal_sections.indexOf(section) !== -1;
   }

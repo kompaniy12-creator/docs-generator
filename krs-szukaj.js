@@ -41,6 +41,8 @@
     '<div class="krs-hits" id="krsHits"></div>';
   box.insertBefore(ui, statusEl || null);
   var q = ui.querySelector('#krsQ'), go = ui.querySelector('#krsGo'), hitsEl = ui.querySelector('#krsHits');
+  // messages ("Wybierz spółkę:", errors) belong inside the search panel, above the list of hits
+  if (statusEl) ui.insertBefore(statusEl, hitsEl);
   var last = null; // the company loaded last, for "refresh"
 
   function status(msg, type) {
@@ -101,7 +103,8 @@
       last = hit;
       status('✅ Wczytano: ' + (data.firma || 'spółka') + ' · zarząd: ' + data.zarzad.length + ' · wspólnicy: ' + data.wspolnicy.length +
         (window.KRS_PESEL ? ' · PESEL: ' + pesel : '') + '. Dane z rejestr.io' + (f.z_pamieci ? ' (z naszej bazy, pobrane ' + new Date(f.pobrano).toLocaleDateString('pl-PL') + ')' : '') + '.' + peselErr, 'success');
-      if (f.z_pamieci) {
+      // a paid re-read past our base is honoured by the function for administrators only
+      if (f.z_pamieci && window.PortalUser && window.PortalUser.admin) {
         var again = document.createElement('button');
         again.type = 'button'; again.className = 'krs-again'; again.textContent = 'Pobierz aktualne dane z rejestru ↻';
         again.addEventListener('click', function () { load(hit, true); });

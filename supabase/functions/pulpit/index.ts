@@ -3,6 +3,8 @@
 // so the page needs no access to the tables that are closed to browsers
 // (client base, onboarding, client accounts).
 
+import { audytKlienta, zakres } from "../klienci-baza/logic.ts";
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -41,6 +43,21 @@ const today = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Warsaw"
 const isDate = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const days = (iso: string, from: string) => Math.round((Date.parse(iso + "T00:00:00Z") - Date.parse(from + "T00:00:00Z")) / 86400000);
 const ago = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
+// the newer modules: a missing table or any error gives an empty list, never a broken dashboard
+const soft = (path: string): Promise<Any[]> => all(path).catch((e) => { console.error("pulpit", String(e?.message ?? e)); return []; });
+async function portalEmails(): Promise<string[]> {
+  const out: string[] = [];
+  try {
+    for (let page = 1; page <= 20; page++) {
+      const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=1000`, { headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` } });
+      if (!r.ok) break;
+      const batch = (await r.json()).users ?? [];
+      for (const u of batch) if (u.app_metadata?.portal === true && u.email) out.push(String(u.email).toLowerCase());
+      if (batch.length < 1000) break;
+    }
+  } catch (e) { console.error("pulpit auth", e); }
+  return out;
+}
 const top = (m: Map<string, number>, n: number) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([nazwa, ile]) => ({ nazwa, ile }));
 
 Deno.serve(async (req) => {
@@ -50,11 +67,11 @@ Deno.serve(async (req) => {
   if (!(await isAdmin(req))) return json({ error: "Tylko administrator." }, 403, origin);
   try {
     const dzis = today();
-    const [rows, zadania, onb, klienci, konta, klog, joby, powiad, wiedza, akty, faktury, hist] = await Promise.all([
+    const [rows, zadania, onb, klienci, konta, klog, joby, powiad, wiedza, akty, faktury, hist, baza, umowy, tgWyniki, podpisy, pakiety, poczta, sms, smsUst, prac, konta_portalu] = await Promise.all([
       all("zatrudnienie_zgloszenia?select=id,worker_name,status,created_at,payload"),
       all("portal_zadania?select=assignee,status,termin,pilne,eskalacja,done_at,done_by,created_at,created_by,zrodlo,tytul"),
       all("onboarding_clients?select=data"),
-      all("portal_klienci?select=nip,dane"),
+      all("portal_klienci?select=id,nip,dane"),
       all("klient_konta?select=aktywny,last_login,haslo_hash"),
       all(`klient_log?select=akcja,at,email&at=gte.${ago(7)}`),
       all(`portal_zadania_log?select=zadanie,started_at,ok,info&started_at=gte.${ago(8)}&order=started_at.desc`),
@@ -63,6 +80,16 @@ Deno.serve(async (req) => {
       all("portal_prawo_akty?select=skrot,zmiana_wykryta,checked_at"),
       db("invoices?select=synced_at&order=synced_at.desc&limit=1").then((r) => (r.ok ? r.json() : [])),
       all(`portal_doc_history?select=doc_type,created_at,user_email,title,subject&created_at=gte.${ago(30)}`),
+      soft("klienci_baza?select=id,nip,nazwa,forma,opiekun,kadrowy,status"),
+      soft("klienci_umowy?select=klient,status,rodzaj,podtyp,obejmuje,data_zawarcia,obowiazuje_od,obowiazuje_do,bezterminowa,kontrahent,kontrahent_krs,kontrahent_nip,reprezentanci,sprawdzil"),
+      soft("klienci_telegram?select=klient,chat_id,status"),
+      soft("podpisy_dokumenty?select=pakiet_id,pd_status,pr_status"),
+      soft("podpisy_pakiety?select=id,status"),
+      soft("poczta_wiadomosci?select=status,wymaga&status=eq.nowa"),
+      soft(`sms_wiadomosci?select=status,test,created_at&created_at=gte.${ago(7)}`),
+      soft("portal_ustawienia?select=value&key=eq.sms"),
+      soft("portal_pracownicy?select=email,aktywny,telegram_chat"),
+      portalEmails(),
     ]);
 
     // ---- Kadry
@@ -124,6 +151,31 @@ Deno.serve(async (req) => {
       formy.set(k.dane?.forma || "—", (formy.get(k.dane?.forma || "—") ?? 0) + 1);
     }
 
+    // ---- Klienci: the lasting register (Baza klientów) — service status, contracts audit, Telegram groups
+    const daneBy = new Map<string, Any>(klienci.map((k) => [k.id, k.dane ?? {}]));
+    const tgBy = new Map<string, Any>(tgWyniki.map((w) => [w.klient, w]));
+    const stKl: Record<string, number> = {};
+    let bezUmowy = 0, bezPowierzenia = 0, tgProblemy = 0, bezOpieki = 0;
+    for (const k of baza) {
+      stKl[k.status] = (stKl[k.status] ?? 0) + 1;
+      if (k.status === "zakonczony") continue;
+      const chat = String(daneBy.get(k.id)?.telegram ?? "").trim(), w = tgBy.get(k.id);
+      const stan = w && String(w.chat_id ?? "") === chat ? w.status : chat ? null : "brak_grupy";
+      if (stan && stan !== "ok") tgProblemy++;
+      const z = zakres(k);
+      if (!z.ksiegowosc && !z.kadry) { bezOpieki++; continue; }
+      try {
+        const a = audytKlienta(k, [], umowy.filter((u) => u.klient === k.id && u.status === "przypisany"), dzis);
+        if (!a.ma.umowa) bezUmowy++;
+        if (!a.ma.powierzenie) bezPowierzenia++;
+      } catch (e) { console.error("pulpit audyt", e); }
+    }
+    // ---- Podpisy, Poczta, SMS, Zespół
+    const zywe = new Set(pakiety.filter((p) => p.status !== "anulowany").map((p) => p.id));
+    const doWer = podpisy.filter((d) => zywe.has(d.pakiet_id) && (d.pd_status === "wgrany" || d.pr_status === "wgrany")).length;
+    const smsDzis = sms.filter((m) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Warsaw" }).format(new Date(m.created_at)) === dzis);
+    const profile = new Set(prac.map((p) => String(p.email).toLowerCase()));
+
     // ---- Automaty: the latest run of every job + failures of the week
     const lastJob = new Map<string, Any>();
     for (const j of joby) if (!lastJob.has(j.zadanie)) lastJob.set(j.zadanie, j);
@@ -165,6 +217,19 @@ Deno.serve(async (req) => {
         wszystkie: klienci.length, opiekunowie: top(opiek, 12), formy: top(formy, 6),
         konta: konta.length, konta_aktywne: konta.filter((k) => k.aktywny).length, konta_z_haslem: konta.filter((k) => k.haslo_hash).length,
         logowania_7dni: klog.filter((l) => /^logowanie/.test(l.akcja)).length,
+        obslugiwani: stKl.obslugiwany ?? 0, wstrzymani: stKl.wstrzymany ?? 0, zakonczeni: stKl.zakonczony ?? 0,
+        bez_umowy: bezUmowy, bez_powierzenia: bezPowierzenia, bez_opieki: bezOpieki, telegram_problemy: tgProblemy,
+        umowy_do_sprawdzenia: umowy.filter((u) => !u.sprawdzil).length,
+      },
+      podpisy: { do_weryfikacji: doWer, pakiety_otwarte: pakiety.filter((p) => !["anulowany", "zakonczony"].includes(p.status)).length },
+      poczta: { propozycje: poczta.filter((m) => m.wymaga !== false).length },
+      sms: {
+        dzis: smsDzis.filter((m) => !m.test).length, dzis_test: smsDzis.filter((m) => m.test).length,
+        bledy_7dni: sms.filter((m) => m.status === "blad" || m.status === "odrzucony").length, wlaczone: smsUst[0]?.value?.wlaczone === true,
+      },
+      zespol: {
+        konta: konta_portalu.length, profile: prac.length, bez_profilu: konta_portalu.filter((e) => !profile.has(e)).length,
+        bez_telegrama: prac.filter((p) => p.aktywny !== false && !p.telegram_chat).length,
       },
       automaty,
       powiadomienia_30dni: { wyslane: powiad.filter((p) => p.status === "ok").length, bledy: powiad.filter((p) => p.status !== "ok").length },

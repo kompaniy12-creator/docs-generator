@@ -48,6 +48,14 @@
   .tbl th,.tbl td{text-align:left;padding:6px 8px;border-top:1px solid #dfe6f0;white-space:nowrap}
   .tbl th{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:#7a8699;border-top:none}
   .tbl td:last-child{white-space:normal;min-width:130px;color:#5a6577}
+  /* register of checks: cells may wrap, so the 8 columns fit a desktop window without sideways scrolling */
+  .tbl.rj{min-width:760px}
+  .tbl.rj>thead>tr>th,.tbl.rj>tbody>tr>td{padding:6px}
+  .tbl.rj>tbody>tr>td{white-space:normal}
+  .tbl.rj>tbody>tr>td:nth-child(2){overflow-wrap:anywhere;min-width:88px}
+  .tbl.rj>tbody>tr>td:nth-child(5){min-width:112px}
+  .tbl.rj>tbody>tr>td>.pill{white-space:normal;overflow-wrap:anywhere;border-radius:10px}
+  .tbl.rj>tbody>tr>td:nth-child(7)>.mono{overflow-wrap:anywhere}
   .kv{display:grid;grid-template-columns:90px 1fr auto;gap:10px;align-items:center;padding:5px 0}
   .kv+.kv{border-top:1px solid #dfe6f0}
   .kv span:nth-child(2){text-align:right;font-variant-numeric:tabular-nums}
@@ -221,6 +229,6 @@
     <p class="law">Podstawa: art. 70 § 1 Ordynacji podatkowej (t.j. Dz.U. 2026 poz. 622) — zobowiązanie podatkowe przedawnia się z upływem 5 lat, licząc od końca roku kalendarzowego, w którym upłynął termin płatności podatku; art. 86 § 1 — podatnicy obowiązani do prowadzenia ksiąg podatkowych przechowują księgi i związane z ich prowadzeniem dokumenty do czasu upływu okresu przedawnienia zobowiązania podatkowego, chyba że ustawy podatkowe stanowią inaczej. Przykład: gdy termin płatności podatku za 2026 r. upływa w 2027 r., przedawnienie następuje z końcem 2032 r. Bieg przedawnienia może zostać zawieszony albo przerwany (art. 70 § 2–4 i 6), więc okres bywa dłuższy. Eksport CSV: kodowanie UTF-8, separator średnik. Stan na 09.10.2026.</p>
   </section>
 </main>
-<script src="narzedzia-ksiegowe.js?v=3"></script>
+<script src="narzedzia-ksiegowe.js?v=4"></script>
 </body>
 </html>

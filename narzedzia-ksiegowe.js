@@ -271,7 +271,7 @@
     } else {
       var wariant = p.rodzaj === 'obniz' || p.rodzaj === 'podwyz';
       var start = dzien(wariant ? PODATKOWE_WARIANTY_OD : ODSETKI_PODATKOWE[0].od);
-      if (d1 < start) return { blad: 'Wbudowana tabela stawek ' + (wariant ? 'obniżonej i podwyższonej' : '') + ' jest zweryfikowana od ' + dataPl(start) + '. Dla wcześniejszych okresów wpisz własną stawkę (jedną dla całego okresu) albo policz okres w częściach.', potrzebnaStawka: true };
+      if (d1 < start) return { blad: 'Wbudowana tabela stawek' + (wariant ? ' obniżonej i podwyższonej' : '') + ' jest zweryfikowana od ' + dataPl(start) + '. Dla wcześniejszych okresów wpisz własną stawkę (jedną dla całego okresu) albo policz okres w częściach.', potrzebnaStawka: true };
       lista = okresy(ODSETKI_PODATKOWE, d1, w.z, 'stawka', p.rodzaj === 'obniz' ? 0.5 : p.rodzaj === 'podwyz' ? 1.5 : 1);
       poWeryfikacji(w);
     }
@@ -321,6 +321,7 @@
   function vat(kwota, stawka, kierunek) {
     var gr = grosze(kwota), s = Number(stawka);
     if (gr === null) return { blad: 'Wpisz kwotę, np. 1 250,00.' };
+    if (gr > 1e13) return { blad: 'Kwota jest zbyt duża.' }; // gross must stay an exact integer of grosze
     if (STAWKI_VAT.indexOf(s) < 0) return { blad: 'Wybierz stawkę VAT.' };
     var podatek = kierunek === 'brutto' ? Math.round(gr * s / (100 + s)) : Math.round(gr * s / 100);
     return kierunek === 'brutto'
@@ -704,7 +705,7 @@
   }
 
   // 8. register of checks — read straight from the table (RLS: Księgowość section, read only)
-  var RJ = { rows: [], otwarte: {}, wiecej: false, razem: null, blad: '', nr: 0, ja: null }, RJ_STRONA = 50, RJ_CSV_MAX = 20000;
+  var RJ = { rows: [], otwarte: {}, wiecej: false, razem: null, blad: '', nr: 0, ja: null, pob: 0 }, RJ_STRONA = 50, RJ_CSV_MAX = 20000;
   function rjFiltry() { return { q: $('rjQ').value, rodzaj: $('rjRodzaj').value, od: $('rjOd').value, do: $('rjDo').value, moje: $('rjKto').value === 'moje' }; }
   function rjZapytanie(f, opcje) {
     var q = root.sb.from('vat_sprawdzenia').select('*', opcje).order('created_at', { ascending: false }).order('id');
@@ -718,18 +719,21 @@
   }
   async function rjLaduj(dalej, pokaz) {
     var nr = ++RJ.nr;
-    if (!dalej) { RJ.rows = []; RJ.otwarte = {}; RJ.razem = null; }
+    if (!dalej) { RJ.rows = []; RJ.otwarte = {}; RJ.razem = null; RJ.pob = 0; }
     RJ.blad = ''; $('rjWiecej').hidden = true;
     html('rjInfo', '<p class="hint" style="margin:10px 0 0">Wczytuję rejestr…</p>');
     try {
       if (RJ.ja === null) { var s = await root.sb.auth.getSession(); RJ.ja = s && s.data && s.data.session && s.data.session.user ? String(s.data.session.user.email || '') : ''; }
-      var od = RJ.rows.length;
+      var od = RJ.pob; // rows taken from the paged query so far — an entry added on top by "Pokaż wpis" does not count
       var r = await rjZapytanie(rjFiltry(), dalej ? undefined : { count: 'exact' }).range(od, od + RJ_STRONA); // one row more than a page: is there a next one?
       if (nr !== RJ.nr) return; // a newer question is already on its way
       if (r.error) throw new Error(r.error.message || 'błąd');
       var nowe = r.data || [];
       RJ.wiecej = nowe.length > RJ_STRONA;
-      RJ.rows = RJ.rows.concat(nowe.slice(0, RJ_STRONA));
+      var strona = nowe.slice(0, RJ_STRONA), mam = {};
+      RJ.pob += strona.length;
+      RJ.rows.forEach(function (x) { mam[x.id] = true; });
+      RJ.rows = RJ.rows.concat(strona.filter(function (x) { return !mam[x.id]; }));
       if (!dalej && typeof r.count === 'number') RJ.razem = r.count;
       if (pokaz) {
         if (!RJ.rows.some(function (x) { return x.id === pokaz; })) {
@@ -758,7 +762,7 @@
     if (RJ.blad) { html('rjInfo', ''); html('rjOut', blad(RJ.blad)); return; }
     html('rjInfo', '<p class="hint" style="margin:10px 0 0">' + (RJ.razem === null ? '' : 'Wpisów spełniających filtry: <b>' + esc(RJ.razem) + '</b> · ') + 'pokazano ' + esc(RJ.rows.length) + ' · najnowsze na górze</p>');
     if (!RJ.rows.length) { html('rjOut', '<div class="res">Brak wpisów. Sprawdzenia z zakładek „Biała lista VAT” i „VAT UE (VIES)” pojawią się tu same; jeżeli używasz filtrów — poluzuj je.</div>'); return; }
-    html('rjOut', '<div class="scroll"><table class="tbl"><thead><tr><th>Data</th><th>Kto</th><th>Rodzaj</th><th>Podmiot</th><th>Wynik</th><th>Na dzień</th><th>Identyfikator</th><th></th></tr></thead><tbody>'
+    html('rjOut', '<div class="scroll"><table class="tbl rj"><thead><tr><th>Data</th><th>Kto</th><th>Rodzaj</th><th>Podmiot</th><th>Wynik</th><th>Na dzień</th><th>Identyfikator</th><th></th></tr></thead><tbody>'
       + RJ.rows.map(function (r) {
         var pill = wynikPill(r.wynik), otw = !!RJ.otwarte[r.id];
         return '<tr data-id="' + esc(r.id) + '"><td>' + esc(czasVies(r.created_at).replace(' r., godz.', '').slice(0, 16)) + '</td><td>' + esc(String(r.kto || '').split('@')[0]) + '</td><td style="white-space:normal;min-width:96px">' + esc(RODZAJE[r.rodzaj] || r.rodzaj) + '</td>'
@@ -811,7 +815,7 @@
     });
     document.addEventListener('click', function (e) {
       var a = e.target.closest ? e.target.closest('[data-wpis]') : null; if (!a) return;
-      e.preventDefault();
+      e.preventDefault(); clearTimeout(czekaj);
       ['rjQ', 'rjRodzaj', 'rjKto', 'rjOd', 'rjDo'].forEach(function (id) { $(id).value = ''; });
       pokaz = a.getAttribute('data-wpis');
       tabs.querySelector('button[data-tab="rejestr"]').click();

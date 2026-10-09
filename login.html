@@ -27,6 +27,8 @@
   }
   .brand{text-align:center;margin:0 0 22px}
   .brand img{height:72px;width:auto;object-fit:contain}
+  /* dark themes: the logo variant for dark backgrounds (the same one the menu uses) */
+  html.pt-dark .brand img{content:url(logo-kolor-jasny.png)}
   h1{font-size:21px;font-weight:700;margin:0 0 6px;text-align:center;color:var(--brand-navy);letter-spacing:-0.01em}
   .sub{font-size:13.5px;color:#666;text-align:center;margin:0 0 26px}
   label{display:block;font-size:13px;font-weight:500;color:#444;margin:0 0 6px}
@@ -52,7 +54,7 @@
 </head>
 <body class="pt-page">
   <form class="card" id="loginForm" autocomplete="on">
-    <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+    <div class="brand"><img src="logo-kolor.png" alt="TD Consulting Group" /></div>
     <h1>Portal dokumentów spółki</h1>
     <p class="sub">Zaloguj się, aby uzyskać dostęp do generatorów dokumentów.</p>
 
@@ -79,8 +81,9 @@
 
       function returnTarget() {
         var p = new URLSearchParams(location.search).get('return');
-        // only allow same-site relative targets
-        if (p && !/^(https?:)?\/\//.test(p) && !p.startsWith('/')) return p;
+        // only a page of this portal: "name.html" with an optional query / hash. Anything else
+        // (other sites, "javascript:" and other schemes, "\\host", paths) falls back to the start page.
+        if (p && /^[a-z0-9][a-z0-9-]*\.html(\?[^#\\]*)?(#[^\\]*)?$/i.test(p)) return p;
         return 'index.html';
       }
 
@@ -119,9 +122,12 @@
         window.sb.auth.signInWithPassword({ email: email, password: password })
           .then(function (res) {
             if (res.error) {
-              showError(res.error.message === 'Invalid login credentials'
-                ? 'Nieprawidłowy e-mail lub hasło.'
-                : res.error.message);
+              var em = String(res.error.message || '');
+              showError(em === 'Invalid login credentials' ? 'Nieprawidłowy e-mail lub hasło.'
+                : /email not confirmed/i.test(em) ? 'Adres e-mail nie został jeszcze potwierdzony.'
+                : /rate limit|too many/i.test(em) || res.error.status === 429 ? 'Zbyt wiele prób logowania. Odczekaj chwilę i spróbuj ponownie.'
+                : /fetch|network/i.test(em) ? 'Nie udało się połączyć. Sprawdź internet i spróbuj ponownie.'
+                : 'Logowanie nie powiodło się. Spróbuj ponownie.');
               btn.disabled = false; btn.textContent = orig;
               return;
             }
