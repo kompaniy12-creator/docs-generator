@@ -73,7 +73,7 @@ const DOMYSLNE: Record<string, Any> = {
 };
 // the database functions of komunikacja.sql, restated for the stand-in
 const RPC: Record<string, (b: Any) => Any> = {
-  tg_update_nowy: (b) => { if (T.tg_updates.some((u) => u.update_id === b.p_id)) return false; T.tg_updates.push({ update_id: b.p_id }); return true; },
+  tg_update_nowy: (b) => { if (T.tg_updates.some((u) => u.update_id === b.p_id)) return false; T.tg_updates.push({ update_id: b.p_id, at: TERAZ.toISOString() }); return true; },
   tg_limit: (b) => { if ((LIM[b.p_klucz] ?? 0) + 1 > b.p_max) return false; LIM[b.p_klucz] = (LIM[b.p_klucz] ?? 0) + 1; return true; },
   sms_rezerwuj: (b) => { for (let i = 0; i < b.p_klucze.length; i++) if ((SMSLIM[b.p_klucze[i]] ?? 0) + 1 > b.p_maxy[i]) return b.p_klucze[i]; for (const k of b.p_klucze) SMSLIM[k] = (SMSLIM[k] ?? 0) + 1; return null; },
   tg_subskrybuj: (b) => {
@@ -424,6 +424,68 @@ const wiersze = (id: string) => T.rozsylka_odbiorcy.filter((o) => o.rozsylka ===
 const rozs = (id: string) => T.rozsylki.find((r) => r.id === id)!;
 const bieg = () => api("nikt", { action: "kolejka" }, { "x-cron-key": SEKRETY[4] });
 const doKlientow = () => wyslane().filter((w) => !["8100", "8200"].includes(String(w.body.chat_id)) && !String(w.body.text).startsWith("<i>TEST"));
+
+Deno.test("tryb przekazywania: webhook aplikacji onboardingowej jest oczekiwany, portal go nie rusza; mówi, co działa", opts, async () => {
+  reset();
+  const zmiany = () => tgm.wywolania.filter((w) => ["setWebhook", "deleteWebhook"].includes(w.metoda));
+  const UST = { prog_akceptacji: 5, godziny: { od: "08:00", do: "20:00" }, na_przebieg: 20, odstep_ms: 1500, stop_po_bledach: 5, max_prob: 4, link_dni: 90, link_max: 30, koniec_grup: "", polityka_url: "" };
+  // nothing stored ("auto") + the bot's webhook on the forwarder's host = forwarded mode, without anybody clicking anything
+  tgm.webhook = { url: "https://td-onboarding.vercel.app/api/telegram/tajna-sciezka", pending_update_count: 0, allowed_updates: ["message"] };
+  const a = await api("admin", { action: "bot_status" });
+  assertEquals([a.tryb.ustawiony, a.tryb.dzialajacy, a.tryb.webhook_zablokowany, a.subskrypcje.webhook.host, a.odebrane], ["auto", "przekazywanie", true, "td-onboarding.vercel.app", { ile: 0, ostatnia: null }]);
+  assert(a.wniosek.startsWith("Tryb przekazywania — tak ma być") && !a.wniosek.includes("STOP") && a.wniosek.includes("/pl /ru /uk"));
+  assert(a.wniosek.includes("NIE DZIAŁA") && a.wniosek.includes("przyciski wyboru języka") && a.wniosek.includes("przy najbliższej wysyłce") && a.wniosek.includes("nie odebrał jeszcze żadnej"));
+  assert(!JSON.stringify(a).includes("tajna-sciezka"));
+  for (const [akcja, haslo] of [["webhook_ustaw", "USTAW"], ["webhook_usun", "USUN"]]) {
+    const w = await api("admin", { action: akcja, wykonaj: true, potwierdz: haslo + " @TdPowiadomienia_bot", przejmij: true });
+    assertEquals([w.wykonano, w.wylaczone, w.przeszkody.length, w.potwierdz], [false, true, 1, null], akcja);
+  }
+  // a forwarded update arrives: the verdict says so; a wider update list removes the "does not work" part
+  await bot(msg(7001, "/help"));
+  tgm.webhook.allowed_updates = ["message", "callback_query", "my_chat_member"];
+  const b = await api("admin", { action: "bot_status" });
+  assert(b.odebrane.ile === 1 && b.wniosek.includes("przekazywanie działa") && !b.wniosek.includes("NIE DZIAŁA"));
+  // the mode stored explicitly: refused also when the bot has no webhook at all — and the mismatch is reported
+  assertEquals((await api("admin", { action: "ustawienia", ustawienia: { ...UST, tryb_bota: "przekazywanie", host_przekazujacy: "td-onboarding.vercel.app" } })).http, 200);
+  tgm.webhook = { url: "" };
+  const c = await api("admin", { action: "bot_status" });
+  assert(c.tryb.dzialajacy === "przekazywanie" && c.wniosek.startsWith("UWAGA") && c.wniosek.includes("nie jest ustawiony"));
+  assertEquals((await api("admin", { action: "webhook_ustaw", wykonaj: true, potwierdz: "USTAW @TdPowiadomienia_bot" })).wylaczone, true);
+  tgm.webhook = { url: "https://inny-system.example.test/hook" };
+  assert((await api("admin", { action: "bot_status" })).wniosek.includes("wskazuje na inny-system.example.test zamiast na td-onboarding.vercel.app"));
+  // "webhook" chosen explicitly: the forwarder's host is a foreign system again — STOP, and still nothing is called
+  assertEquals((await api("admin", { action: "ustawienia", ustawienia: { ...UST, tryb_bota: "webhook" } })).http, 200);
+  tgm.webhook = { url: "https://td-onboarding.vercel.app/api/telegram" };
+  assert((await api("admin", { action: "bot_status" })).wniosek.startsWith("STOP"));
+  assertEquals((await api("admin", { action: "webhook_ustaw", wykonaj: true, potwierdz: "USTAW @TdPowiadomienia_bot" })).wykonano, false);
+  assertEquals((await api("admin", { action: "ustawienia", ustawienia: { ...UST, tryb_bota: "cos" } })).http, 400);
+  assertEquals((await api("admin", { action: "ustawienia", ustawienia: { ...UST, host_przekazujacy: "https://x.test/sciezka" } })).http, 400);
+  assertEquals(zmiany().length, 0);
+  assertEquals([...new Set(tgm.wywolania.map((w) => w.metoda))].sort(), ["getMe", "getWebhookInfo", "sendMessage"]);
+});
+
+Deno.test("same wiadomości wystarczą: język komendami /pl /ru /uk i /jezyk <kod>, /help; blokada wykrywana przy wysyłce", opts, async () => {
+  reset();
+  const s = await subskrybuj(NIPY[2], 7001), s2 = await subskrybuj(NIPY[3], 7001);
+  await bot(msg(7001, "/ru"));
+  assertEquals([s.jezyk, s2.jezyk, ostatnia().body.text], ["ru", "ru", "Язык сообщений: русский."]);
+  await bot(msg(7001, "/jezyk uk"));
+  assertEquals([s.jezyk, ostatnia().body.text], ["uk", "Мова повідомлень: українська."]);
+  await bot(msg(7001, "/JEZYK UA")); assertEquals(s.jezyk, "uk");
+  await bot(msg(7001, "/pl@TdPowiadomienia_bot")); assertEquals([s.jezyk, ostatnia().body.text], ["pl", "Język wiadomości: polski."]);
+  await bot(msg(7001, "/jezyk de"));                                         // unknown code: the list of commands, nothing changed
+  assert(ostatnia().body.text.includes("/pl — polski") && ostatnia().body.text.includes("/uk — українська") && s.jezyk === "pl");
+  await bot(msg(7001, "/help"));
+  assert(ostatnia().body.text.includes("/pl /ru /uk — zmień język") && ostatnia().body.text.includes("/stop"));
+  await bot(msg(7009, "/uk", { from: { language_code: "en" } }));              // not a subscriber: answered, nothing stored
+  assertEquals([ostatnia().body.text, T.klient_subskrypcje.length], ["Мова повідомлень: українська.", 2]);
+  assertEquals(wyslane("answerCallbackQuery").length, 0);                     // no step needed a callback_query
+  // no my_chat_member arrives in forwarded mode: the block is learnt from the 403 of the next delivery
+  const g = await gotowa("admin", szkic({ odbiorcy: { tryb: "recznie", wybrani: [NIPY[2]] } }));
+  tgm.odp = (_t, m, b) => m === "sendMessage" && b.chat_id === "7001" ? J({ ok: false, error_code: 403, description: "Forbidden: bot was blocked by the user" }, 403) : null;
+  await bieg();
+  assert(s.blocked_at && wiersze(g.id)[0].powod === "odbiorca zablokował bota albo usunął konto");
+});
 
 Deno.test("szkic: tylko bezpieczna treść; grupy może włączyć administrator; marketing nigdy do grup", opts, async () => {
   reset();

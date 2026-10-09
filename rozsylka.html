@@ -331,6 +331,8 @@
         <div><label for="uDni">Ważność linku zaproszenia (dni)</label><input type="number" id="uDni" min="7" max="365" step="1" /></div>
         <div><label for="uMax">Ile osób może użyć jednego linku</label><input type="number" id="uMax" min="1" max="200" step="1" /></div>
         <div><label for="uKoniec">Koniec rozsyłek w grupach od dnia</label><input type="date" id="uKoniec" /></div>
+        <div><label for="uTryb">Jak wiadomości pisane do bota trafiają do portalu</label><select id="uTryb"><option value="auto">automatycznie — według webhooka bota</option><option value="przekazywanie">przekazywanie przez aplikację onboardingową</option><option value="webhook">własny webhook portalu</option></select></div>
+        <div><label for="uHost">Host aplikacji przekazującej</label><input type="text" id="uHost" maxlength="120" placeholder="td-onboarding.vercel.app" /></div>
         <div style="grid-column:span 2"><label for="uPolityka">Adres polityki prywatności (pokazuje go bot po /privacy)</label><input type="url" id="uPolityka" placeholder="https://…" /></div>
       </div>
       <div class="row acts"><button type="button" class="mini ok big" id="uZapisz">Zapisz ustawienia</button><span class="sub" id="uMsg"></span></div>

@@ -8,9 +8,15 @@
 //   /start <token>   ties this Telegram user to the client the invitation belongs to; the answer names the
 //                    client, so a wrong link is noticed. Without a valid token: one neutral sentence, the
 //                    same for a missing, wrong, expired, revoked or used-up token — nothing about any client.
-//   /stop            switches the notifications off        /jezyk   language buttons (pl / ru / uk)
-//   /privacy         what is stored                         anything else: short help
+//   /stop            switches the notifications off
+//   /pl /ru /uk, /jezyk pl|ru|uk   the language of messages; /jezyk alone lists the commands (and shows buttons)
+//   /privacy         what is stored                         /help and anything else: short help
 //   my_chat_member   "kicked" = the user blocked the bot -> the subscription is marked blocked
+// MESSAGES ARE ENOUGH. The updates may arrive forwarded by another application that Telegram sends only
+// `message` updates to: every function a subscriber needs has a text command; callback_query (the language
+// buttons) and my_chat_member are handled when they come but nothing depends on them — a blocked bot is
+// also noticed from the 403 at the next delivery. The body is exactly what Telegram would send; the
+// forwarder is not trusted to have filtered anything (chat type, sender and update_id are checked here).
 // An update is processed once (update_id), every user is rate-limited, nothing a user typed is ever
 // repeated back, and the answer is always 200 so that Telegram does not retry.
 
@@ -72,7 +78,14 @@ async function wiadomosc(m: Any) {
     await napisz(user, ile ? BOT[j].stop : BOT[j].stop_brak);
     return;
   }
-  if (["jezyk", "language", "lang", "mova", "yazyk"].includes(cmd)) {
+  const jezykCmd = ["jezyk", "language", "lang", "mova", "yazyk"].includes(cmd);
+  const wybrany = ({ pl: "pl", ru: "ru", uk: "uk", ua: "uk" } as Record<string, Jezyk>)[jezykCmd ? (c?.[2] ?? "").toLowerCase() : cmd];
+  if (wybrany) {
+    await zmien(`klient_subskrypcje?tg_user_id=eq.${user}`, { jezyk: wybrany });
+    await napisz(user, BOT[wybrany].jezyk);
+    return;
+  }
+  if (jezykCmd) {
     await napisz(user, BOT_WYBOR_JEZYKA, { reply_markup: { inline_keyboard: [[{ text: "Polski", callback_data: "j:pl" }, { text: "Русский", callback_data: "j:ru" }, { text: "Українська", callback_data: "j:uk" }]] } });
     return;
   }

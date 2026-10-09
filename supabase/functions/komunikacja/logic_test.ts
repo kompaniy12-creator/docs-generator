@@ -4,7 +4,7 @@ import { assert, assertEquals, assertNotEquals } from "jsr:@std/assert@1";
 import {
   akceptacja, BOT, csv, csvPole, czyscOdbiorcow, czyscPrzyciski, czyscSegmenty, czyscTresc, czytajTg, czytajUst, DOMYSLNE, escHtml, ileWPrzebiegu, instrukcja, jezykKlienta, jezykTg, JEZYKI,
   kanalyStrategii, kiedyPonowic, klawiatura, type KlientR, LINK_SUB, linkBota, losowaSol, maska, odcisk, potwierdzenie, powodyAkceptacji, rozwiaz, sha256hex, sprawdzUst, staleRowne, type Sub,
-  szablonKoniecGrup, tekst, tgHtml, TOKEN_RE, tokenZSoli, type Tresc, urlOk, wariantTg, wBocie, wstaw, wybierz, type Zgody,
+  szablonKoniecGrup, tekst, tgHtml, TOKEN_RE, trybBota, tokenZSoli, type Tresc, urlOk, wariantTg, wBocie, wstaw, wybierz, type Zgody,
 } from "./logic.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -277,4 +277,17 @@ Deno.test("szablon „Koniec rozsyłek w grupach”: poprawna treść w trzech j
   }
   assertEquals([s.typ, s.strategia, s.kanaly.grupa, s.kanaly.bot], ["serwisowa", "wszystkie", true, false]);
   assert(tekst(szablonKoniecGrup("").tresc.tg.pl, {}).includes("od najbliższego miesiąca"));
+});
+
+Deno.test("tryb bota: przekazywanie, gdy tak ustawiono albo gdy webhook jest na hoście aplikacji przekazującej", () => {
+  const w = (host: string | null, nasz = false) => ({ ustawiony: !!host, nasz, host });
+  const u = (tryb: Any, host = "td-onboarding.vercel.app") => czytajUst({ tryb_bota: tryb, host_przekazujacy: host });
+  assertEquals([DOMYSLNE.tryb_bota, DOMYSLNE.host_przekazujacy, u("byle co").tryb_bota, u("auto", "https://zly/host").host_przekazujacy], ["auto", "td-onboarding.vercel.app", "auto", "td-onboarding.vercel.app"]);
+  assertEquals(trybBota(u("auto"), w("td-onboarding.vercel.app")), "przekazywanie");
+  assertEquals([trybBota(u("auto"), w(null)), trybBota(u("auto"), w("inny-system.example.test")), trybBota(u("auto"), w("db.test", true)), trybBota(u("auto"), null)], ["webhook", "webhook", "webhook", "webhook"]);
+  assertEquals([trybBota(u("przekazywanie"), w(null)), trybBota(u("przekazywanie"), null), trybBota(u("webhook"), w("td-onboarding.vercel.app"))], ["przekazywanie", "przekazywanie", "webhook"]);
+  assertEquals(trybBota(u("auto", "forwarder.example.test"), w("forwarder.example.test")), "przekazywanie");
+  // the deep link of the real bot stays inside Telegram's limits: start parameter 32 of 64 characters
+  const l = linkBota("twojksiegowy_bot", "A".repeat(32));
+  assertEquals([l.length, l.split("start=")[1].length <= 64], [68, true]);
 });

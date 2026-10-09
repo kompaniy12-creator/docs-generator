@@ -316,8 +316,18 @@ export function rozwiaz(wybrani: KlientR[], subs: Map<string, Sub[]>, zgody: Zgo
 export type Ust = {
   prog_akceptacji: number; godziny: { od: string; do: string }; na_przebieg: number; odstep_ms: number; stop_po_bledach: number; max_prob: number;
   link_dni: number; link_max: number; koniec_grup: string; polityka_url: string; by?: string; updated_at?: string;
+  // how the bot's updates reach tg-bot: "webhook" = Telegram calls the portal directly; "przekazywanie" = the bot's
+  // webhook belongs to another application of the office (the onboarding app), which forwards private-chat
+  // updates to tg-bot — the portal then never touches the webhook; "auto" = decided by what getWebhookInfo shows
+  tryb_bota: "auto" | "webhook" | "przekazywanie"; host_przekazujacy: string;
 };
-export const DOMYSLNE: Ust = { prog_akceptacji: 5, godziny: { od: "08:00", do: "20:00" }, na_przebieg: 20, odstep_ms: 1500, stop_po_bledach: 5, max_prob: 4, link_dni: 90, link_max: 30, koniec_grup: "", polityka_url: "" };
+export const HOST_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+export type TrybBota = "webhook" | "przekazywanie";
+export function trybBota(u: Ust, w: { ustawiony: boolean; nasz: boolean; host: string | null } | null): TrybBota {
+  if (u.tryb_bota === "przekazywanie") return "przekazywanie";
+  return u.tryb_bota === "auto" && !!w && w.ustawiony && !w.nasz && w.host === u.host_przekazujacy ? "przekazywanie" : "webhook";
+}
+export const DOMYSLNE: Ust = { prog_akceptacji: 5, godziny: { od: "08:00", do: "20:00" }, na_przebieg: 20, odstep_ms: 1500, stop_po_bledach: 5, max_prob: 4, link_dni: 90, link_max: 30, koniec_grup: "", polityka_url: "", tryb_bota: "auto", host_przekazujacy: "td-onboarding.vercel.app" };
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/, DATA = /^\d{4}-\d{2}-\d{2}$/;
 const calk = (v: unknown, min: number, max: number, dom: number) => Number.isInteger(v) && (v as number) >= min && (v as number) <= max ? v as number : dom;
 export function czytajUst(v: Any): Ust {
@@ -329,6 +339,7 @@ export function czytajUst(v: Any): Ust {
     stop_po_bledach: calk(v?.stop_po_bledach, 2, 20, d.stop_po_bledach), max_prob: calk(v?.max_prob, 1, 6, d.max_prob),
     link_dni: calk(v?.link_dni, 7, 365, d.link_dni), link_max: calk(v?.link_max, 1, 200, d.link_max),
     koniec_grup: DATA.test(v?.koniec_grup ?? "") ? v.koniec_grup : "", polityka_url: urlOk(v?.polityka_url) ?? "",
+    tryb_bota: ["webhook", "przekazywanie"].includes(v?.tryb_bota) ? v.tryb_bota : "auto", host_przekazujacy: typeof v?.host_przekazujacy === "string" && HOST_RE.test(v.host_przekazujacy) && v.host_przekazujacy.length <= 120 ? v.host_przekazujacy : d.host_przekazujacy,
     by: typeof v?.by === "string" ? v.by : undefined, updated_at: typeof v?.updated_at === "string" ? v.updated_at : undefined,
   };
 }
@@ -341,6 +352,8 @@ export function sprawdzUst(v: Any): { ok: true; ust: Ust } | { ok: false; error:
   }
   if (v?.polityka_url && !u.polityka_url) return { ok: false, error: "Adres polityki prywatności musi zaczynać się od https://." };
   if (v?.koniec_grup && !u.koniec_grup) return { ok: false, error: "Data końca rozsyłek w grupach: RRRR-MM-DD." };
+  if (v?.tryb_bota != null && v.tryb_bota !== u.tryb_bota) return { ok: false, error: "Tryb bota: auto, webhook albo przekazywanie." };
+  if (v?.host_przekazujacy != null && v.host_przekazujacy !== u.host_przekazujacy) return { ok: false, error: "Host aplikacji przekazującej: sama nazwa hosta, np. td-onboarding.vercel.app." };
   delete u.by; delete u.updated_at;
   return { ok: true, ust: u };
 }
@@ -421,37 +434,38 @@ export const csv = (wiersze: unknown[][]) => "﻿" + wiersze.map((w) => w.map(cs
 // Short, plain, no markup: they are sent without parse_mode, so a client's name can never become markup.
 export const BOT: Record<Jezyk, Record<string, string>> = {
   pl: {
-    ok: "Gotowe. Powiadomienia biura TD Consulting Group są włączone dla firmy:\n{nazwa}\n\nTutaj będą przychodzić przypomnienia o terminach, informacje o dokumentach i ważne komunikaty biura.\nJeśli to nie Państwa firma — proszę wysłać /stop i dać nam znać.\n\n/stop — wyłącz powiadomienia\n/jezyk — zmień język",
-    juz: "Powiadomienia dla firmy {nazwa} są już włączone.\n\n/stop — wyłącz powiadomienia\n/jezyk — zmień język",
+    ok: "Gotowe. Powiadomienia biura TD Consulting Group są włączone dla firmy:\n{nazwa}\n\nTutaj będą przychodzić przypomnienia o terminach, informacje o dokumentach i ważne komunikaty biura.\nJeśli to nie Państwa firma — proszę wysłać /stop i dać nam znać.\n\n/stop — wyłącz powiadomienia\n/pl /ru /uk — zmień język",
+    juz: "Powiadomienia dla firmy {nazwa} są już włączone.\n\n/stop — wyłącz powiadomienia\n/pl /ru /uk — zmień język",
     link: "To jest bot powiadomień biura TD Consulting Group. Aby włączyć powiadomienia, proszę otworzyć link otrzymany od biura. Jeśli link nie działa, proszę poprosić opiekuna o nowy.",
     stop: "Powiadomienia zostały wyłączone. Aby włączyć je ponownie, proszę otworzyć link otrzymany od biura.",
     stop_brak: "Dla tego konta nie ma włączonych powiadomień.",
     jezyk: "Język wiadomości: polski.",
-    pomoc: "Ten bot wysyła powiadomienia biura TD Consulting Group. Wiadomości pisane tutaj nie są czytane — z pytaniami prosimy zwracać się do opiekuna lub na czacie grupowym.\n\n/stop — wyłącz powiadomienia\n/jezyk — zmień język\n/privacy — jakie dane zapisujemy",
+    pomoc: "Ten bot wysyła powiadomienia biura TD Consulting Group. Wiadomości pisane tutaj nie są czytane — z pytaniami prosimy zwracać się do opiekuna lub na czacie grupowym.\n\n/stop — wyłącz powiadomienia\n/pl /ru /uk — zmień język\n/privacy — jakie dane zapisujemy",
     prywatnosc: "Bot zapisuje: identyfikator konta Telegram, imię, nazwisko i nazwę użytkownika podane w Telegramie, język oraz datę zapisu — wyłącznie po to, by doręczać powiadomienia biura. Treść wiadomości pisanych do bota nie jest zapisywana. Administrator danych: TD Consulting Group sp. z o.o. Komenda /stop wyłącza powiadomienia.",
   },
   ru: {
-    ok: "Готово. Уведомления бюро TD Consulting Group включены для компании:\n{nazwa}\n\nСюда будут приходить напоминания о сроках, информация о документах и важные сообщения бюро.\nЕсли это не ваша компания — отправьте /stop и сообщите нам.\n\n/stop — отключить уведомления\n/jezyk — сменить язык",
-    juz: "Уведомления для компании {nazwa} уже включены.\n\n/stop — отключить уведомления\n/jezyk — сменить язык",
+    ok: "Готово. Уведомления бюро TD Consulting Group включены для компании:\n{nazwa}\n\nСюда будут приходить напоминания о сроках, информация о документах и важные сообщения бюро.\nЕсли это не ваша компания — отправьте /stop и сообщите нам.\n\n/stop — отключить уведомления\n/pl /ru /uk — сменить язык",
+    juz: "Уведомления для компании {nazwa} уже включены.\n\n/stop — отключить уведомления\n/pl /ru /uk — сменить язык",
     link: "Это бот уведомлений бюро TD Consulting Group. Чтобы включить уведомления, откройте ссылку, которую вы получили от бюро. Если ссылка не работает, попросите у вашего бухгалтера новую.",
     stop: "Уведомления отключены. Чтобы включить их снова, откройте ссылку, которую вы получили от бюро.",
     stop_brak: "Для этого аккаунта уведомления не включены.",
     jezyk: "Язык сообщений: русский.",
-    pomoc: "Этот бот отправляет уведомления бюро TD Consulting Group. Сообщения, написанные здесь, никто не читает — с вопросами обращайтесь к вашему бухгалтеру или в групповой чат.\n\n/stop — отключить уведомления\n/jezyk — сменить язык\n/privacy — какие данные мы храним",
+    pomoc: "Этот бот отправляет уведомления бюро TD Consulting Group. Сообщения, написанные здесь, никто не читает — с вопросами обращайтесь к вашему бухгалтеру или в групповой чат.\n\n/stop — отключить уведомления\n/pl /ru /uk — сменить язык\n/privacy — какие данные мы храним",
     prywatnosc: "Бот сохраняет: идентификатор аккаунта Telegram, имя, фамилию и имя пользователя, указанные в Telegram, язык и дату подписки — только для того, чтобы доставлять уведомления бюро. Текст сообщений, написанных боту, не сохраняется. Администратор данных: TD Consulting Group sp. z o.o. Команда /stop отключает уведомления.",
   },
   uk: {
-    ok: "Готово. Сповіщення бюро TD Consulting Group увімкнено для компанії:\n{nazwa}\n\nСюди надходитимуть нагадування про терміни, інформація про документи та важливі повідомлення бюро.\nЯкщо це не ваша компанія — надішліть /stop і повідомте нам.\n\n/stop — вимкнути сповіщення\n/jezyk — змінити мову",
-    juz: "Сповіщення для компанії {nazwa} вже ввімкнено.\n\n/stop — вимкнути сповіщення\n/jezyk — змінити мову",
+    ok: "Готово. Сповіщення бюро TD Consulting Group увімкнено для компанії:\n{nazwa}\n\nСюди надходитимуть нагадування про терміни, інформація про документи та важливі повідомлення бюро.\nЯкщо це не ваша компанія — надішліть /stop і повідомте нам.\n\n/stop — вимкнути сповіщення\n/pl /ru /uk — змінити мову",
+    juz: "Сповіщення для компанії {nazwa} вже ввімкнено.\n\n/stop — вимкнути сповіщення\n/pl /ru /uk — змінити мову",
     link: "Це бот сповіщень бюро TD Consulting Group. Щоб увімкнути сповіщення, відкрийте посилання, яке ви отримали від бюро. Якщо посилання не працює, попросіть у вашого бухгалтера нове.",
     stop: "Сповіщення вимкнено. Щоб увімкнути їх знову, відкрийте посилання, яке ви отримали від бюро.",
     stop_brak: "Для цього акаунта сповіщення не ввімкнено.",
     jezyk: "Мова повідомлень: українська.",
-    pomoc: "Цей бот надсилає сповіщення бюро TD Consulting Group. Повідомлення, написані тут, ніхто не читає — із запитаннями звертайтеся до вашого бухгалтера або в груповий чат.\n\n/stop — вимкнути сповіщення\n/jezyk — змінити мову\n/privacy — які дані ми зберігаємо",
+    pomoc: "Цей бот надсилає сповіщення бюро TD Consulting Group. Повідомлення, написані тут, ніхто не читає — із запитаннями звертайтеся до вашого бухгалтера або в груповий чат.\n\n/stop — вимкнути сповіщення\n/pl /ru /uk — змінити мову\n/privacy — які дані ми зберігаємо",
     prywatnosc: "Бот зберігає: ідентифікатор акаунта Telegram, ім'я, прізвище та ім'я користувача, вказані в Telegram, мову й дату підписки — лише для того, щоб доставляти сповіщення бюро. Текст повідомлень, написаних боту, не зберігається. Адміністратор даних: TD Consulting Group sp. z o.o. Команда /stop вимикає сповіщення.",
   },
 };
-export const BOT_WYBOR_JEZYKA = "Wybierz język / Выберите язык / Оберіть мову";
+// works with plain messages: the buttons are a convenience, the commands are what always arrives
+export const BOT_WYBOR_JEZYKA = "Wybierz język / Выберите язык / Оберіть мову:\n/pl — polski\n/ru — русский\n/uk — українська";
 export const BOT_PRACOWNIK_OK = "Konto pracownika biura zostało połączone. Tutaj będą przychodzić wiadomości testowe rozsyłek.\n\n/stop — odłącz";
 export const BOT_PRACOWNIK_LINK_KLIENTA = "To konto Telegram jest połączone z kontem pracownika biura, dlatego nie zostało zapisane jako odbiorca klienta.";
 // the bot's own texts take the client's name as plain text; line breaks and length are tamed here

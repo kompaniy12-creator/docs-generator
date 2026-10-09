@@ -414,13 +414,13 @@
 
   // ---------------- bot and settings (administrator) ----------------
   var bAkcja = null;
-  function botHtml(nazwa, b) {
+  function botHtml(nazwa, b, oczekiwany) {
     if (!b) return '';
     if (!b.ok) return '<div>' + pill(nazwa, 'p-red') + ' ' + esc(b.blad) + '</div>';
     var w = b.webhook;
     return '<div class="row"><b>' + esc(nazwa) + ':</b> @' + esc(b.username) + ' <span class="sub">„' + esc(b.name) + '”, id ' + esc(b.id) + '</span><div class="licznik">' +
       pill(b.can_join_groups ? 'może być dodawany do grup' : 'nie może być dodawany do grup', 'p-grey') + pill(b.can_read_all_group_messages ? 'czyta wszystkie wiadomości w grupach' : 'w grupach widzi tylko komendy', b.can_read_all_group_messages ? 'p-amber' : 'p-grey') +
-      pill(!w.ustawiony ? 'webhook: brak' : w.nasz ? 'webhook: portal' : 'webhook: INNY SYSTEM (' + w.host + ')', !w.ustawiony ? 'p-grey' : w.nasz ? 'p-ok' : 'p-red') +
+      pill(!w.ustawiony ? 'webhook: brak' : w.nasz ? 'webhook: portal' : oczekiwany && w.host === oczekiwany ? 'webhook: aplikacja onboardingowa (' + w.host + ') — przekazuje do portalu' : 'webhook: INNY SYSTEM (' + w.host + ')', !w.ustawiony ? 'p-grey' : w.nasz || (oczekiwany && w.host === oczekiwany) ? 'p-ok' : 'p-red') +
       pill('oczekujące aktualizacje: ' + (w.pending_update_count == null ? '?' : w.pending_update_count), w.pending_update_count ? 'p-amber' : 'p-grey') + '</div>' +
       (w.last_error_message ? '<div class="sub warn">Ostatni błąd doręczenia (' + esc(kiedy(w.last_error_date)) + '): ' + esc(w.last_error_message) + '</div>' : '') + '</div>';
   }
@@ -428,16 +428,18 @@
     $('bStatus').innerHTML = '<span class="sub">Pytam Telegram…</span>';
     var r = await api('bot_status');
     if (r.error) { $('bStatus').innerHTML = pill('błąd', 'p-red') + ' ' + esc(r.error); return; }
-    var stop = /^STOP/.test(r.wniosek);
-    $('bStatus').innerHTML = botHtml(r.konfiguracja.osobny_bot ? 'Bot subskrypcji (KLIENT_BOT_TOKEN)' : 'Bot portalu (TELEGRAM_BOT_TOKEN) — ten sam do subskrypcji i grup', r.subskrypcje) + botHtml('Bot wysyłający do grup (TELEGRAM_BOT_TOKEN)', r.grupy) +
+    var stop = /^(STOP|UWAGA)/.test(r.wniosek), prz = r.tryb && r.tryb.dzialajacy === 'przekazywanie';
+    $('bStatus').innerHTML = (prz ? '<div>' + pill('tryb przekazywania — portal nie zmienia webhooka', 'p-navy') + '</div>' : '') + botHtml(r.konfiguracja.osobny_bot ? 'Bot subskrypcji (KLIENT_BOT_TOKEN)' : 'Bot portalu (TELEGRAM_BOT_TOKEN) — ten sam do subskrypcji i grup', r.subskrypcje, prz ? r.tryb.host_przekazujacy : '') + botHtml('Bot wysyłający do grup (TELEGRAM_BOT_TOKEN)', r.grupy) +
       '<p class="row ' + (stop ? 'warn' : '') + '"><b>' + esc(r.wniosek) + '</b></p><p class="sub">Adres odbiornika portalu: ' + esc(r.nasz_webhook) + '</p>';
     var w = r.subskrypcje.ok ? r.subskrypcje.webhook : null;
-    $('bUstaw').disabled = !w || stop || w.nasz; $('bUsun').disabled = !w || !w.nasz;
+    $('bUstaw').disabled = !w || stop || w.nasz || prz; $('bUsun').disabled = !w || !w.nasz || prz;
+    if (prz) $('bPotwBox').hidden = true;
   }
   async function webhookOpis(a) {
     bAkcja = a;
     var r = await api(a);
     if (r.error) { $('bMsg').innerHTML = pill('błąd', 'p-red') + ' ' + esc(r.error); return; }
+    if (r.wylaczone) { $('bPotwBox').hidden = true; $('bMsg').innerHTML = pill('wyłączone', 'p-navy') + ' ' + esc(r.przeszkody.join(' ')); return; }
     $('bOpis').innerHTML = '<p><b>Co zostanie wywołane:</b></p><pre class="msg">' + esc(JSON.stringify(r.opis, null, 2)) + '</pre><p class="hint warn row">' + esc(r.skutek) + '</p>' +
       (r.przeszkody.length ? '<p class="warn"><b>Nie można wykonać:</b> ' + esc(r.przeszkody.join(' ')) + '</p>' : '');
     $('bPotwLabel').textContent = 'Przepisz „' + r.potwierdz + '”, aby wykonać'; $('bPotw').value = ''; $('bWykonaj').disabled = r.przeszkody.length > 0; $('bPotwBox').hidden = false; $('bMsg').innerHTML = '';
@@ -451,12 +453,12 @@
     if (!st || !st.ja.admin) return;
     var u = st.ustawienia;
     $('uProg').value = u.prog_akceptacji; $('uOd').value = u.godziny.od; $('uDo').value = u.godziny.do; $('uStop').value = u.stop_po_bledach; $('uNa').value = u.na_przebieg; $('uOdstep').value = u.odstep_ms;
-    $('uDni').value = u.link_dni; $('uMax').value = u.link_max; $('uKoniec').value = u.koniec_grup || ''; $('uPolityka').value = u.polityka_url || '';
+    $('uDni').value = u.link_dni; $('uMax').value = u.link_max; $('uKoniec').value = u.koniec_grup || ''; $('uPolityka').value = u.polityka_url || ''; $('uTryb').value = u.tryb_bota || 'auto'; $('uHost').value = u.host_przekazujacy || '';
     $('uInfo').textContent = (st.brak.length ? 'Brakuje sekretów: ' + st.brak.join(', ') + '. ' : '') + (u.by ? 'Ostatnia zmiana: ' + u.by + (u.updated_at ? ', ' + kiedy(u.updated_at) : '') + '.' : '');
   }
   async function zapiszUstawienia() {
     var u = { prog_akceptacji: Number($('uProg').value), godziny: { od: $('uOd').value, do: $('uDo').value }, na_przebieg: Number($('uNa').value), odstep_ms: Number($('uOdstep').value), stop_po_bledach: Number($('uStop').value), max_prob: st.ustawienia.max_prob,
-      link_dni: Number($('uDni').value), link_max: Number($('uMax').value), koniec_grup: $('uKoniec').value, polityka_url: $('uPolityka').value.trim() };
+      link_dni: Number($('uDni').value), link_max: Number($('uMax').value), koniec_grup: $('uKoniec').value, polityka_url: $('uPolityka').value.trim(), tryb_bota: $('uTryb').value, host_przekazujacy: $('uHost').value.trim().toLowerCase() || 'td-onboarding.vercel.app' };
     var r = await api('ustawienia', { ustawienia: u });
     $('uMsg').textContent = r.error ? r.error : 'Zapisano.'; $('uMsg').className = r.error ? 'sub warn' : 'sub';
     if (!r.error) { st.ustawienia = Object.assign(st.ustawienia, r.ustawienia); rysujKafelki(); $('eData').value = st.ustawienia.koniec_grup || ''; }

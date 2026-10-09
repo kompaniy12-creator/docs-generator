@@ -39,7 +39,7 @@ import {
 } from "./core.ts";
 import {
   akceptacja, csv, czyscOdbiorcow, czyscTresc, escHtml, instrukcja, type Ja, JEZYKI, type Jezyk, kanalyStrategii, klawiatura, type KlientR, maska, odcisk, type Plan, potwierdzenie, powodyAkceptacji,
-  PROG_TYTUL, rozwiaz, smsInfo, sprawdzUst, staleRowne, STRATEGIE, szablonKoniecGrup, tekst, wariantMail, wariantSms, wstaw, wybierz,
+  PROG_TYTUL, rozwiaz, smsInfo, sprawdzUst, staleRowne, STRATEGIE, szablonKoniecGrup, tekst, trybBota, type Ust, wariantMail, wariantSms, wstaw, wybierz,
 } from "./logic.ts";
 import { wGodzinach } from "../sms/logic.ts";
 
@@ -126,8 +126,19 @@ async function jedenBot(k: "sub" | "grupa") {
     },
   };
 }
-function wniosek(b: Any, osobny: boolean): string {
+const BEZ_PRZEKAZYWANIA = "Tryb przekazywania: webhook tego bota należy do aplikacji onboardingowej biura i portal go nie zmienia — ani nie ustawia, ani nie usuwa.";
+function wniosek(b: Any, osobny: boolean, ust: Ust, odebrane: { ile: number; ostatnia: string | null }): string {
   if (!b.ok) return "Nie udało się odczytać bota: " + b.blad;
+  if (trybBota(ust, b.webhook) === "przekazywanie") {
+    const w = b.webhook, au: string[] | null = Array.isArray(w.allowed_updates) ? w.allowed_updates : null;
+    if (!w.ustawiony || w.nasz || w.host !== ust.host_przekazujacy) return `UWAGA: tryb przekazywania jest włączony, ale webhook bota @${b.username} ${w.ustawiony ? "wskazuje na " + (w.nasz ? "portal" : w.host) : "nie jest ustawiony"} zamiast na ${ust.host_przekazujacy} — wiadomości pisane do bota nie dotrą do portalu. Wysyłka rozsyłek działa niezależnie od tego.`;
+    const przyciski = !au || au.includes("callback_query"), blokada = !au || au.includes("my_chat_member");
+    return `Tryb przekazywania — tak ma być: webhook bota @${b.username} należy do aplikacji onboardingowej (${w.host}), która przekazuje portalowi wiadomości z prywatnych czatów. Portal tego webhooka nie zmienia. `
+      + "DZIAŁA: zapis linkiem (/start), /stop, zmiana języka komendami /pl /ru /uk, /privacy, /help oraz cała wysyłka rozsyłek. "
+      + (przyciski && blokada ? "" : "NIE DZIAŁA, dopóki aplikacja nie zarejestruje webhooka ponownie z szerszą listą aktualizacji: " + [!przyciski && "przyciski wyboru języka (zamiast nich komendy /pl /ru /uk)", !blokada && "natychmiastowa informacja o zablokowaniu bota (blokada jest wykrywana przy najbliższej wysyłce)"].filter(Boolean).join("; ") + ". ")
+      + (odebrane.ostatnia ? `Portal odebrał już ${odebrane.ile} aktualizacji, ostatnią ${odebrane.ostatnia.slice(0, 16).replace("T", " ")} UTC — przekazywanie działa.` : "Portal nie odebrał jeszcze żadnej aktualizacji — przekazywanie nie zostało jeszcze sprawdzone (wystarczy napisać do bota /help).")
+      + (w.last_error_message ? " Ostatni błąd webhooka aplikacji: " + w.last_error_message : "");
+  }
   if (b.webhook.nasz) return "Webhook tego bota wskazuje na portal — subskrypcje działają." + (b.webhook.last_error_message ? " Ostatni błąd doręczenia: " + b.webhook.last_error_message : "");
   if (b.webhook.ustawiony) return `STOP: bot @${b.username} ma webhook innego systemu (${b.webhook.host}). Nie wolno go przejmować — ten system przestałby działać. Potrzebny jest NOWY bot do subskrypcji: właściciel tworzy go w BotFather, a token trafia do sekretu KLIENT_BOT_TOKEN.`;
   return `Bot @${b.username} nie ma webhooka. Jeśli jakiś inny program odpytuje go metodą getUpdates (np. bot „Twój księgowy”), ustawienie webhooka ten program zatrzyma — z zewnątrz nie da się tego sprawdzić. Oczekujące aktualizacje: ${b.webhook.pending_update_count ?? "?"} (gdy ta liczba rośnie po napisaniu do bota i sama nie spada, nikt go nie odpytuje). `
@@ -166,8 +177,12 @@ Deno.serve(async (req) => {
     }
     if (action === "bot_status") {
       if (!ja.admin) return tylkoAdmin();
-      const k = konfiguracja(), sub: Any = await jedenBot("sub");
-      const out: Any = { konfiguracja: k, nasz_webhook: WEBHOOK_URL, subskrypcje: sub, wniosek: wniosek(sub, k.osobny_bot) };
+      const k = konfiguracja(), sub: Any = await jedenBot("sub"), ust = await ustawienia();
+      const ost = await db("tg_updates?select=at&order=at.desc&limit=1", { headers: { Prefer: "count=exact" } });
+      const odebrane = { ile: Number((ost.headers.get("content-range") ?? "/0").split("/")[1]) || 0, ostatnia: ost.ok ? (await ost.json())[0]?.at ?? null : null };
+      const tryb = sub.ok ? trybBota(ust, sub.webhook) : ust.tryb_bota === "przekazywanie" ? "przekazywanie" : "webhook";
+      const out: Any = { konfiguracja: k, nasz_webhook: WEBHOOK_URL, subskrypcje: sub, wniosek: wniosek(sub, k.osobny_bot, ust, odebrane), odebrane,
+        tryb: { ustawiony: ust.tryb_bota, dzialajacy: tryb, host_przekazujacy: ust.host_przekazujacy, webhook_zablokowany: tryb === "przekazywanie" } };
       if (k.osobny_bot) out.grupy = await jedenBot("grupa");
       if (sub.ok) await db("portal_ustawienia", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ key: "komunikacja_bot", value: { id: sub.id, username: sub.username, sprawdzono: teraz.toISOString(), kto: ja.email }, updated_at: teraz.toISOString() }) });
       return json(out, 200, origin);
@@ -176,6 +191,8 @@ Deno.serve(async (req) => {
       if (!ja.admin) return tylkoAdmin();
       const k = konfiguracja(), b: Any = await jedenBot("sub");
       if (!b.ok) return blad("Nie udało się odczytać bota: " + b.blad, 502);
+      // forwarded mode: the webhook is the onboarding application's — nothing here may change it, whatever is sent
+      if (trybBota(await ustawienia(), b.webhook) === "przekazywanie") return json({ sucho: true, wykonano: false, wylaczone: true, opis: null, skutek: "", przeszkody: [BEZ_PRZEKAZYWANIA], potwierdz: null, webhook: b.webhook }, 200, origin);
       const ustaw = action === "webhook_ustaw", haslo = (ustaw ? "USTAW @" : "USUN @") + b.username;
       const opis = ustaw
         ? { metoda: "setWebhook", bot: "@" + b.username, url: WEBHOOK_URL, allowed_updates: UPDATES, secret_token: "wartość sekretu TG_WEBHOOK_SECRET (nie jest pokazywana)", drop_pending_updates: false, max_connections: 4 }
