@@ -36,7 +36,7 @@
 import { loadKlienciRows } from "../_shared/klienci.ts";
 import { Imap } from "./imap.ts";
 import { type Deps, handle, type Me, type Row, type Store } from "./core.ts";
-import { normNazwa, type Skrzynka, SKRZYNKI } from "./logic.ts";
+import { normNazwa, type Skrzynka, SKRZYNKI, wiersze } from "./logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -64,7 +64,7 @@ function db(path: string, init: RequestInit = {}) {
 async function rows<T = Any>(path: string, init: RequestInit = {}): Promise<T[]> {
   const r = await db(path, init);
   if (!r.ok) throw new Error(path.split("?")[0] + ": " + r.status + " " + (await r.text()).slice(0, 160));
-  return r.status === 204 ? [] : await r.json();
+  return await wiersze<T>(r);
 }
 async function count(path: string): Promise<number> {
   const r = await db(path, { method: "HEAD", headers: { Prefer: "count=exact", Range: "0-0", "Range-Unit": "items" } });

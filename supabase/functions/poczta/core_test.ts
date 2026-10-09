@@ -6,7 +6,7 @@ import { type Deps, handle, type ImapLike, type Me, type Row, type Store, MAX_RA
 import { Imap } from "./imap.ts";
 import { FakeServer, type FakeMsg, wiad } from "./imap_test.ts";
 import type { KlientRow } from "../_shared/klienci.ts";
-import type { Skrzynka } from "./logic.ts";
+import { type Skrzynka, wiersze } from "./logic.ts";
 
 // deno-lint-ignore no-explicit-any
 type Any = any;
@@ -377,4 +377,43 @@ Deno.test("self-checks: autotest masks, validates and leaves no row and no task;
   const k = dg.body.diag.kadry;
   assertEquals([k.login, k.wiadomosci, k.najwyzszy_uid, k.nieprzeczytane_przed, k.nieprzeczytane_po, k.pobrane_naglowki, k.bez_zmian], [true, 2, 2, 2, 2, 2, true]);
   assert(!/firma-alfa|Sprawa|Nadawca/.test(JSON.stringify(dg.body)));
+});
+
+Deno.test("settings wylaczona -> podglad: saved in one step, the mailbox starts from now; a failing write changes nothing and says so", async () => {
+  // exactly what the admin page sends: the object from `status` with only the modes changed
+  const a = swiat({});
+  a.w.stan.kadry = { uidvalidity: 7, last_uid: 100, last_ok: "2026-09-01T10:00:00Z" };
+  const st = await a.post({ action: "status" });
+  const u = st.body.ustawienia;
+  u.skrzynki.kadry.tryb = "podglad"; u.skrzynki.ksiegowosc.tryb = "podglad";
+  const r = await a.post({ action: "ustawienia", ustawienia: u });
+  assertEquals([r.status, r.body.ok, r.body.ustawienia.skrzynki.kadry.tryb, r.body.ustawienia.skrzynki.ksiegowosc.tryb], [200, true, "podglad", "podglad"]);
+  assertEquals([a.w.ust.skrzynki.kadry.tryb, a.w.stan.kadry.last_uid, a.w.stan.kadry.uidvalidity, a.w.stan.ksiegowosc.last_uid], ["podglad", null, null, null]);
+  // the first check after that reads nothing old
+  a.w.box.push(wiad(500, "<old@firma-alfa.example>"));
+  const run = await a.post({ action: "run" }, { "x-cron-key": CRONKEY });
+  assertEquals([run.body.info.kadry.start, run.body.info.kadry.przyjete, a.w.stan.kadry.last_uid, a.w.rows.length], ["pierwszy", 0, 500, 0]);
+  // saving again while already on does not move the position
+  await a.post({ action: "ustawienia", ustawienia: u });
+  assertEquals(a.w.stan.kadry.last_uid, 500);
+  // the settings write fails: a clear message, the old mode stays
+  const b = swiat({});
+  b.d.store.zapiszUstawienia = () => Promise.reject(new Error("portal_ustawienia: 503"));
+  const f = await b.post({ action: "ustawienia", ustawienia: u });
+  assertEquals(f.status, 200);
+  assert(/Nie udało się zapisać ustawień — nic nie zostało zmienione/.test(f.body.error) && !f.body.ok);
+  assertEquals(b.w.ust.skrzynki, undefined);
+  const c = swiat({});
+  c.d.store.zapiszStan = () => Promise.reject(new Error("poczta_skrzynki: 503"));
+  const g = await c.post({ action: "ustawienia", ustawienia: u });
+  assert(/Nie udało się zapisać/.test(g.body.error));
+  assertEquals(c.w.ust.skrzynki, undefined);
+});
+
+Deno.test("database answers without a body (201/204 after return=minimal) are an empty list, not a crash", async () => {
+  assertEquals(await wiersze(new Response(null, { status: 201 })), []);
+  assertEquals(await wiersze(new Response(null, { status: 204 })), []);
+  assertEquals(await wiersze(new Response("", { status: 200 })), []);
+  assertEquals(await wiersze(new Response('[{"a":1}]', { status: 200 })), [{ a: 1 }]);
+  assertEquals(await wiersze(new Response('{"a":1}', { status: 200 })), [{ a: 1 }]);
 });

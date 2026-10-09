@@ -368,3 +368,13 @@ export function godzinyPracy(now = Date.now()): boolean {
   const wd = p.find((x) => x.type === "weekday")?.value ?? "", h = Number(p.find((x) => x.type === "hour")?.value ?? 0);
   return !["Sat", "Sun"].includes(wd) && h >= 8 && h < 18;
 }
+
+// ---------------------------------------------------------------- PostgREST answers
+// Rows of an answer. A write with "return=minimal" answers 201 or 204 with NO body — that is an empty list,
+// not an error (reading it as JSON used to throw after the write had already happened).
+export async function wiersze<T = unknown>(r: Response): Promise<T[]> {
+  const t = await r.text();
+  if (!t.trim()) return [];
+  const v = JSON.parse(t);
+  return Array.isArray(v) ? v : [v];
+}

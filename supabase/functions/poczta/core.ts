@@ -333,6 +333,8 @@ async function autotest(d: Deps): Promise<Any> {
     if (row) await d.store.usun(row.id);
     out.baza = { zapis: !!row, duplikat_odrzucony: again === null, odczyt: found?.id === row?.id, licznik: n >= 1, watek: w.length >= 1, usuniety: row ? (await d.store.wiersz(row.id)) === null : false };
   } catch (e) { out.baza = { ok: false, error: err(e) }; }
+  // the mailbox-state upsert with nothing to change (answers 201 without a body) and a read back
+  try { await d.store.zapiszStan("kadry", {}); out.stan = { zapis: true, odczyt: (await d.store.stan("kadry")) !== null }; } catch (e) { out.stan = { ok: false, error: err(e) }; }
   try { const p = await d.store.profil("kadry", "nikt taki"); out.profile = { ok: true, pusty: !p.alias }; } catch (e) { out.profile = { ok: false, error: err(e) }; }
   return out;
 }
@@ -476,10 +478,17 @@ export async function handle(d: Deps, req: Request): Promise<{ status: number; b
   }
   if (body.action === "ustawienia") {
     const nowe = ustawienia(body.ustawienia, ctx.users);
-    await d.store.zapiszUstawienia({ ...nowe, by: me.email });
-    // switching a mailbox on starts it from "now": mail that came while it was off is not processed
-    for (const s of Object.keys(SKRZYNKI) as Skrzynka[]) {
-      if (ctx.ust.skrzynki[s].tryb === "wylaczona" && nowe.skrzynki[s].tryb !== "wylaczona") await d.store.zapiszStan(s, { last_uid: null, uidvalidity: null });
+    // One step for the caller: first the "start from now" marks of mailboxes being switched on (harmless on
+    // their own — such a mailbox is still off), then the settings. If anything fails, the old settings stay
+    // and the answer says so; nothing is ever half-saved with a mailbox on and an old UID position.
+    try {
+      for (const s of Object.keys(SKRZYNKI) as Skrzynka[]) {
+        if (ctx.ust.skrzynki[s].tryb === "wylaczona" && nowe.skrzynki[s].tryb !== "wylaczona") await d.store.zapiszStan(s, { last_uid: null, uidvalidity: null });
+      }
+      await d.store.zapiszUstawienia({ ...nowe, by: me.email });
+    } catch (e) {
+      console.error("poczta ustawienia", err(e));
+      return { status: 200, body: { error: "Nie udało się zapisać ustawień — nic nie zostało zmienione. Spróbuj ponownie. (" + err(e).slice(0, 120) + ")" } };
     }
     return { status: 200, body: { ok: true, ustawienia: nowe } };
   }
