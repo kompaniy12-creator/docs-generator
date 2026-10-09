@@ -160,6 +160,10 @@ const store: Store = {
     for (const st of ["nowa", "zadanie", "bez_dzialania", "pominieta", "blad"]) out[st] = await count(`${T}?select=id&skrzynka=eq.${s}&status=eq.${st}`);
     return out;
   },
+  async dziennik(row) { await rows("poczta_dostep", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify(row) }); },
+  async dziennikLicz(kto, od) { return await count(`poczta_dostep?select=id&kto=eq.${e(kto)}&at=gte.${e(od)}`); },
+  async dziennikLista(limit) { return await rows(`poczta_dostep?select=at,kto,akcja,skrzynka,folder,uid,msg_hash,czesc,rozmiar&akcja=in.(otwarcie,zalacznik,analiza)&order=at.desc&limit=${limit}`); },
+  async dziennikSprzataj(starsze) { await rows(`poczta_dostep?akcja=in.(lista,foldery)&at=lt.${e(starsze)}`, { method: "DELETE", headers: { Prefer: "return=minimal" } }); },
   async usunStarsze(cutoff) { return (await rows(`${T}?created_at=lt.${e(cutoff)}&select=id`, { method: "DELETE", headers: { Prefer: "return=representation" } })).length; },
 };
 
@@ -200,8 +204,8 @@ const deps: Deps = {
   cronKey: Deno.env.get("CRON_KEY") ?? "", webhookKey: Deno.env.get("POCZTA_WEBHOOK_KEY") ?? "", model: MODEL, modelReady: !!ANTHROPIC_KEY,
   konta: { kadry: !!KONTA.kadry.pass, ksiegowosc: !!KONTA.ksiegowosc.pass },
   store, ask, klienci: loadKlienciRows, portalUser, portalUsers, now: () => Date.now(),
-  async imap(s) {
-    const im = await Imap.connect(IMAP_HOST, IMAP_PORT, 20000);
+  async imap(s, maxLiteral) {
+    const im = await Imap.connect(IMAP_HOST, IMAP_PORT, 20000, maxLiteral);
     try { await im.login(KONTA[s].user, KONTA[s].pass); } catch (err) { im.close(); throw err; }
     return im;
   },
@@ -212,8 +216,10 @@ Deno.serve(async (req) => {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (req.method !== "POST") return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: { "Content-Type": "application/json", ...cors(origin) } });
-  let out: { status: number; body: unknown };
+  let out: { status: number; body: unknown; raw?: { bytes: Uint8Array; headers: Record<string, string> } };
   try { out = await handle(deps, req); }
   catch (err) { console.error("poczta", String((err as Error)?.message ?? err).slice(0, 300)); out = { status: 500, body: { error: "Wewnętrzny błąd serwera." } }; }
+  // an attachment: bytes for a download, never a page
+  if (out.raw) return new Response(out.raw.bytes as BodyInit, { status: 200, headers: { ...out.raw.headers, ...cors(origin) } });
   return new Response(JSON.stringify(out.body), { status: out.status, headers: { "Content-Type": "application/json", ...cors(origin) } });
 });

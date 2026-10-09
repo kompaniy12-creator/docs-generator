@@ -8,12 +8,13 @@ import {
   normNazwa, okMail, parseMail, planPoll, plData, poczatekDnia, prefiltr, przypisz, sameKey, SKRZYNKI, type Skrzynka, type Tryb, ustawienia,
   type Ustawienia, walidujAI, watekId, watekSzukaj, zadanieWatku, zapytanie, znajdzNipy, dataOk, bezLinkow, KATEGORIE,
 } from "./logic.ts";
-import type { Examined, Fetched } from "./imap.ts";
+import type { Examined, Fetched, Folder, Meta, Szukaj } from "./imap.ts";
+import { AKCJE, przegladarka, typFolderu } from "./skrzynka.ts";
 
 // deno-lint-ignore no-explicit-any
 type Any = any;
 export const MAX_RAW = 15 * 1024 * 1024;   // largest message read whole (push body cap, poll fetch cap)
-const PARTIAL = 1024 * 1024;               // what the poll reads of a larger message (text comes first)
+export const PARTIAL = 1024 * 1024;               // what the poll reads of a larger message (text comes first)
 const BUDZET_MS = 100000;                  // a poll stops taking new messages after this long
 // Tasks from mail are written with zrodlo 'reczne' (+ a unique key "poczta:..."): the `zadania` run closes
 // every open task with zrodlo 'system' whose key it does not itself want, which would close these overnight.
@@ -53,16 +54,26 @@ export interface Store {
   niedokonczone(s: Skrzynka, starsze: string, mlodsze: string): Promise<Row[]>;
   statystyki(s: Skrzynka): Promise<Record<string, number>>;
   usunStarsze(cutoff: string): Promise<number>;
+  // access log of the mailbox browser (append-only; also what the per-person rate limit counts)
+  dziennik(row: { kto: string; akcja: string; skrzynka: string; folder?: string | null; uid?: number; msg_hash?: string; czesc?: string; rozmiar?: number }): Promise<void>;
+  dziennikLicz(kto: string, od: string): Promise<number>;
+  dziennikLista(limit: number): Promise<Any[]>;
+  dziennikSprzataj(starsze: string): Promise<void>;   // drops only the "lista"/"foldery" counter rows, never openings or downloads
 }
 export interface ImapLike {
-  examine(): Promise<Examined>;
-  status(): Promise<{ messages: number; unseen: number; uidnext: number; uidvalidity: number }>;
+  examine(box?: string): Promise<Examined>;
+  status(box?: string): Promise<{ messages: number; unseen: number; uidnext: number; uidvalidity: number }>;
   uidsAfter(last: number): Promise<number[]>;
   uidsUnseen(): Promise<number[]>;
   uidsByMessageId(id: string): Promise<number[]>;
   newestUids(exists: number, n: number): Promise<number[]>;
   fetch(uid: number, section?: string, max?: number): Promise<Fetched | null>;
   logout(): Promise<void>;
+  // mailbox browser
+  list(): Promise<Folder[]>;
+  szukaj(f: Szukaj): Promise<number[]>;
+  meta(set: number[] | { od: number; do: number }, uidMode: boolean, naglowki: boolean, struktura?: boolean): Promise<Meta[]>;
+  part(uid: number, id: string, max?: number): Promise<Uint8Array | null>;
 }
 export type Me = { email: string; admin: boolean; sekcje: string[] | null };
 export type Deps = {
@@ -70,14 +81,14 @@ export type Deps = {
   konta: Record<Skrzynka, boolean>;                      // is the mailbox password configured
   store: Store;
   ask(req: unknown): Promise<unknown>;                   // the model: the parsed JSON answer, throws on failure
-  imap(s: Skrzynka): Promise<ImapLike>;                  // connected and logged in
+  imap(s: Skrzynka, maxLiteral?: number): Promise<ImapLike>;                  // connected and logged in
   klienci(): Promise<KlientRow[]>;
   portalUser(req: Request): Promise<Me | null>;
   portalUsers(): Promise<string[]>;
   now(): number;
   bg(p: Promise<unknown>): void;                         // keep working after the response went out
 };
-type Ctx = { ust: Ustawienia; users: Set<string>; zadKadry: string; klienci: KlientRow[] };
+export type Ctx = { ust: Ustawienia; users: Set<string>; zadKadry: string; klienci: KlientRow[] };
 
 async function kontekst(d: Deps): Promise<Ctx> {
   const [raw, users, zadKadry, klienci] = await Promise.all([
@@ -90,7 +101,7 @@ const err = (e: unknown) => String((e as Error)?.message ?? e).replace(/[^\x20-\
 
 // ---------------------------------------------------------------- a message enters
 type Przyjeta = { wynik: "duplikat" | "pominieta" | "bez_analizy" | "do_analizy"; row?: Row; mail?: Mail; klient?: Dopasowanie };
-export async function przyjmij(d: Deps, ctx: Ctx, s: Skrzynka, raw: Uint8Array, src: { droga: "push" | "poll" | "test"; uid?: number; uidvalidity?: number; obciete?: boolean; rozmiar?: number }): Promise<Przyjeta> {
+export async function przyjmij(d: Deps, ctx: Ctx, s: Skrzynka, raw: Uint8Array, src: { droga: "push" | "poll" | "test" | "reczna"; uid?: number; uidvalidity?: number; obciete?: boolean; rozmiar?: number; wymus?: boolean }): Promise<Przyjeta> {
   const mail = await parseMail(raw);
   if (src.obciete) mail.flagi.obciete = true;
   const jest = await d.store.znajdz(s, mail.messageId);
@@ -102,11 +113,12 @@ export async function przyjmij(d: Deps, ctx: Ctx, s: Skrzynka, raw: Uint8Array, 
   const klient = dopasujKlienta(mail.odAdres, znajdzNipy(mail.temat + "\n" + mail.tekst), ctx.klienci);
   const prof = await d.store.profil(s, s === "kadry" ? klient?.kadrowy ?? "" : klient?.opiekun ?? "").catch(() => ({ alias: "", domyslny: "" }));
   const assignee = przypisz(s, klient, ctx.ust, ctx.zadKadry, ctx.users, prof);
-  const pre = prefiltr(mail);
+  // `wymus`: a person asked for this very message (mailbox browser) — the automatic-mail filter and the sender cap do not apply
+  const pre = src.wymus ? null : prefiltr(mail);
   const dzien = poczatekDnia(d.now());
   let status = "nowa", powod: string | null = null, kategoria: string | null = null, analiza = false;
   if (pre) { status = "pominieta"; powod = pre.powod; kategoria = pre.kategoria; }
-  else if (mail.odAdres && await d.store.licz(s, { od: dzien, odAdres: mail.odAdres }) >= ctx.ust.limity.nadawca) { status = "pominieta"; powod = "limit wiadomości od jednego nadawcy na dzień"; }
+  else if (!src.wymus && mail.odAdres && await d.store.licz(s, { od: dzien, odAdres: mail.odAdres }) >= ctx.ust.limity.nadawca) { status = "pominieta"; powod = "limit wiadomości od jednego nadawcy na dzień"; }
   else if (!d.modelReady) powod = "analiza nie jest skonfigurowana";
   else if (await d.store.licz(s, { od: dzien, analizowane: true }) >= ctx.ust.limity.dziennie) powod = "dzienny limit analiz wyczerpany";
   else analiza = true;
@@ -353,11 +365,19 @@ async function diag(d: Deps): Promise<Any> {
       let naglowki = 0;
       for (const u of uids) { const f = await im.fetch(u, "HEADER"); if (f && f.body.length) naglowki++; }
       const po = (await im.uidsUnseen()).length;
+      // folders: how many, which standard kinds, how many messages in all — numbers only, no names
+      const fl = await im.list(), typy: Record<string, number> = {};
+      let razem = 0, policzone = 0;
+      for (const f of fl) {
+        const t = typFolderu(f) || "inne"; typy[t] = (typy[t] ?? 0) + 1;
+        if (policzone < 60 && !f.flagi.some((x) => /^\\(noselect|nonexistent)$/i.test(x))) { try { razem += (await im.status(f.raw)).messages; policzone++; } catch { /* skipped */ } }
+      }
+      const foldery = { liczba: fl.length, typy, policzone, wiadomosci_razem: razem, separator: fl[0]?.delim ?? null, nie_ascii: fl.filter((f) => f.raw !== f.nazwa).length };
       await im.logout(); im = null;
       const im2 = await d.imap(s);
       const st2 = await im2.status();
       await im2.logout();
-      out[s] = { login: true, wiadomosci: ex.exists, uidnext: ex.uidnext, najwyzszy_uid: uids[uids.length - 1] ?? null, nieprzeczytane_przed: przed, nieprzeczytane_po: po, status_przed: st.unseen, status_po_nowej_sesji: st2.unseen, pobrane_naglowki: naglowki, bez_zmian: przed === po && st.unseen === st2.unseen };
+      out[s] = { login: true, wiadomosci: ex.exists, uidnext: ex.uidnext, najwyzszy_uid: uids[uids.length - 1] ?? null, nieprzeczytane_przed: przed, nieprzeczytane_po: po, status_przed: st.unseen, status_po_nowej_sesji: st2.unseen, pobrane_naglowki: naglowki, bez_zmian: przed === po && st.unseen === st2.unseen, foldery };
     } catch (e) { out[s] = { login: false, error: err(e) }; }
     finally { if (im) await im.logout().catch(() => {}); }
   }
@@ -369,7 +389,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const moze = (me: Me, s: Skrzynka) => me.admin || me.sekcje === null || me.sekcje.includes(SKRZYNKI[s].sekcja);
 const widok = (r: Row) => { const { uidvalidity: _a, uid: _b, odwolania: _c, watek: _d, message_id: _e, analiza_start: _f, ...x } = r; return x; };
 
-export async function handle(d: Deps, req: Request): Promise<{ status: number; body: Any }> {
+export async function handle(d: Deps, req: Request): Promise<{ status: number; body: Any; raw?: { bytes: Uint8Array; headers: Record<string, string> } }> {
   const url = new URL(req.url);
   if (url.searchParams.get("action") === "odbierz") return await odbierz(d, req, url);
   let body: Any;
@@ -397,6 +417,8 @@ export async function handle(d: Deps, req: Request): Promise<{ status: number; b
   if (!moje.length) return { status: 403, body: { error: "Brak dostępu (sekcja Kadry albo Księgowość)." } };
   const ctx = await kontekst(d);
   const teraz = () => new Date(d.now()).toISOString();
+
+  if (AKCJE.includes(body.action)) return await przegladarka(d, me, ctx, body);
 
   if (body.action === "lista") {
     const s = isSkrzynka(body.skrzynka) && moje.includes(body.skrzynka) ? body.skrzynka : moje[0];

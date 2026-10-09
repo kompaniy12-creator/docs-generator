@@ -49,6 +49,7 @@ export class FakeServer implements Conn {
       this.push(`* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n* ${this.box.length} EXISTS\r\n* 0 RECENT\r\n* OK [UIDVALIDITY ${this.uidvalidity}] UIDs valid\r\n* OK [UIDNEXT ${top + 1}] Predicted next UID\r\n`);
       return ok(`OK [${this.selected === "ro" ? "READ-ONLY" : "READ-WRITE"}] done`);
     }
+    if (cmd === 'LIST "" "*"') { this.push('* LIST (\\HasNoChildren) "." INBOX\r\n'); return ok(); }
     if (/^STATUS "INBOX"/.test(cmd)) {
       const top = sorted().pop()?.uid ?? 0;
       this.push(`* STATUS INBOX (MESSAGES ${this.box.length} UNSEEN ${this.box.filter((x) => !x.seen).length} UIDNEXT ${top + 1} UIDVALIDITY ${this.uidvalidity})\r\n`);
@@ -158,4 +159,112 @@ Deno.test("a wrong password fails without echoing it; a mailbox opened read-writ
   const big = new Imap(new FakeServer([wiad(1, "<a@x.example>", "y".repeat(3000))]), 2000, 1000);
   await big.login("u", PASS); await big.examine();
   await assertRejects(() => big.fetch(1), Error, "limit");
+});
+
+// ---------------------------------------------------------------- mailbox browser commands on the wire
+// A scripted server working on bytes: it honours literals ("{n}" -> "+ go ahead" -> n bytes) and records
+// exactly what the client sent.
+class Skrypt implements Conn {
+  sent: { text: string; literals: Uint8Array[] }[] = [];
+  private out: Uint8Array[] = [te.encode("* OK ready\r\n")];
+  private buf = new Uint8Array(0);
+  private cur = { text: "", literals: [] as Uint8Array[] };
+  private need = 0;
+  private waiters: (() => void)[] = [];
+  constructor(private answer: (cmd: string, literals: Uint8Array[]) => (string | Uint8Array)[], private odmowLiteralu = false) {}
+  private push(...parts: (string | Uint8Array)[]) { for (const p of parts) { const b = typeof p === "string" ? te.encode(p) : p; for (let i = 0; i < b.length; i += 11) this.out.push(b.slice(i, i + 11)); } this.waiters.splice(0).forEach((w) => w()); }
+  async read(p: Uint8Array) { while (!this.out.length) await new Promise<void>((r) => this.waiters.push(r)); const c = this.out.shift()!; p.set(c); return c.length; }
+  write(p: Uint8Array) {
+    const n = new Uint8Array(this.buf.length + p.length); n.set(this.buf); n.set(p, this.buf.length); this.buf = n;
+    for (;;) {
+      if (this.need) { if (this.buf.length < this.need) break; this.cur.literals.push(this.buf.slice(0, this.need)); this.buf = this.buf.slice(this.need); this.need = 0; continue; }
+      const i = this.buf.findIndex((b, k) => b === 13 && this.buf[k + 1] === 10);
+      if (i < 0) break;
+      const line = td.decode(this.buf.slice(0, i)); this.buf = this.buf.slice(i + 2);
+      const m = line.match(/\{(\d+)\}$/);
+      if (m) {
+        this.cur.text += line.slice(0, m.index) + `{${this.cur.literals.length}}`;
+        if (this.odmowLiteralu) { this.push(`${this.cur.text.split(" ")[0]} BAD literal refused\r\n`); this.cur = { text: "", literals: [] }; continue; }
+        this.need = Number(m[1]); this.push("+ go ahead\r\n"); continue;
+      }
+      this.cur.text += line;
+      const [tag, ...rest] = this.cur.text.split(" ");
+      const cmd = rest.join(" ");
+      this.sent.push({ text: cmd.startsWith("LOGIN") ? "LOGIN ***" : cmd, literals: this.cur.literals });
+      if (cmd.startsWith("EXAMINE")) this.push("* 0 EXISTS\r\n* OK [UIDVALIDITY 1] ok\r\n* OK [UIDNEXT 1] ok\r\n");
+      this.push(...this.answer(cmd, this.cur.literals), `${tag} OK ${cmd.startsWith("EXAMINE") ? "[READ-ONLY] " : ""}done\r\n`);
+      this.cur = { text: "", literals: [] };
+    }
+    return Promise.resolve(p.length);
+  }
+  close() {}
+}
+const lit = (s: string) => { const b = te.encode(s); return [`{${b.length}}\r\n`, b] as (string | Uint8Array)[]; };
+
+Deno.test("LIST: flags, delimiter, quoted / atom / literal names, special-use, modified UTF-7", async () => {
+  const srv = new Skrypt((cmd) => cmd === 'LIST "" "*"' ? [
+    '* LIST (\\HasChildren) "." INBOX\r\n', '* LIST (\\HasNoChildren \\Sent) "." "INBOX.Sent"\r\n', '* LIST (\\HasNoChildren) "." "INBOX.Wys&AUI-ane \\"stare\\""\r\n',
+    '* LIST (\\Noselect \\HasChildren) "." "INBOX.Klienci"\r\n', "* LIST (\\HasNoChildren) \".\" ", ...lit("INBOX.Klienci.Alfa (2026)"), "\r\n", '* LIST (\\Trash) NIL Kosz\r\n', "* 3 EXISTS\r\n",
+  ] : []);
+  const im = new Imap(srv, 2000);
+  const l = await im.list();
+  assertEquals(l.map((f) => [f.raw, f.nazwa, f.delim, f.flagi.join(" ")]), [
+    ["INBOX", "INBOX", ".", "\\HasChildren"], ["INBOX.Sent", "INBOX.Sent", ".", "\\HasNoChildren \\Sent"], ['INBOX.Wys&AUI-ane "stare"', 'INBOX.Wysłane "stare"', ".", "\\HasNoChildren"],
+    ["INBOX.Klienci", "INBOX.Klienci", ".", "\\Noselect \\HasChildren"], ["INBOX.Klienci.Alfa (2026)", "INBOX.Klienci.Alfa (2026)", ".", "\\HasNoChildren"], ["Kosz", "Kosz", "/", "\\Trash"]]);
+  // opening and counting a folder whose name has quotes and a backslash: escaped inside a quoted string
+  await im.examine('INBOX.Wys&AUI-ane "stare"'); await im.status("A\\B");
+  assertEquals(srv.sent.slice(1).map((c) => c.text), ['EXAMINE "INBOX.Wys&AUI-ane \\"stare\\""', 'STATUS "A\\\\B" (MESSAGES UNSEEN UIDNEXT UIDVALIDITY)']);
+  // a non-ASCII name goes as a literal; CR/LF never goes at all
+  await im.examine("Wysłane");
+  assertEquals([srv.sent[3].text, td.decode(srv.sent[3].literals[0])], ["EXAMINE {0}", "Wysłane"]);
+  await assertRejects(() => im.examine('INBOX"\r\nA9 DELETE "INBOX'));
+  await assertRejects(() => im.status("INBOX\nx"));
+  assertEquals(srv.sent.length, 4);
+});
+
+Deno.test("search: the text travels as UTF-8 literals — quotes, parentheses and IMAP words in it are just text", async () => {
+  const srv = new Skrypt((cmd) => cmd.startsWith("UID SEARCH") ? ["* SEARCH 12 7 30\r\n"] : []);
+  const im = new Imap(srv, 2000);
+  const zly = 'żółć" OR ALL) UID STORE 1:* +FLAGS (\\Deleted';
+  assertEquals(await im.szukaj({ tekst: zly, nieprzeczytane: true, od: "2026-10-01", do: "2026-10-09" }), [7, 12, 30]);
+  assertEquals(srv.sent[0].text, "UID SEARCH CHARSET UTF-8 OR SUBJECT {0} FROM {1} UNSEEN SINCE 1-Oct-2026 BEFORE 10-Oct-2026");
+  assertEquals(srv.sent[0].literals.map((b) => td.decode(b)), [zly, zly]);
+  assertEquals(await im.szukaj({}), [7, 12, 30]);
+  assertEquals(srv.sent[1].text, "UID SEARCH ALL");
+  for (const tekst of ["a\r\nb", "a\nb UID STORE", "x".repeat(101)]) await assertRejects(() => im.szukaj({ tekst }));
+  await assertRejects(() => im.szukaj({ od: "1-Oct-2026 OR ALL" }));
+  assertEquals(srv.sent.length, 2);
+  // a server that refuses the literal: an error, and the bytes are never sent
+  const no = new Skrypt(() => [], true);
+  await assertRejects(() => new Imap(no, 2000).szukaj({ tekst: "żółć" }), Error, "SEARCH odrzucone");
+  assertEquals(no.sent.length, 0);
+});
+
+Deno.test("meta and part: flags, size, structure and header literal are read; parts only through PEEK", async () => {
+  const head = "From: =?UTF-8?B?xbthbmV0YQ==?= <z@firma-alfa.example>\r\nSubject: Test (z nawiasem) {7}\r\n\r\n";
+  const srv = new Skrypt((cmd) => {
+    if (cmd.startsWith("UID FETCH 5,9 ")) return [
+      '* 1 FETCH (UID 5 FLAGS (\\Seen \\Answered) INTERNALDATE "08-Oct-2026 09:00:00 +0200" RFC822.SIZE 2300 BODYSTRUCTURE ("text" "plain" ("charset" "utf-8") NIL NIL "8bit" 20 1 NIL NIL NIL NIL) BODY[HEADER.FIELDS (FROM TO CC REPLY-TO SUBJECT DATE MESSAGE-ID)] ', ...lit(head), ")\r\n",
+      '* 2 FETCH (FLAGS () UID 9 RFC822.SIZE 99 INTERNALDATE "09-Oct-2026 09:00:00 +0200" BODYSTRUCTURE (("text" "plain" NIL NIL NIL "7bit" 1 1)("application" "pdf" ("name" ', ...lit('dziwna "nazwa".pdf'), ') NIL NIL "base64" 400 NIL ("attachment" NIL)) "mixed") BODY[HEADER.FIELDS (FROM TO CC REPLY-TO SUBJECT DATE MESSAGE-ID)] ""' + ")\r\n",
+      "* 3 FETCH (FLAGS (\\Seen))\r\n",
+    ];
+    if (cmd.startsWith("FETCH 3:4 ")) return ['* 3 FETCH (UID 30 FLAGS () INTERNALDATE "x" RFC822.SIZE 1 BODYSTRUCTURE NIL)\r\n'];
+    if (cmd.startsWith("UID FETCH 9 (UID BODY.PEEK[2]")) return ["* 2 FETCH (UID 9 BODY[2]<0> ", ...lit("JVBERi0x"), ")\r\n"];
+    return [];
+  });
+  const im = new Imap(srv, 2000);
+  const m = await im.meta([5, 9, 0, -3], true, true);
+  assertEquals(srv.sent[0].text, "UID FETCH 5,9 (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (FROM TO CC REPLY-TO SUBJECT DATE MESSAGE-ID)])");
+  assertEquals(m.map((x) => [x.uid, x.flagi.join(","), x.size, x.internaldate]), [[5, "\\Seen,\\Answered", 2300, "08-Oct-2026 09:00:00 +0200"], [9, "", 99, "09-Oct-2026 09:00:00 +0200"]]);
+  assertEquals(td.decode(m[0].sekcje["BODY[HEADER.FIELDS (FROM TO CC REPLY-TO SUBJECT DATE MESSAGE-ID)]"]), head);
+  const { czesci } = await import("./widok.ts");
+  assertEquals(czesci(m[1].bs).map((c) => [c.id, c.typ, c.nazwa, c.zalacznik]), [["1", "text/plain", "", false], ["2", "application/pdf", 'dziwna "nazwa".pdf', true]]);
+  assertEquals((await im.meta({ od: 3, do: 4 }, false, false)).map((x) => x.uid), [30]);
+  assertEquals(srv.sent[1].text, "FETCH 3:4 (UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE)");
+  assertEquals(await im.meta([], true, true), []);
+  assertEquals(td.decode((await im.part(9, "2", 600))!), "JVBERi0x");
+  assertEquals(srv.sent[2].text, "UID FETCH 9 (UID BODY.PEEK[2]<0.600>)");
+  assertEquals(await im.part(9, "3"), null);
+  for (const id of ["", "TEXT", "1.HEADER", "1] BODY[1", "1)\r\nx STORE", "1.2.3.4.5.6.7.8.9.10.11.12.13.14"]) await assertRejects(() => im.part(9, id));
+  assert(srv.sent.every((c) => !/BODY\[/.test(c.text.replace(/BODY\.PEEK\[/g, ""))));
 });

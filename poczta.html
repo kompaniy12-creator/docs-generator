@@ -54,6 +54,30 @@
   .set{display:grid;grid-template-columns:1.3fr 1fr 1.2fr;gap:10px;align-items:end;margin:0 0 8px;font-size:13.5px}
   .set4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 0 8px}
   .warnbox{background:#fef3c7;color:#92400e;border-radius:9px;padding:9px 12px;font-size:13px;margin:0 0 12px}
+  /* mailbox browser */
+  .mb{display:grid;grid-template-columns:240px minmax(0,1fr);gap:16px;align-items:start}
+  .mb .box{margin:0}
+  .frow{display:flex;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:8px;cursor:pointer;font-size:13.5px;border-left:3px solid transparent;overflow-wrap:anywhere}
+  .frow:hover,.row:hover{background:rgba(127,127,127,.14)}
+  .frow.on{font-weight:700;border-left-color:var(--brand-green);background:rgba(127,127,127,.12)}
+  .frow:focus-visible,.row:focus-visible{outline:2px solid var(--brand-green);outline-offset:1px}
+  .frow.off{cursor:default;opacity:.6}
+  .mfilters{display:grid;grid-template-columns:minmax(0,2fr) 1fr 1fr;gap:10px;align-items:end;margin:0 0 6px}
+  .mchk{display:flex;gap:16px;flex-wrap:wrap;margin:0 0 10px}
+  .row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding:9px 8px;border-bottom:1px solid #eef1f6;cursor:pointer;font-size:13.5px}
+  .row .who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .subj{grid-column:1/-1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row.new .who,.row.new .subj{font-weight:700}
+  .row .d{color:#7a8699;font-size:12.5px;white-space:nowrap}
+  .pager{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap}
+  .mhead{margin:0 0 10px;font-size:13.5px;overflow-wrap:anywhere}
+  .mhead h2{font-size:16px;margin:0 0 6px}
+  .mhead p{margin:0 0 3px}
+  .atts{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+  .atts .mini,.atts .pill{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .paper{display:block;width:100%;height:62vh;min-height:320px;border:1px solid #d4dbe6;border-radius:10px;background:#fff}
+  .mtext{max-height:62vh;overflow:auto}
+  @media(max-width:900px){.mb{grid-template-columns:1fr}.mb[data-ekran="foldery"] #mbRight,.mb:not([data-ekran="foldery"]) #mbFolders{display:none}.mfilters{grid-template-columns:1fr}}
   @media(max-width:760px){.filters,.prop,.set,.set4{grid-template-columns:1fr}.thead{flex-direction:column;gap:8px}.ttl{width:100%}.pills{justify-content:flex-start;max-width:none}}
 </style>
 </head>
@@ -64,6 +88,9 @@
   <h1>Poczta</h1>
   <p class="lead">Wiadomości przychodzące na skrzynki biura: krótki opis, klient, propozycja zadania. Tu decydujesz, co z nich staje się zadaniem.</p>
 
+  <div class="tabs" id="views"><button type="button" data-v="analiza" class="on">Do decyzji</button><button type="button" data-v="skrzynka">Skrzynka — wszystkie wiadomości</button></div>
+
+  <div id="vAnaliza">
   <div class="warnbox">Opis i propozycję zadania przygotowuje automat — może się mylić, a nadawca może próbować go zmylić. Zanim utworzysz zadanie, porównaj je z wiadomością. Oryginał (pełna treść i załączniki) zostaje w skrzynce pocztowej — portal niczego w niej nie zmienia i przechowuje tylko początek treści.</div>
   <div id="alarm"></div>
 
@@ -81,6 +108,31 @@
   </div>
 
   <div id="list"><div class="empty">Ładowanie…</div></div>
+  </div>
+
+  <div id="vSkrzynka" hidden>
+    <div class="warnbox">Podgląd tylko do odczytu — wiadomość <b>nie zostaje oznaczona jako przeczytana</b>, nic w skrzynce się nie zmienia. Odpowiadanie, przenoszenie i usuwanie — jak dotąd w programie pocztowym lub webmailu. Każde otwarcie wiadomości i pobranie załącznika jest zapisywane (kto i kiedy).</div>
+    <div class="mb" id="mb" data-ekran="lista">
+      <div class="box" id="mbFolders">
+        <label for="mbBox">Skrzynka</label><select id="mbBox"></select>
+        <div id="mbTree" style="margin-top:10px"><div class="sub">Ładowanie…</div></div>
+      </div>
+      <div id="mbRight">
+        <div class="box" id="mbList">
+          <div class="acts" style="margin:0 0 10px"><button type="button" class="mini" id="mbToFolders">← Foldery</button><strong id="mbTitle"></strong></div>
+          <div class="mfilters">
+            <div><label for="mbQ">Szukaj w temacie i nadawcy</label><input type="text" id="mbQ" maxlength="100" placeholder="np. nazwa firmy" /></div>
+            <div><label for="mbOd">Od dnia</label><input type="date" id="mbOd" /></div>
+            <div><label for="mbDo">Do dnia</label><input type="date" id="mbDo" /></div>
+          </div>
+          <div class="mchk"><label class="chk"><input type="checkbox" id="mbNew" /> nieprzeczytane</label><label class="chk"><input type="checkbox" id="mbAtt" /> z załącznikami</label><button type="button" class="mini" id="mbGo">Szukaj</button><button type="button" class="mini" id="mbClear">Wyczyść</button></div>
+          <div id="mbRows"><div class="empty">Wybierz folder.</div></div>
+          <div class="pager"><button type="button" class="mini" id="mbPrev">← Nowsze</button><span class="sub" id="mbInfo"></span><button type="button" class="mini" id="mbNext">Starsze →</button></div>
+        </div>
+        <div class="box" id="mbMsg" hidden></div>
+      </div>
+    </div>
+  </div>
 
   <div class="box" id="settings" hidden>
     <h2>Ustawienia poczty (administrator)</h2>
@@ -98,9 +150,13 @@
     </div>
     <label class="chk" style="white-space:normal;margin:0 0 6px"><input type="checkbox" id="lKlienci" /> W trybie automatycznym twórz zadania tylko dla nadawców rozpoznanych w bazie klientów (pozostałe czekają na decyzję pracownika)</label>
     <p class="sub" style="margin:0 0 10px">Każda analiza to płatne zapytanie. Wiadomości ponad limit są na liście, ale bez opisu. Automatyczne odpowiedzi, zwrotki, newslettery i wiadomości z adresów biura nie są analizowane.</p>
-    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" id="setSave">Zapisz ustawienia</button><button type="button" class="mini" id="setCheck">Sprawdź połączenie</button><span class="sub" id="setMsg"></span></div>
+    <h3>Dziennik dostępu do skrzynek</h3>
+    <p class="sub" style="margin:0 0 8px">Kto otworzył którą wiadomość, pobrał załącznik albo zlecił analizę w zakładce „Skrzynka” (bez tematów i treści — sam numer wiadomości w folderze).</p>
+    <div class="acts" style="margin:0 0 10px"><button type="button" class="mini" id="logShow">Pokaż ostatnie wpisy</button></div>
+    <div id="logRows"></div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px"><button type="button" class="btn" id="setSave">Zapisz ustawienia</button><button type="button" class="mini" id="setCheck">Sprawdź połączenie</button><span class="sub" id="setMsg"></span></div>
   </div>
 </main>
-<script src="poczta.js?v=1"></script>
+<script src="poczta.js?v=2"></script>
 </body>
 </html>

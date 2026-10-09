@@ -137,6 +137,175 @@
     } catch (err) { msg.textContent = err.message; b.disabled = false; }
   });
 
+  // ---------------- mailbox browser (read-only) ----------------
+  var mb = { box: '', folders: [], folder: '', page: 1, total: 0, rows: [], msg: null, loaded: false, images: false, html: false };
+  var FOLD = { inbox: '📥 Odebrane', sent: '📤 Wysłane', drafts: '📝 Robocze', trash: '🗑 Kosz', junk: '🚫 Spam', archive: '🗄 Archiwum' };
+  function ekran(e) { $('mb').setAttribute('data-ekran', e); }
+  function mbErr(el, e) { el.innerHTML = '<div class="empty">' + esc(e && e.message ? e.message : e) + '</div>'; }
+  async function callFile(body) {
+    var sess = await window.sb.auth.getSession();
+    var token = sess && sess.data && sess.data.session ? sess.data.session.access_token : '';
+    var res = await fetch(BASE + 'poczta', { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: window.sb.supabaseKey || '', Authorization: 'Bearer ' + token }, body: JSON.stringify(body) });
+    if ((res.headers.get('content-type') || '').indexOf('application/json') >= 0) { var j = await res.json().catch(function () { return {}; }); throw new Error(j.error || ('Błąd ' + res.status)); }
+    if (!res.ok) throw new Error('Błąd ' + res.status);
+    return await res.arrayBuffer();
+  }
+  function renderFolders() {
+    $('mbBox').innerHTML = skrzynki.map(function (s) { return '<option value="' + esc(s.klucz) + '"' + (s.klucz === mb.box ? ' selected' : '') + '>' + esc(s.adres) + '</option>'; }).join('');
+    $('mbTree').innerHTML = mb.folders.length ? mb.folders.map(function (f) {
+      var name = f.poziom === 0 && FOLD[f.typ] && f.typ === 'inbox' ? FOLD.inbox : (FOLD[f.typ] ? FOLD[f.typ].split(' ')[0] + ' ' : '') + f.nazwa;
+      return '<div class="frow' + (f.id === mb.folder ? ' on' : '') + (f.wybieralny ? '' : ' off') + '"' + (f.wybieralny ? ' role="button" tabindex="0" data-f="' + esc(f.id) + '"' : '') + ' style="margin-left:' + Math.min(4, f.poziom) * 12 + 'px" title="' + esc(f.sciezka) + '">' +
+        '<span>' + esc(name) + '</span>' + (f.wybieralny ? '<span class="sub">' + (f.nieprzeczytane ? '<b>' + f.nieprzeczytane + '</b> / ' : '') + (f.wiadomosci == null ? '' : f.wiadomosci) + '</span>' : '') + '</div>';
+    }).join('') : '<div class="sub">Brak folderów.</div>';
+  }
+  async function loadFolders(box) {
+    mb.box = box || mb.box || skrzynka; mb.folders = []; mb.folder = ''; mb.rows = []; mb.msg = null;
+    $('mbTree').innerHTML = '<div class="sub">Ładowanie…</div>'; $('mbRows').innerHTML = ''; $('mbMsg').hidden = true; $('mbList').hidden = false;
+    try {
+      var out = await call('poczta', { action: 'foldery', skrzynka: mb.box });
+      if (out.error) throw new Error(out.error);
+      mb.folders = out.foldery; mb.loaded = true;
+      renderFolders();
+      var inbox = mb.folders.filter(function (f) { return f.typ === 'inbox'; })[0];
+      if (inbox) await openFolder(inbox.id, true);
+    } catch (e) { renderFolders(); mbErr($('mbTree'), e); }
+  }
+  function filters() { return { szukaj: $('mbQ').value.trim() || undefined, od: $('mbOd').value || undefined, do: $('mbDo').value || undefined, nieprzeczytane: $('mbNew').checked || undefined, zalaczniki: $('mbAtt').checked || undefined }; }
+  function renderRows(info) {
+    var f = mb.folders.filter(function (x) { return x.id === mb.folder; })[0] || {};
+    $('mbTitle').textContent = f.sciezka || '';
+    var sent = f.typ === 'sent' || f.typ === 'drafts';
+    $('mbRows').innerHTML = mb.rows.length ? mb.rows.map(function (r) {
+      var kto = sent ? 'Do: ' + (r.do || []).join(', ') : (r.od_nazwa || r.od_adres || '(nieznany nadawca)');
+      return '<div class="row' + (r.przeczytana ? '' : ' new') + '" role="button" tabindex="0" data-u="' + r.uid + '"><span class="who">' + esc(kto) + '</span><span class="d">' + (r.zalaczniki ? '📎 ' : '') + (r.odpowiedziano ? '↩ ' : '') + (r.oflagowana ? '⚑ ' : '') + esc(when(r.data)) + '</span>' +
+        '<span class="subj">' + esc(r.temat || '(bez tematu)') + '</span></div>';
+    }).join('') : '<div class="empty">Brak wiadomości w tym widoku.</div>';
+    var pages = Math.max(1, Math.ceil(mb.total / 30));
+    $('mbInfo').textContent = 'Strona ' + mb.page + ' z ' + pages + ' · wiadomości: ' + mb.total + (info && info.przeszukano != null ? ' (z załącznikami wśród ' + info.przeszukano + ' najnowszych pasujących)' : '');
+    $('mbPrev').disabled = mb.page <= 1; $('mbNext').disabled = mb.page >= pages;
+  }
+  async function openFolder(id, quiet) {
+    if (id !== mb.folder) mb.page = 1;
+    mb.folder = id; mb.msg = null; renderFolders();
+    $('mbMsg').hidden = true; $('mbList').hidden = false; if (!quiet) ekran('lista');
+    $('mbRows').innerHTML = '<div class="empty">Ładowanie…</div>';
+    try {
+      var body = filters(); body.action = 'lista_imap'; body.skrzynka = mb.box; body.folder = id; body.strona = mb.page;
+      var out = await call('poczta', body);
+      if (out.error) throw new Error(out.error);
+      mb.rows = out.wiadomosci; mb.total = out.razem;
+      renderRows(out);
+    } catch (e) { mbErr($('mbRows'), e); $('mbInfo').textContent = ''; }
+  }
+  function frame(srcdoc) {
+    // the mail's HTML never enters this page: it lives in a frame that can run no script and has no access to the portal
+    var f = document.createElement('iframe');
+    f.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox');
+    f.setAttribute('referrerpolicy', 'no-referrer');
+    f.setAttribute('title', 'Treść wiadomości');
+    f.className = 'paper';
+    f.srcdoc = srcdoc;
+    return f;
+  }
+  function renderMsg() {
+    var m = mb.msg, a = m.analiza, el = $('mbMsg');
+    el.innerHTML = '<div class="acts" style="margin:0 0 10px"><button type="button" class="mini" data-m="back">← Lista</button>' +
+        (m.srcdoc ? '<button type="button" class="mini" data-m="view">' + (mb.html ? 'Widok tekstowy' : 'Widok HTML') + '</button>' : '') +
+        (m.srcdoc && mb.html && m.zdalne && !mb.images ? '<button type="button" class="mini" data-m="img">Pokaż obrazy z internetu (' + m.zdalne + ')</button>' : '') + '</div>' +
+      '<div class="mhead"><h2>' + esc(m.temat || '(bez tematu)') + '</h2>' +
+        '<p><b>Od:</b> ' + esc(m.od_nazwa || '') + ' &lt;' + esc(m.od_adres || 'nieznany') + '&gt;</p>' +
+        '<p><b>Do:</b> ' + esc((m.do || []).join(', ')) + '</p><p class="sub">' + esc(when(m.data)) + ' · ' + kb(m.rozmiar) + (m.przeczytana ? '' : ' · w skrzynce nadal jako nieprzeczytana') + '</p></div>' +
+      (m.zalaczniki.length ? '<div class="atts">' + m.zalaczniki.map(function (z) {
+        return z.za_duzy ? '<span class="pill p-grey" title="Ponad 20 MB — otwórz w programie pocztowym">📎 ' + esc(z.nazwa) + ' (' + kb(z.rozmiar) + ', za duży)</span>'
+          : '<button type="button" class="mini" data-part="' + esc(z.part) + '" data-name="' + esc(z.nazwa) + '">📎 ' + esc(z.nazwa) + ' (' + kb(z.rozmiar) + ')</button>';
+      }).join('') + '</div><p class="sub" style="margin:-4px 0 10px">Załącznik zapisuje się na dysku — nie otwieraj plików, których się nie spodziewasz.</p>' : '') +
+      '<div id="mbBody"></div>' +
+      '<div class="acts" style="margin-top:12px">' +
+        (a && a.zadanie ? '<a href="zadania.html?w=wszystkie">Zadanie: ' + esc(a.zadanie.tytul) + ' →</a>' : '') +
+        (a ? '<button type="button" class="mini" data-m="triage">Pokaż w „Do decyzji”</button>' : '<button type="button" class="mini ok" data-m="analiza">Utwórz zadanie z tej wiadomości</button>') +
+        '<span class="sub" data-mmsg>' + (a ? '' : 'Automat opisze wiadomość (płatne zapytanie) i przygotuje propozycję zadania do zatwierdzenia.') + '</span></div>';
+    var body = $('mbBody');
+    if (mb.html && m.srcdoc) body.appendChild(frame(mb.images ? m.srcdoc.replace('img-src data:;', 'img-src data: https:;').replace(/ data-zdalne="/g, ' src="') : m.srcdoc));
+    else { var t = document.createElement('div'); t.className = 'cm mtext'; t.textContent = m.tekst || '(wiadomość bez treści tekstowej' + (m.srcdoc ? ' — użyj widoku HTML)' : ')'); body.appendChild(t); }
+  }
+  async function openMsg(uid) {
+    var el = $('mbMsg');
+    $('mbList').hidden = true; el.hidden = false; ekran('wiadomosc');
+    el.innerHTML = '<div class="empty">Ładowanie…</div>';
+    try {
+      var out = await call('poczta', { action: 'wiadomosc_imap', skrzynka: mb.box, folder: mb.folder, uid: uid });
+      if (out.error) throw new Error(out.error);
+      mb.msg = out; mb.images = false; mb.html = false; // plain text first; HTML and remote pictures only on request
+      renderMsg();
+      var back = el.querySelector('[data-m="back"]'); if (back) back.focus();
+    } catch (e) { el.innerHTML = '<div class="acts" style="margin:0 0 10px"><button type="button" class="mini" data-m="back">← Lista</button></div><div class="empty">' + esc(e.message) + '</div>'; }
+  }
+  function backToList() { $('mbMsg').hidden = true; $('mbList').hidden = false; ekran('lista'); var r = mb.msg && document.querySelector('.row[data-u="' + mb.msg.uid + '"]'); if (r) r.focus(); mb.msg = null; }
+  $('mbMsg').addEventListener('click', async function (e) {
+    var part = e.target.closest('[data-part]'), b = e.target.closest('[data-m]'), msg = $('mbMsg').querySelector('[data-mmsg]');
+    if (part) {
+      part.disabled = true;
+      try {
+        var buf = await callFile({ action: 'zalacznik_imap', skrzynka: mb.box, folder: mb.folder, uid: mb.msg.uid, part: part.getAttribute('data-part') });
+        // always saved as a file of an inert type — never opened inside the portal
+        var url = URL.createObjectURL(new Blob([buf], { type: 'application/octet-stream' })), a = document.createElement('a');
+        a.href = url; a.download = part.getAttribute('data-name') || 'zalacznik'; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+      } catch (err) { if (msg) msg.textContent = err.message; }
+      part.disabled = false;
+      return;
+    }
+    if (!b) return;
+    var act = b.getAttribute('data-m');
+    if (act === 'back') return backToList();
+    if (act === 'view') { mb.html = !mb.html; return renderMsg(); }
+    if (act === 'img') { mb.images = true; return renderMsg(); }
+    if (act === 'triage') return toTriage(mb.msg.analiza.id);
+    if (act === 'analiza') {
+      b.disabled = true; msg.textContent = 'Analizuję wiadomość…';
+      try {
+        var out = await call('poczta', { action: 'analizuj_imap', skrzynka: mb.box, folder: mb.folder, uid: mb.msg.uid });
+        if (out.error && !out.wiersz) { msg.textContent = out.error; b.disabled = false; return; }
+        toTriage(out.wiersz);
+      } catch (err) { msg.textContent = err.message; b.disabled = false; }
+    }
+  });
+  function toTriage(id) { want = id; open = {}; load._tried = false; show('analiza'); load(mb.box); }
+  function rowKeys(sel, attr, fn) {
+    return function (e) {
+      var r = e.target.closest(sel); if (!r) return;
+      if (e.type === 'click' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); return fn(r.getAttribute(attr)); }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { var n = e.key === 'ArrowDown' ? r.nextElementSibling : r.previousElementSibling; while (n && !n.matches(sel)) n = e.key === 'ArrowDown' ? n.nextElementSibling : n.previousElementSibling; if (n) { e.preventDefault(); n.focus(); } }
+    };
+  }
+  var onFolder = rowKeys('[data-f]', 'data-f', function (id) { openFolder(id); }), onRow = rowKeys('[data-u]', 'data-u', function (u) { openMsg(Number(u)); });
+  $('mbTree').addEventListener('click', onFolder); $('mbTree').addEventListener('keydown', onFolder);
+  $('mbRows').addEventListener('click', onRow); $('mbRows').addEventListener('keydown', onRow);
+  $('mbBox').addEventListener('change', function () { loadFolders(this.value); });
+  $('mbToFolders').addEventListener('click', function () { ekran('foldery'); });
+  $('mbGo').addEventListener('click', function () { mb.page = 1; if (mb.folder) openFolder(mb.folder); });
+  $('mbQ').addEventListener('keydown', function (e) { if (e.key === 'Enter') { mb.page = 1; if (mb.folder) openFolder(mb.folder); } });
+  $('mbClear').addEventListener('click', function () { $('mbQ').value = ''; $('mbOd').value = ''; $('mbDo').value = ''; $('mbNew').checked = false; $('mbAtt').checked = false; mb.page = 1; if (mb.folder) openFolder(mb.folder); });
+  $('mbPrev').addEventListener('click', function () { if (mb.page > 1) { mb.page--; openFolder(mb.folder); } });
+  $('mbNext').addEventListener('click', function () { mb.page++; openFolder(mb.folder); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('vSkrzynka').hidden && mb.msg) backToList(); });
+  function show(v) {
+    $('vAnaliza').hidden = v !== 'analiza'; $('vSkrzynka').hidden = v !== 'skrzynka';
+    document.querySelectorAll('#views [data-v]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-v') === v); });
+    if (v === 'skrzynka' && !mb.loaded && skrzynki.length) loadFolders(skrzynka);
+  }
+  $('views').addEventListener('click', function (e) { var b = e.target.closest('[data-v]'); if (b) show(b.getAttribute('data-v')); });
+  $('logShow').addEventListener('click', async function () {
+    this.disabled = true;
+    try {
+      var out = await call('poczta', { action: 'dziennik' }), CO = { otwarcie: 'otwarcie wiadomości', zalacznik: 'pobranie załącznika', analiza: 'analiza na żądanie' };
+      $('logRows').innerHTML = out.dziennik.length ? '<table style="width:100%;font-size:13px;border-collapse:collapse"><tr><th align="left">Kiedy</th><th align="left">Kto</th><th align="left">Co</th><th align="left">Skrzynka / folder</th><th align="left">Nr</th></tr>' +
+        out.dziennik.map(function (r) { return '<tr><td>' + esc(when(r.at)) + '</td><td>' + esc(who(r.kto)) + '</td><td>' + esc(CO[r.akcja] || r.akcja) + (r.czesc ? ' (część ' + esc(r.czesc) + ', ' + kb(r.rozmiar) + ')' : '') + '</td><td>' + esc(r.skrzynka) + ' / ' + esc(r.folder || '') + '</td><td>' + esc(r.uid) + '</td></tr>'; }).join('') + '</table>'
+        : '<p class="sub">Brak wpisów.</p>';
+    } catch (e) { $('logRows').innerHTML = '<p class="sub">' + esc(e.message) + '</p>'; }
+    this.disabled = false;
+  });
+
   // ---------------- settings (admin) ----------------
   function people(sel, empty) { return '<option value="">' + esc(empty) + '</option>' + zespol.map(function (e) { return '<option value="' + esc(e) + '"' + (e === sel ? ' selected' : '') + '>' + esc(e) + '</option>'; }).join(''); }
   function renderSettings() {
