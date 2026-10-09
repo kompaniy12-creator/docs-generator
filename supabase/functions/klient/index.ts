@@ -22,8 +22,13 @@
 //   POST { action: "konto_usun", id }
 //   POST { action: "zaproszenie", id, wyslij }   wyslij=true: e-mail with the link;
 //                                                wyslij=false: returns the link to copy
+// Stage 2 (start screen, workers, documents, accounting, requests, firm data; office actions
+// biuro_*) lives in portal.ts — the contract is described there. Files come only with
+// zgloszenie_nowe, as multipart/form-data (fields + up to 3 x `plik`).
 
 import nodemailer from "npm:nodemailer@6.9.14";
+import { BIURO_AKCJE, biuroAkcja, klientAkcja, MAX_BODY, MAX_PLIKOW, okSciezka, type Plik, type Staff } from "./portal.ts";
+import { store } from "./store.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -63,10 +68,26 @@ function newToken() {
 const MIN_HASLO = 10, MAX_BLEDNE = 5, BLOKADA_MIN = 15, PBKDF2_ITER = 150000;
 const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
 const unb64 = (t: string) => Uint8Array.from(atob(t), (c) => c.charCodeAt(0));
-async function hashHaslo(haslo: string, salt: Uint8Array): Promise<string> {
+async function pbkdf2(haslo: string, salt: Uint8Array, iter: number): Promise<string> {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(haslo), "PBKDF2", false, ["deriveBits"]);
-  return b64(new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: salt as BufferSource, iterations: PBKDF2_ITER }, key, 256)));
+  return b64(new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: salt as BufferSource, iterations: iter }, key, 256)));
 }
+// New hashes: "v2$<rounds>$<hash>" with PBKDF2_NOWE rounds. A hash without the prefix was made with
+// PBKDF2_ITER rounds; it is still verified and replaced by a new one at the next successful sign-in.
+const PBKDF2_NOWE = 600000;
+async function hashHaslo(haslo: string, salt: Uint8Array): Promise<string> { return `v2$${PBKDF2_NOWE}$${await pbkdf2(haslo, salt, PBKDF2_NOWE)}`; }
+const stareHaslo = (zapis: string) => !zapis.startsWith("v2$");
+// the same amount of work whatever is stored (an old hash is topped up to the new number of rounds)
+async function sprawdzHaslo(haslo: string, salt: Uint8Array, zapis: string): Promise<boolean> {
+  const m = /^v2\$(\d{5,8})\$(.+)$/.exec(zapis);
+  const iter = m ? Number(m[1]) : PBKDF2_ITER;
+  const ok = sameText(await pbkdf2(haslo, salt, iter), m ? m[2] : zapis);
+  if (iter < PBKDF2_NOWE) await pbkdf2(haslo, salt, PBKDF2_NOWE - iter);
+  return ok;
+}
+const SOL_PUSTA = new Uint8Array(16);
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
+function wTle(p: Promise<unknown>) { try { EdgeRuntime!.waitUntil(p); } catch { p.catch(() => undefined); } }
 function sameText(a: string, b: string) {
   if (a.length !== b.length) return false;
   let d = 0;
@@ -141,15 +162,36 @@ async function isAdmin(req: Request): Promise<string | null> {
   return u?.app_metadata?.portal === true && u?.app_metadata?.portal_admin === true ? String(u.email ?? "admin") : null;
 }
 
+// a member of staff: portal user with the sections of the portal he may open (null = all of them)
+async function staff(req: Request): Promise<Staff | null> {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token || token === ANON) return null;
+  const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: ANON, Authorization: `Bearer ${token}` } });
+  if (!r.ok) { await r.body?.cancel(); return null; }
+  const u = await r.json();
+  const m = u?.app_metadata ?? {};
+  if (m.portal !== true || !u.email) return null;
+  return { email: String(u.email).toLowerCase(), admin: m.portal_admin === true, sekcje: Array.isArray(m.portal_sections) ? m.portal_sections.map(String) : null };
+}
+const deps = { store, now: () => Date.now() };
+// the body of an upload is cut off at the cap while it is being read, whatever Content-Length said
+function ograniczony(body: ReadableStream<Uint8Array>, max: number): ReadableStream<Uint8Array> {
+  let n = 0;
+  return body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, c) { n += chunk.length; if (n > max) c.error(new Error("rozmiar")); else c.enqueue(chunk); },
+  }));
+}
+
 // deno-lint-ignore no-explicit-any
 type Any = any;
 const UMOWA: Record<string, string> = { praca: "umowa o pracę", zlecenie: "umowa zlecenie" };
 const ETAP: Record<string, string> = { nowe: "przyjęte — czeka na sprawdzenie", sprawdzone: "sprawdzone — przygotowujemy dokumenty", wyslane: "dokumenty wysłane do podpisu" };
 
 // What an employer may see about its own people: names, contract terms and document validity.
-// No PESEL, no document numbers, no addresses, no scans.
+// No PESEL, no document numbers, no addresses, no scans. Only submissions the office has checked:
+// the NIP of a new one is typed by whoever fills in the public form (see WIDOCZNE in portal.ts).
 async function firmData(nip: string) {
-  const r = await db(`zatrudnienie_zgloszenia?select=id,worker_name,status,created_at,payload&payload->>z_nip=eq.${nip}&status=neq.archiwum&order=created_at.desc`, { headers: { Range: "0-999", "Range-Unit": "items" } });
+  const r = await db(`zatrudnienie_zgloszenia?select=id,worker_name,status,created_at,payload&payload->>z_nip=eq.${nip}&status=in.(sprawdzone,wyslane,zatrudniony)&order=created_at.desc`, { headers: { Range: "0-999", "Range-Unit": "items" } });
   if (!r.ok) throw new Error("dane " + r.status);
   const rows: Any[] = await r.json();
   const pracownicy = [], zgloszenia = [];
@@ -238,7 +280,32 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
   let body: Any;
-  try { body = await req.json(); } catch { return json({ error: "Nieprawidłowy JSON." }, 400, origin); }
+  const pliki: Plik[] = [];
+  const ct = req.headers.get("content-type") ?? "";
+  if (/^multipart\/form-data/i.test(ct)) {
+    // files: who is calling is settled from the headers before a single byte of the body is read
+    try {
+      const k0 = await session(req);
+      if (!k0) return json({ error: "Sesja wygasła — zaloguj się ponownie.", wyloguj: true }, 401, origin);
+      if (!k0.haslo_hash) return json({ error: "Najpierw ustaw hasło.", ustaw_haslo: true }, 403, origin);
+    } catch (e) { console.error(e); return json({ error: "Wewnętrzny błąd serwera." }, 500, origin); }
+    const len = Number(req.headers.get("content-length") ?? "");
+    const zaDuze = () => json({ kod: "rozmiar", error: `Załączniki są za duże — najwyżej 15 MB każdy, do ${MAX_PLIKOW} plików.` }, 413, origin);
+    if (!Number.isFinite(len) || len <= 0 || !req.body) return json({ kod: "dlugosc", error: "Brak długości przesyłanych danych." }, 411, origin);
+    if (len > MAX_BODY) return zaDuze();
+    try {
+      const form = await new Response(ograniczony(req.body, MAX_BODY), { headers: { "content-type": ct } }).formData();
+      body = {};
+      for (const [key, v] of form.entries()) {
+        if (typeof v === "string") body[key] = v;
+        else if (key === "plik" && pliki.length <= MAX_PLIKOW) pliki.push({ nazwa: v.name || "plik", typ: v.type || "", bytes: new Uint8Array(await v.arrayBuffer()) });
+      }
+    } catch (e) { return (e as Error)?.message === "rozmiar" ? zaDuze() : json({ error: "Nieprawidłowe dane formularza." }, 400, origin); }
+    if (body.action !== "zgloszenie_nowe") return json({ error: "Nieznana akcja." }, 400, origin);
+  } else {
+    try { body = await req.json(); } catch { return json({ error: "Nieprawidłowy JSON." }, 400, origin); }
+    if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "Nieprawidłowy JSON." }, 400, origin);
+  }
 
   try {
     // ---------------- sign-in ----------------
@@ -251,8 +318,11 @@ Deno.serve(async (req) => {
         const c = await db(`klient_sesje?select=token_hash&konto_id=eq.${k.id}&rodzaj=eq.link&created_at=gte.${since}`);
         const recent = c.ok ? (await c.json()).length : 0;
         if (recent < LINKS_PER_15MIN) {
-          try { await sendLink(k, await makeLink(k), false); await log(k, "link"); }
-          catch (e) { console.error("mail", e); await log(k, "link_blad", { e: String((e as Error)?.message ?? e).slice(0, 160) }); }
+          // sent after the answer: how long the mail server takes must not tell whether the address is known
+          wTle((async () => {
+            try { await sendLink(k, await makeLink(k), false); await log(k, "link"); }
+            catch (e) { console.error("mail", e); await log(k, "link_blad", { e: String((e as Error)?.message ?? e).slice(0, 160) }); }
+          })());
         }
       }
       // the same answer for a known and an unknown address
@@ -278,16 +348,23 @@ Deno.serve(async (req) => {
     if (body.action === "login_haslo") {
       const email = String(body.email ?? "").trim().toLowerCase();
       const haslo = String(body.haslo ?? "");
-      const zle = () => json({ error: "Nieprawidłowy e-mail lub hasło." }, 401, origin);
-      if (!okMail(email) || !haslo) return zle();
+      // One answer for everything that is not a successful sign-in — unknown address, wrong password,
+      // locked account — and the same work done each time, so neither the text, the status nor the
+      // time tells whether an account exists.
+      const zle = () => json({ error: "Nieprawidłowy e-mail lub hasło. Po kilku błędnych próbach logowanie hasłem jest wstrzymane na kwadrans — można wtedy wejść linkiem z e-maila." }, 401, origin);
+      if (!okMail(email) || !haslo || haslo.length > 200) return zle();
       const k = await kontoByEmail(email);
-      if (!k?.aktywny || !k.haslo_hash || !k.haslo_salt) return zle();
-      if (k.blokada_do && Date.parse(k.blokada_do) > Date.now()) return json({ error: `Zbyt wiele błędnych prób. Spróbuj ponownie za kilkanaście minut albo zaloguj się linkiem z e-maila.` }, 429, origin);
-      if (!sameText(await hashHaslo(haslo, unb64(k.haslo_salt)), k.haslo_hash)) {
-        const n = (k.bledne ?? 0) + 1;
-        await db(`klient_konta?id=eq.${k.id}`, { method: "PATCH", body: JSON.stringify(n >= MAX_BLEDNE ? { bledne: 0, blokada_do: new Date(Date.now() + BLOKADA_MIN * 60000).toISOString() } : { bledne: n }) });
-        await log(k, "bledne_haslo", { n });
-        return zle();
+      if (!k?.aktywny || !k.haslo_hash || !k.haslo_salt) { await sprawdzHaslo(haslo, SOL_PUSTA, "v2$" + PBKDF2_NOWE + "$-"); return zle(); }
+      // the attempt is counted in one statement BEFORE the password is checked: parallel requests
+      // cannot get more tries than the limit; false = the account is locked now
+      const pr = await db("rpc/klient_proba_hasla", { method: "POST", body: JSON.stringify({ p_id: k.id, p_max: MAX_BLEDNE, p_min: BLOKADA_MIN }) });
+      const wolno = pr.ok ? (await pr.json()) === true : (console.error("proba_hasla", pr.status), await pr.body?.cancel(), false);
+      const dobre = await sprawdzHaslo(haslo, unb64(k.haslo_salt), k.haslo_hash);
+      if (!wolno) { await log(k, "logowanie_zablokowane"); return zle(); }
+      if (!dobre) { await log(k, "bledne_haslo"); return zle(); }
+      if (stareHaslo(k.haslo_hash)) {
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        await db(`klient_konta?id=eq.${k.id}`, { method: "PATCH", body: JSON.stringify({ haslo_hash: await hashHaslo(haslo, salt), haslo_salt: b64(salt) }) });
       }
       const sess = await newSession(k, false);
       await log(k, "logowanie_haslo");
@@ -347,6 +424,14 @@ Deno.serve(async (req) => {
       return json({ ok: true, link, wazny_min: LINK_MIN }, 200, origin);
     }
 
+    // ---------------- office: requests of clients, shared documents, preview ----------------
+    if (BIURO_AKCJE.includes(body.action)) {
+      const s = await staff(req);
+      if (!s) return json({ error: "Tylko pracownik biura (portal)." }, 403, origin);
+      const o = await biuroAkcja(deps, s, body);
+      return json(o.body, o.status, origin);
+    }
+
     // ---------------- client session ----------------
     const k = await session(req);
     if (!k) return json({ error: "Sesja wygasła — zaloguj się ponownie.", wyloguj: true }, 401, origin);
@@ -360,7 +445,7 @@ Deno.serve(async (req) => {
       if (!/[A-Za-zÀ-ž]/.test(haslo) || !/\d/.test(haslo)) return json({ error: "Hasło musi zawierać litery i co najmniej jedną cyfrę." }, 400, origin);
       if (haslo.toLowerCase().includes(k.email.split("@")[0])) return json({ error: "Hasło nie może zawierać adresu e-mail." }, 400, origin);
       // allowed: no password yet, a fresh link session (forgotten password), or the old password given
-      const stareOk = k.haslo_hash && k.haslo_salt && body.stare ? sameText(await hashHaslo(String(body.stare), unb64(k.haslo_salt)), k.haslo_hash) : false;
+      const stareOk = k.haslo_hash && k.haslo_salt && body.stare ? await sprawdzHaslo(String(body.stare).slice(0, 200), unb64(k.haslo_salt), k.haslo_hash) : false;
       if (k.haslo_hash && !(k.zLinku && k.swiezy) && !stareOk) return json({ error: "Aby zmienić hasło, podaj obecne hasło albo zaloguj się linkiem z e-maila." }, 403, origin);
       const salt = crypto.getRandomValues(new Uint8Array(16));
       await db(`klient_konta?id=eq.${k.id}`, { method: "PATCH", body: JSON.stringify({ haslo_hash: await hashHaslo(haslo, salt), haslo_salt: b64(salt), haslo_ustawione: new Date().toISOString(), bledne: 0, blokada_do: null }) });
@@ -371,6 +456,9 @@ Deno.serve(async (req) => {
     }
     // nothing is shown until the client has set the password
     if (!k.haslo_hash) return json({ error: "Najpierw ustaw hasło.", ustaw_haslo: true }, 403, origin);
+    // stage 2: every action there checks the firm against the account again
+    const o2 = await klientAkcja(deps, k, body, pliki);
+    if (o2) return json(o2.body, o2.status, origin);
     if (body.action === "me") return json({ email: k.email, nazwa: k.nazwa, firmy: await firmNames(k.nip) }, 200, origin);
     if (body.action === "ksiegowosc") {
       const nip = digits(body.nip);
@@ -389,7 +477,7 @@ Deno.serve(async (req) => {
       const row = r.ok ? (await r.json())[0] : null;
       const p = row?.payload ?? {};
       // only the firm's own packet, and only once the office has sent it for signing
-      if (!row || !k.nip.includes(digits(p.z_nip)) || row.status !== "wyslane" || !p.komplet?.path) return json({ error: "Dokument nie jest dostępny." }, 404, origin);
+      if (!row || !k.nip.includes(digits(p.z_nip)) || row.status !== "wyslane" || !okSciezka(p.komplet?.path)) return json({ error: "Dokument nie jest dostępny." }, 404, origin);
       const s = await fetch(`${SUPABASE_URL}/storage/v1/object/sign/portal-documents/${p.komplet.path}`, {
         method: "POST", headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, "Content-Type": "application/json" }, body: JSON.stringify({ expiresIn: 300 }),
       });

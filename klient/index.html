@@ -64,7 +64,7 @@
   .mini:disabled{opacity:.6;cursor:wait}
   .pdocs{padding:0 0 8px 14px}
   .pdocs .mini{white-space:normal;text-align:left}
-  .pdocs .pill{white-space:normal}
+  .pdocs .pill,.box .mini{white-space:normal}.box .mini{max-width:100%;text-align:left;overflow-wrap:anywhere}
   .pdok .pbody{flex:0 0 100%;min-width:0}
   .pbody .hint{margin:0 0 6px}
   .pstep{font-size:13.5px;font-weight:600;margin:14px 0 4px}
@@ -79,6 +79,36 @@
   ol.how li{margin:0 0 4px}
   footer{max-width:1100px;margin:0 auto;padding:0 18px 30px;color:#8a97ab;font-size:12px}
   footer a{color:#8a97ab}
+  /* stage 2: navigation, forms — the blocks themselves stay the standard .box / .row / .pill / .mini / .btn */
+  .bar select{min-width:0}
+  #langSel,#langLogin{width:66px;flex:none;padding-left:8px;padding-right:4px}
+  .tabs{display:flex;gap:8px;overflow-x:auto;padding:2px 0 12px;margin:0 0 6px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs .mini{flex:none;padding:9px 14px;font-size:14px}
+  .mini.on{background:var(--navy);border-color:var(--navy);color:#fff}
+  a.mini{text-decoration:none;display:inline-block}
+  .tile[data-view]{cursor:pointer}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 6px}
+  .filters .search{margin:0;flex:1 1 200px}
+  .filters select,.field select,.field input[type=text],.field textarea,.login select{padding:10px 12px;border:1px solid #d4dbe6;border-radius:9px;font:inherit;font-size:16px;background:#fff;color:#111;max-width:100%}
+  .field{margin:0 0 12px}
+  .field input[type=text],.field textarea,.field select{width:100%}
+  .field textarea{min-height:120px;resize:vertical}
+  .filters label.chk{padding:0;margin:0;font-weight:400;font-size:13.5px}
+  .acts{display:flex;gap:10px;flex-wrap:wrap}
+  .pills{align-items:center}
+  .box h2 .pill{font-weight:600}
+  .podglad{background:#f59e0b;color:#111;border-bottom:2px solid #b45309;font-size:14px;font-weight:700;text-align:center;padding:10px 14px;position:sticky;top:0;z-index:6}
+  .loginlang{display:flex;justify-content:center;margin:14px 0 0}
+  @media (max-width:560px){
+    .bar{gap:8px;padding:8px 12px}.bar img{height:30px}.bar strong{font-size:14px}.bar #firmSel{flex:1;max-width:none}
+    main{padding:14px 12px 70px}
+    .tiles{grid-template-columns:1fr 1fr;gap:8px}.tile{padding:11px}.tile b{font-size:24px}
+    .box{padding:14px 12px}
+    .pills{justify-content:flex-start;max-width:100%}.pill,.box .mini{white-space:normal}.box .mini{max-width:100%;text-align:left;overflow-wrap:anywhere}
+    .row .who{min-width:100%}
+    .acts .btn{width:100%;text-align:center}
+  }
   [hidden]{display:none!important}
 </style>
 <script src="../portal-theme.js"></script>
@@ -86,96 +116,153 @@
 <body class="pt-page">
 <div id="login" class="login" hidden>
   <img src="../logo.png" alt="TD Consulting Group" />
-  <h1>Profil klienta</h1>
-  <p id="loginLead">Zaloguj się adresem e-mail podanym w biurze i swoim hasłem.</p>
+  <h1 data-t="Profil klienta">Profil klienta</h1>
+  <p id="loginLead" data-t="Zaloguj się adresem e-mail podanym w biurze i swoim hasłem.">Zaloguj się adresem e-mail podanym w biurze i swoim hasłem.</p>
   <form id="passForm">
-    <label for="email">Adres e-mail</label>
+    <label for="email" data-t="Adres e-mail">Adres e-mail</label>
     <input type="email" id="email" required autocomplete="username" placeholder="biuro@firma.pl" />
-    <label for="haslo" style="margin-top:12px">Hasło</label>
+    <label for="haslo" style="margin-top:12px" data-t="Hasło">Hasło</label>
     <input type="password" id="haslo" required autocomplete="current-password" />
-    <button class="btn wide" id="passGo">Zaloguj</button>
+    <button class="btn wide" id="passGo" data-t="Zaloguj">Zaloguj</button>
   </form>
-  <button type="button" class="linkbtn" id="linkGo">Pierwsze logowanie albo nie pamiętasz hasła? Wyślemy link na e-mail</button>
+  <button type="button" class="linkbtn" id="linkGo" data-t="Pierwsze logowanie albo nie pamiętasz hasła? Wyślemy link na e-mail">Pierwsze logowanie albo nie pamiętasz hasła? Wyślemy link na e-mail</button>
   <div id="loginMsg"></div>
+  <div class="loginlang"><select id="langLogin" aria-label="Język / Мова / Язык"><option value="pl">PL</option><option value="uk">UA</option><option value="ru">RU</option></select></div>
 </div>
 
 <div id="setpass" class="login" hidden>
   <img src="../logo.png" alt="TD Consulting Group" />
-  <h1>Ustaw hasło</h1>
-  <p>To hasło będzie służyć do kolejnych logowań. Co najmniej 10 znaków, litery i cyfra.</p>
+  <h1 data-t="Ustaw hasło">Ustaw hasło</h1>
+  <p data-t="To hasło będzie służyć do kolejnych logowań. Co najmniej 10 znaków, litery i cyfra.">To hasło będzie służyć do kolejnych logowań. Co najmniej 10 znaków, litery i cyfra.</p>
   <form id="setForm">
-    <label for="h1">Nowe hasło</label>
+    <div id="h0wrap" hidden>
+      <label for="h0" data-t="Obecne hasło">Obecne hasło</label>
+      <input type="password" id="h0" autocomplete="current-password" style="margin-bottom:12px" />
+    </div>
+    <label for="h1" data-t="Nowe hasło">Nowe hasło</label>
     <input type="password" id="h1" required minlength="10" autocomplete="new-password" />
-    <label for="h2" style="margin-top:12px">Powtórz hasło</label>
+    <label for="h2" style="margin-top:12px" data-t="Powtórz hasło">Powtórz hasło</label>
     <input type="password" id="h2" required minlength="10" autocomplete="new-password" />
-    <button class="btn wide" id="setGo">Zapisz hasło i wejdź</button>
+    <button class="btn wide" id="setGo" data-t="Zapisz hasło i wejdź">Zapisz hasło i wejdź</button>
   </form>
+  <button type="button" class="linkbtn" id="setBack" data-t="Wróć">Wróć</button>
   <div id="setMsg"></div>
 </div>
 
 <div id="app" hidden>
+  <div class="podglad" id="podgladBar" hidden data-t="PODGLĄD BIURA — tryb tylko do odczytu. Tak widzi profil klient; bez odsłaniania danych, pobierania plików i wysyłania zgłoszeń.">PODGLĄD BIURA — tryb tylko do odczytu. Tak widzi profil klient; bez odsłaniania danych, pobierania plików i wysyłania zgłoszeń.</div>
   <header><div class="bar">
     <img src="../logo.png" alt="" />
     <strong id="firmName"></strong>
-    <select id="firmSel" hidden></select>
-    <button type="button" id="chpass">Zmień hasło</button>
-    <button type="button" id="out">Wyloguj</button>
+    <select id="firmSel" hidden aria-label="Firma"></select>
+    <select id="langSel" aria-label="Język / Мова / Язык"><option value="pl">PL</option><option value="uk">UA</option><option value="ru">RU</option></select>
+    <button type="button" id="out" data-t="Wyloguj">Wyloguj</button>
   </div></header>
   <main>
-    <h1>Dzień dobry</h1>
-    <p class="lead">Tu widzą Państwo wszystko, co biuro prowadzi dla firmy: pracowników, terminy dokumentów i sprawy w toku.</p>
-    <div class="tiles" id="tiles"></div>
+    <nav class="tabs" id="nav" aria-label="Sekcje profilu" hidden></nav>
+    <h1 id="hello" data-clear></h1>
+    <p class="lead" id="lead" data-clear></p>
+    <div id="appMsg"></div>
+    <div id="views" hidden>
 
-    <div class="box">
-      <h2>Zatrudnij nowego pracownika</h2>
-      <p class="hint">Formularz z danymi firmy już wypełnionymi — wystarczy dodać zdjęcia dokumentów pracownika i warunki umowy.</p>
-      <a class="btn green" id="newWorker" target="_blank" rel="noopener">+ Zgłoś pracownika do zatrudnienia</a>
-    </div>
+    <section id="v-start" hidden>
+      <div class="tiles" id="tiles" data-clear></div>
+      <div class="box">
+        <h2 data-t="Wymaga uwagi">Wymaga uwagi</h2>
+        <p class="hint" data-t="Sprawy, w których biuro czeka na Państwa albo zbliża się termin.">Sprawy, w których biuro czeka na Państwa albo zbliża się termin.</p>
+        <div id="uwaga" data-clear></div>
+      </div>
+      <div class="box">
+        <h2 data-t="Szybkie działania">Szybkie działania</h2>
+        <div class="acts" id="szybkie" data-clear></div>
+      </div>
+      <div class="box" id="boxKal">
+        <h2 data-t="Najbliższe terminy podatków i składek">Najbliższe terminy podatków i składek</h2>
+        <div id="kal" data-clear></div>
+      </div>
+      <div class="box">
+        <h2 data-t="Państwa opiekunowie w biurze">Państwa opiekunowie w biurze</h2>
+        <div id="kontakt" data-clear></div>
+      </div>
+    </section>
 
-    <div class="box" id="boxPodpisy" hidden>
-      <h2>Dokumenty do podpisu <span class="pill p-amber" id="podpisyIle" hidden></span></h2>
-      <p class="hint">Dokumenty, które biuro przygotowało do podpisania przez internet. Podpis składają Państwo poza profilem — tutaj pobiera się dokument i odsyła podpisany plik, a biuro sprawdza każdy podpis.</p>
-      <div id="podpisyJak"></div>
-      <div id="podpisy"></div>
-    </div>
+    <section id="v-pracownicy" hidden>
+      <div id="wList">
+        <div class="box">
+          <h2 data-t="Zatrudnij nowego pracownika">Zatrudnij nowego pracownika</h2>
+          <p class="hint" data-t="Formularz z danymi firmy już wypełnionymi — wystarczy dodać zdjęcia dokumentów pracownika i warunki umowy.">Formularz z danymi firmy już wypełnionymi — wystarczy dodać zdjęcia dokumentów pracownika i warunki umowy.</p>
+          <a class="btn green" id="hire" target="_blank" rel="noopener" data-t="+ Zgłoś pracownika do zatrudnienia">+ Zgłoś pracownika do zatrudnienia</a>
+        </div>
+        <div class="box">
+          <h2 data-t="Pracownicy">Pracownicy</h2>
+          <p class="hint" data-t="Terminy ważności dokumentów i umów. Czerwony — termin minął albo mija w ciągu 7 dni, żółty — w ciągu 30 dni.">Terminy ważności dokumentów i umów. Czerwony — termin minął albo mija w ciągu 7 dni, żółty — w ciągu 30 dni.</p>
+          <div class="filters">
+            <input type="search" class="search" id="wq" data-tp="Szukaj: nazwisko albo stanowisko…" placeholder="Szukaj: nazwisko albo stanowisko…" />
+            <select id="wst" aria-label="Status">
+              <option value="" data-t="wszyscy">wszyscy</option>
+              <option value="zatrudniony" data-t="zatrudnieni">zatrudnieni</option>
+              <option value="w_trakcie" data-t="w trakcie zatrudniania">w trakcie zatrudniania</option>
+              <option value="zakonczony" data-t="zakończeni">zakończeni</option>
+            </select>
+            <label class="chk"><input type="checkbox" id="wterm" /><span data-t="tylko z terminem do 30 dni">tylko z terminem do 30 dni</span></label>
+          </div>
+          <p class="sub" id="wCount" data-clear></p>
+          <div id="workers" data-clear></div>
+        </div>
+      </div>
+      <div id="wCard" hidden>
+        <div class="pacts" style="margin:0 0 12px"><button type="button" class="mini" id="cardBack" data-t="← Wróć do listy">← Wróć do listy</button></div>
+        <div class="box" id="cardBody" data-clear></div>
+      </div>
+    </section>
 
-    <div class="box" id="boxSign" hidden>
-      <h2>Komplet dokumentów do wydruku</h2>
-      <p class="hint">Prosimy wydrukować, podpisać (pracownik i osoba reprezentująca firmę) i odesłać skan do biura.</p>
-      <div id="sign"></div>
-    </div>
+    <section id="v-dokumenty" hidden>
+      <div class="box" id="boxPodpisy" hidden>
+        <h2><span data-t="Dokumenty do podpisu">Dokumenty do podpisu</span> <span class="pill p-amber" id="podpisyIle" hidden></span></h2>
+        <p class="hint" data-t="Dokumenty, które biuro przygotowało do podpisania przez internet. Podpis składają Państwo poza profilem — tutaj pobiera się dokument i odsyła podpisany plik, a biuro sprawdza każdy podpis.">Dokumenty, które biuro przygotowało do podpisania przez internet. Podpis składają Państwo poza profilem — tutaj pobiera się dokument i odsyła podpisany plik, a biuro sprawdza każdy podpis.</p>
+        <div id="podpisyJak"></div>
+        <div id="podpisy"></div>
+      </div>
+      <div class="box" id="boxSigned" hidden>
+        <h2 data-t="Podpisane dokumenty">Podpisane dokumenty</h2>
+        <p class="hint" data-t="Dokumenty podpisane przez internet i sprawdzone przez biuro — do pobrania.">Dokumenty podpisane przez internet i sprawdzone przez biuro — do pobrania.</p>
+        <div id="signed" data-clear></div>
+      </div>
+      <div id="docsRest" data-clear></div>
+    </section>
 
-    <div class="box" id="boxSub" hidden>
-      <h2>Zgłoszenia w toku</h2>
-      <p class="hint">Osoby zgłoszone do zatrudnienia, których dokumenty są jeszcze przygotowywane.</p>
-      <div id="subs"></div>
-    </div>
+    <section id="v-ksiegowosc" hidden><div id="accBody" data-clear></div></section>
 
-    <div class="box" id="boxOnb" hidden>
-      <h2>Obsługa księgowa — uruchomienie</h2>
-      <div id="onb"></div>
-    </div>
+    <section id="v-zgloszenia" hidden>
+      <div class="box">
+        <h2 data-t="Napisz do biura">Napisz do biura</h2>
+        <p class="hint" data-t="Pytanie, zmiana albo dokumenty — zgłoszenie trafia od razu do osoby, która prowadzi Państwa firmę. Załączniki: PDF, JPG albo PNG, do 3 plików po 15 MB.">Pytanie, zmiana albo dokumenty — zgłoszenie trafia od razu do osoby, która prowadzi Państwa firmę. Załączniki: PDF, JPG albo PNG, do 3 plików po 15 MB.</p>
+        <form id="zForm">
+          <div class="field"><label for="zKat" data-t="Czego dotyczy">Czego dotyczy</label>
+            <select id="zKat"><option value="kadry" data-t="kadry i płace">kadry i płace</option><option value="ksiegowosc" data-t="księgowość">księgowość</option><option value="inne" data-t="inna sprawa">inna sprawa</option></select></div>
+          <div class="pacts" id="zWorker" hidden style="margin:0 0 12px"></div>
+          <div class="field"><label for="zTemat" data-t="Temat">Temat</label><input type="text" id="zTemat" maxlength="200" required /></div>
+          <div class="field"><label for="zTresc" data-t="Treść">Treść</label><textarea id="zTresc" maxlength="4000" required></textarea></div>
+          <div class="pacts" style="margin:0 0 12px"><button type="button" class="mini" id="zPick" data-t="Dodaj załącznik…">Dodaj załącznik…</button><span id="zFiles"></span></div>
+          <input type="file" id="zFile" hidden multiple accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" />
+          <button class="btn" id="zSend" data-t="Wyślij do biura">Wyślij do biura</button>
+          <div id="zMsg"></div>
+        </form>
+      </div>
+      <div class="box">
+        <h2 data-t="Państwa zgłoszenia">Państwa zgłoszenia</h2>
+        <div id="zList" data-clear></div>
+      </div>
+    </section>
 
-    <div class="box" id="boxAcc" hidden>
-      <h2>Księgowość</h2>
-      <p class="hint" id="accWho"></p>
-      <div id="accBody"></div>
-    </div>
-
-    <div class="box" id="boxInv" hidden>
-      <h2>Rozliczenia z biurem — faktury</h2>
-      <div id="inv"></div>
-    </div>
-
-    <div class="box">
-      <h2>Pracownicy</h2>
-      <p class="hint">Terminy ważności dokumentów i umów. Kolor czerwony — termin minął albo mija w ciągu 30 dni.</p>
-      <input type="search" class="search" id="q" placeholder="Szukaj pracownika…" />
-      <div id="workers"><div class="empty">Ładowanie…</div></div>
+    <section id="v-firma" hidden><div id="firmBody" data-clear></div></section>
+    <section id="v-pomoc" hidden><div id="helpBody"></div></section>
     </div>
   </main>
-  <footer>TD Consulting Group · <a href="../rodo.html" target="_blank" rel="noopener">Informacja o przetwarzaniu danych (RODO)</a> · kontakt: <a href="mailto:kadry@td-group.pl">kadry@td-group.pl</a></footer>
+  <footer>TD Consulting Group · <a href="../rodo.html" target="_blank" rel="noopener" data-t="Informacja o przetwarzaniu danych (RODO)">Informacja o przetwarzaniu danych (RODO)</a> · <a href="mailto:kadry@td-group.pl">kadry@td-group.pl</a></footer>
 </div>
-<script src="klient.js?v=3"></script>
+<script src="../ksieg-terminy.js"></script>
+<script src="i18n.js?v=2"></script>
+<script src="klient.js?v=5"></script>
 </body>
 </html>
