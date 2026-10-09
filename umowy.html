@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="vendor/supabase-2.117.3.js" integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>Umowy z klientami — generator — TD Consulting Group</title>
+<style>
+  :root{--brand-navy:#1B3F7F;--brand-navy-dark:#15315F;--brand-green:#1FA84B;--brand-tint:#EEF3F9;}
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f6f8fb;color:#111;line-height:1.5}
+  main{max-width:1240px;margin:0 auto;padding:36px 20px 96px}
+  .back{display:inline-block;margin-bottom:14px;font-size:14px;color:#666;text-decoration:none}
+  .brand{text-align:center;margin:0 0 14px}.brand img{height:60px}
+  h1{font-size:23px;font-weight:700;margin:0 0 4px;color:var(--brand-navy);text-align:center}
+  .lead{color:#666;margin:0 auto 18px;font-size:14px;text-align:center;max-width:860px}
+  .box{background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:14px 16px;margin:0 0 16px}
+  .box h2{font-size:15px;margin:0 0 4px;color:var(--brand-navy)}
+  .hint{color:#7a8699;font-size:12.5px;margin:0 0 10px}
+  .sub{color:#7a8699;font-size:12.5px}
+  .warn{color:#92400e}
+  label{display:block;font-size:12px;font-weight:600;color:#5a6577;margin:10px 0 4px}
+  select,input[type=text],input[type=search],input[type=date],input[type=number],input[type=email],input[type=tel],textarea{width:100%;padding:9px 11px;border:1px solid #d4dbe6;border-radius:9px;font:inherit;font-size:14px;background:#fff;color:#111;min-height:40px}
+  textarea{min-height:70px;resize:vertical}
+  .mini{font:inherit;font-size:12.5px;font-weight:600;padding:5px 10px;border-radius:8px;border:1px solid #d4dbe6;background:#fff;color:var(--brand-navy);cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block}
+  .mini:hover{border-color:var(--brand-navy)}.mini.ok{background:var(--brand-green);border-color:var(--brand-green);color:#fff}.mini.del{color:#b91c1c;border-color:#e5c2c2}.mini:disabled{opacity:.5;cursor:default}
+  .pill{display:inline-block;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .p-red{background:#fee2e2;color:#991b1b}.p-amber{background:#fef3c7;color:#92400e}.p-ok{background:#dcfce7;color:#166534}.p-grey{background:#eef1f6;color:#5a6577}.p-navy{background:var(--brand-tint);color:var(--brand-navy)}
+  .empty{text-align:center;color:#888;padding:26px}
+  .acts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin:0 0 16px}
+  .tile{background:#fff;border:1.5px solid #e5e9ef;border-radius:12px;padding:14px 16px;cursor:pointer;text-align:left;font:inherit;color:inherit}
+  .tile:hover{border-color:var(--brand-navy)}
+  .tile b{display:block;font-size:19px;line-height:1.2;color:var(--brand-navy);white-space:nowrap}
+  .tile span{display:block;font-size:13px;color:#5a6577;margin-top:4px}
+  .tile.amber b{color:#b45309}.tile.zero b{color:#9aa6b8}
+  .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+  .tabs button{font:inherit;font-size:13.5px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid #d4dbe6;background:#fff;color:#3a4759;cursor:pointer}
+  .tabs button.on{background:var(--brand-navy);border-color:var(--brand-navy);color:#fff}
+  .tabs b{margin-left:5px;opacity:.85}
+  section[hidden]{display:none}
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;margin-top:10px}
+  .tablewrap{overflow:auto}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th,td{padding:8px 8px;border-bottom:1px solid #eef1f6;text-align:left;vertical-align:top}
+  th{color:#5a6577;font-weight:600;font-size:12px;white-space:nowrap}
+  td small{display:block;color:#7a8699;font-size:12px}
+  td.num,th.num{text-align:right;white-space:nowrap}
+  #rtbl{min-width:900px}#mtbl{min-width:820px}#ctbl{min-width:680px}#stbl{min-width:760px}
+  .modal{position:fixed;inset:0;background:rgba(15,25,45,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:950}
+  .modal[hidden]{display:none}
+  .sheet{background:#fff;color:#111;border-radius:14px;padding:20px;width:100%;max-width:560px;max-height:92vh;overflow:auto}
+  .sheet h3{margin:0 0 4px;font-size:17px;color:var(--brand-navy);overflow-wrap:anywhere}
+  .sheet .row{display:flex;gap:10px;margin-top:16px}
+  .sheet .row button{flex:1;padding:11px;border-radius:9px;font:inherit;font-weight:600;cursor:pointer;border:1px solid #d4dbe6;background:#fff;color:#111}
+  .sheet .row .go{background:var(--brand-navy);border-color:var(--brand-navy);color:#fff}
+  .sheet .row .go.red{background:#b91c1c;border-color:#b91c1c}
+  .sheet .row button:disabled{opacity:.5;cursor:default}
+  .err{color:#b91c1c;font-size:13px;margin-top:8px;min-height:1em}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .four{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  @media(max-width:760px){.two,.three,.four{grid-template-columns:1fr}.sheet{padding:16px}main{padding:24px 14px 96px}}
+  .kv{display:grid;grid-template-columns:190px 1fr;gap:4px 12px;font-size:13.5px;margin:0}
+  .kv dt{color:#7a8699}.kv dd{margin:0;overflow-wrap:anywhere}
+  @media(max-width:640px){.kv{grid-template-columns:1fr}.kv dt{margin-top:6px}}
+  .chk{list-style:none;margin:0;padding:0;font-size:13.5px}
+  .chk li{display:flex;gap:8px;padding:4px 0}
+  .chk i{flex:0 0 20px;height:20px;border-radius:50%;font-style:normal;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px}
+  .chk .s-ok i{background:#dcfce7;color:#166534}.chk .s-uwaga i{background:#fef3c7;color:#92400e}.chk .s-brak i{background:#fee2e2;color:#991b1b}.chk .s-info i{background:#eef1f6;color:#5a6577}
+  .cands{max-height:240px;overflow:auto;border:1px solid #e5e9ef;border-radius:9px;margin-top:6px}
+  .cand{display:block;width:100%;text-align:left;border:none;border-top:1px solid #eef1f6;background:#fff;color:#111;padding:8px 10px;font:inherit;font-size:13.5px;cursor:pointer}
+  .cand:first-child{border-top:none}.cand:hover,.cand.on{background:var(--brand-tint)}.cand small{color:#7a8699}
+  .checks{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:6px}
+  .checks label{display:flex;align-items:flex-start;gap:6px;margin:0;font-size:13.5px;font-weight:500;color:inherit}
+  .checks input{width:auto;min-height:0;margin-top:3px}
+  .note{background:rgba(127,140,160,.14);border:1px solid rgba(127,140,160,.38);border-radius:10px;padding:10px 12px;font-size:13px;margin-top:10px}
+  .doc{display:flex;gap:10px;justify-content:space-between;align-items:flex-start;padding:9px 0;border-top:1px dashed #e5e9ef;font-size:13.5px;flex-wrap:wrap}
+  .doc:first-child{border-top:none}
+  .doc .n{flex:1;min-width:220px;overflow-wrap:anywhere}.doc .n small{display:block;color:#7a8699;font-size:12.5px}
+  .tekst{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.55;max-height:460px;overflow:auto;margin:10px 0 0;font-family:inherit}
+  .big{font:inherit;font-size:15px;font-weight:700;padding:12px 18px;border-radius:10px;border:1px solid var(--brand-navy);background:var(--brand-navy);color:#fff;cursor:pointer}
+  .big:disabled{opacity:.5;cursor:default}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Umowy z klientami — generator</h1>
+  <p class="lead">Umowy biura z klientami o usługi księgowe: nowe umowy z przedpłatą, umowy w starym wzorze i aneksy przenoszące klienta na przedpłatę. Dane spółek pochodzą z rejestru (rejestr.io), numer nadawany jest dopiero przy ostatecznym generowaniu.</p>
+
+  <div class="tiles" id="tiles"></div>
+  <div class="tabs" id="tabs"></div>
+
+  <section id="t-nowy">
+    <div class="box">
+      <h2>1. Klient</h2>
+      <p class="hint">Wybierz klienta z Bazy klientów albo znajdź nową firmę w rejestrze (KRS). Dane działalności jednoosobowych pochodzą z bazy klientów — rejestr.io nie obejmuje CEIDG.</p>
+      <div class="two">
+        <div><label for="kq">Klient z bazy — nazwa albo NIP</label><input type="search" id="kq" placeholder="np. Przykładowa Sp. z o.o." autocomplete="off" /><div class="cands" id="kc" hidden></div></div>
+        <div><label for="rq">Nowa firma — NIP, KRS albo nazwa (wyszukiwanie w rejestrze jest płatne)</label>
+          <div class="acts" style="flex-wrap:nowrap"><input type="search" id="rq" placeholder="np. 0000000000" autocomplete="off" /><button type="button" class="mini" id="rgo">Szukaj</button></div>
+          <div class="cands" id="rc" hidden></div></div>
+      </div>
+      <div class="acts" style="margin-top:10px"><button type="button" class="mini" id="reczna">Firma spoza bazy i rejestru — wpiszę dane ręcznie</button><span class="sub" id="kmsg"></span></div>
+    </div>
+    <div id="formularz"></div>
+  </section>
+
+  <section id="t-rejestr" hidden>
+    <div class="box"><h2>Rejestr wygenerowanych dokumentów</h2>
+      <p class="hint">Każdy numer jest wydawany raz. Dokument anulowany zostaje w rejestrze ze swoim numerem. Kopia PDF i podpisany egzemplarz trafiają do Bazy klientów (umowy); umowa liczy się w audycie dopiero po wgraniu podpisanego egzemplarza.</p>
+      <div id="luki"></div>
+      <div class="tablewrap"><table id="rtbl"><thead></thead><tbody><tr><td class="empty">Ładowanie…</td></tr></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="t-migracja" hidden>
+    <div class="box"><h2>Przejście dotychczasowych klientów na przedpłatę</h2>
+      <p class="hint">Klienci obsługiwani księgowo i stan ich umowy. „Przygotuj aneks” otwiera formularz z danymi klienta i jego dotychczasowej umowy; każdy dokument generujesz i wysyłasz osobno.</p>
+      <div class="three">
+        <div><label for="mq">Szukaj</label><input type="search" id="mq" placeholder="nazwa albo NIP" /></div>
+        <div><label for="mstan">Stan umowy</label><select id="mstan"></select></div>
+        <div><label for="mtyp">Forma</label><select id="mtyp"><option value="">wszystkie</option><option value="krs">spółki (KRS)</option><option value="jdg">JDG</option><option value="inne">inne</option></select></div>
+      </div>
+      <div class="toolbar"><span class="sub" id="mile"></span></div>
+      <div class="tablewrap"><table id="mtbl"><thead></thead><tbody><tr><td class="empty">Ładowanie…</td></tr></tbody></table></div>
+    </div>
+  </section>
+
+  <section id="t-cennik" hidden>
+    <div class="box"><h2>Cennik</h2>
+      <p class="hint">Ceny netto, z których kalkulator liczy pierwszą Stawkę Miesięczną (Załącznik nr 4). Zmiana tutaj nie zmienia treści Załącznika nr 1 we wzorze umowy — to osobny plik szablonu. Każda zmiana jest zapisywana w historii.</p>
+      <div class="toolbar"><div class="tabs" id="ctabs" style="margin:0"></div><div class="acts"><button type="button" class="mini" id="cdodaj">+ Dodaj pozycję</button><button type="button" class="mini" id="chist">Historia zmian</button></div></div>
+      <div class="tablewrap"><table id="ctbl"><thead></thead><tbody></tbody></table></div>
+      <div id="chistoria"></div>
+    </div>
+  </section>
+
+  <section id="t-ustawienia" hidden>
+    <div class="box"><h2>Szablony</h2>
+      <p class="hint">Pliki DOCX z polami w podwójnych nawiasach klamrowych, np. {{NUMER}}. Przechowywane prywatnie; nowa wersja zastępuje poprzednią tylko dla nowych dokumentów.</p>
+      <div class="tablewrap"><table id="stbl"><thead></thead><tbody></tbody></table></div>
+      <input type="file" id="splik" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden />
+      <div class="err" id="smsg"></div>
+    </div>
+    <div class="box"><h2>Numeracja</h2>
+      <p class="hint">Ostatni wydany numer w danym roku — następny dokument dostanie numer o jeden większy. Popraw, jeśli umowa została wystawiona poza portalem. Licznik nie może zejść poniżej numeru, który jest już w rejestrze.</p>
+      <div id="numeracja"></div>
+    </div>
+    <div class="box"><h2>Sądy rejestrowe</h2>
+      <p class="hint">Rejestr.io nie podaje sądu rejestrowego. Sąd potwierdzony przy generowaniu jest zapamiętywany dla powiatu siedziby i podpowiadany przy następnej spółce z tego powiatu — zawsze do potwierdzenia z odpisem KRS.</p>
+      <div id="sady"></div>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="okno" hidden><div class="sheet" id="oknoBody"></div></div>
+<input type="file" id="pplik" accept="application/pdf,.pdf" hidden />
+<script src="umowy-pdf.js?v=1"></script>
+<script src="umowy.js?v=1"></script>
+</body>
+</html>
