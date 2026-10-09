@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth-guard.js"></script>
+<title>Poczta — TD Consulting Group</title>
+<style>
+  :root{--brand-navy:#1B3F7F;--brand-navy-dark:#15315F;--brand-green:#1FA84B;--brand-tint:#EEF3F9;}
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#f6f8fb;color:#111;line-height:1.5}
+  main{max-width:1000px;margin:0 auto;padding:36px 20px 96px}
+  .back{display:inline-block;margin-bottom:14px;font-size:14px;color:#666;text-decoration:none}
+  .brand{text-align:center;margin:0 0 14px}.brand img{height:60px}
+  h1{font-size:23px;font-weight:700;margin:0 0 6px;color:var(--brand-navy);text-align:center}
+  .lead{color:#666;margin:0 auto 18px;font-size:14px;text-align:center;max-width:760px}
+  .box{background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:16px;margin:0 0 16px}
+  .box h2{font-size:15px;margin:0 0 10px;color:var(--brand-navy)}
+  .box h3{font-size:13.5px;margin:16px 0 8px;color:var(--brand-navy)}
+  label{display:block;font-size:12px;font-weight:600;color:#5a6577;margin-bottom:4px}
+  input[type=text],input[type=date],input[type=number],select,textarea{width:100%;padding:9px 11px;border:1px solid #d4dbe6;border-radius:9px;font:inherit;font-size:14px;background:#fff;color:#111}
+  textarea{min-height:60px;resize:vertical}
+  .chk{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:0;white-space:nowrap}
+  .chk input{width:auto}
+  .btn{font:inherit;font-size:14px;font-weight:600;padding:10px 16px;border-radius:9px;border:1px solid var(--brand-navy);background:var(--brand-navy);color:#fff;cursor:pointer}
+  .btn:disabled,.mini:disabled{opacity:.6;cursor:default}
+  .mini{font:inherit;font-size:12.5px;font-weight:600;padding:6px 11px;border-radius:8px;border:1px solid #d4dbe6;background:#fff;color:var(--brand-navy);cursor:pointer;white-space:nowrap}
+  .mini:hover{border-color:var(--brand-navy)}.mini.ok{background:var(--brand-green);border-color:var(--brand-green);color:#fff}
+  .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+  .tabs button{font:inherit;font-size:13.5px;font-weight:600;padding:8px 14px;border-radius:999px;border:1px solid #d4dbe6;background:#fff;color:#3a4759;cursor:pointer}
+  .tabs button.on{background:var(--brand-navy);border-color:var(--brand-navy);color:#fff}
+  .tabs b{font-weight:700;opacity:.85;margin-left:4px}
+  .filters{display:grid;grid-template-columns:1.2fr 1.4fr 1.4fr auto;gap:10px;align-items:end}
+  .task{background:#fff;border:1px solid #e5e9ef;border-radius:12px;padding:12px 14px;margin:0 0 8px}
+  .task.urgent{border-left:4px solid #f59e0b}.task.done{opacity:.72}
+  .thead{display:flex;gap:12px;align-items:flex-start;cursor:pointer}
+  .ttl{flex:1;min-width:0}.ttl strong{display:block;font-size:14.5px;overflow-wrap:anywhere}.ttl small{color:#7a8699;font-size:12.5px;overflow-wrap:anywhere}
+  .ttl p{margin:4px 0 0;font-size:13.5px;overflow-wrap:anywhere}
+  .pills{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;max-width:260px}
+  .pill{display:inline-block;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .p-red{background:#fee2e2;color:#991b1b}.p-amber{background:#fef3c7;color:#92400e}.p-ok{background:#dcfce7;color:#166534}.p-grey{background:#eef1f6;color:#5a6577}.p-navy{background:var(--brand-tint);color:var(--brand-navy)}
+  .tbody{display:none;border-top:1px solid #eef1f6;margin-top:10px;padding-top:10px;font-size:13.5px}
+  .task.open .tbody{display:block}
+  .tbody p{margin:0 0 8px;overflow-wrap:anywhere}
+  .cm{background:#f6f8fb;border-radius:8px;padding:8px 10px;margin:0 0 10px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}
+  .cm small{color:#7a8699}
+  .prop{display:grid;grid-template-columns:2fr 1.2fr 1fr auto;gap:10px;align-items:end;margin:0 0 8px}
+  .acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+  .empty{text-align:center;color:#888;padding:28px}
+  .sub{color:#7a8699;font-size:12.5px}
+  .set{display:grid;grid-template-columns:1.3fr 1fr 1.2fr;gap:10px;align-items:end;margin:0 0 8px;font-size:13.5px}
+  .set4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 0 8px}
+  .warnbox{background:#fef3c7;color:#92400e;border-radius:9px;padding:9px 12px;font-size:13px;margin:0 0 12px}
+  @media(max-width:760px){.filters,.prop,.set,.set4{grid-template-columns:1fr}.thead{flex-direction:column;gap:8px}.ttl{width:100%}.pills{justify-content:flex-start;max-width:none}}
+</style>
+</head>
+<body>
+<main>
+  <a href="index.html" class="back">← Powrót do portalu</a>
+  <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
+  <h1>Poczta</h1>
+  <p class="lead">Wiadomości przychodzące na skrzynki biura: krótki opis, klient, propozycja zadania. Tu decydujesz, co z nich staje się zadaniem.</p>
+
+  <div class="warnbox">Opis i propozycję zadania przygotowuje automat — może się mylić, a nadawca może próbować go zmylić. Zanim utworzysz zadanie, porównaj je z wiadomością. Oryginał (pełna treść i załączniki) zostaje w skrzynce pocztowej — portal niczego w niej nie zmienia i przechowuje tylko początek treści.</div>
+  <div id="alarm"></div>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="box">
+    <div class="filters">
+      <div><label for="fStan">Pokaż</label><select id="fStan">
+        <option value="decyzja">Do decyzji (wymagają działania)</option><option value="">Wszystkie</option><option value="zadanie">Z zadaniem</option>
+        <option value="bez_dzialania">Bez działania</option><option value="pominieta">Pominięte (automaty, newslettery, własne)</option><option value="blad">Błąd analizy</option></select></div>
+      <div><label for="fKat">Kategoria</label><select id="fKat"><option value="">— każda —</option></select></div>
+      <div><label for="fKlient">Klient / nadawca / temat</label><input type="text" id="fKlient" maxlength="80" placeholder="szukaj…" /></div>
+      <label class="chk" style="padding-bottom:10px"><input type="checkbox" id="fNikt" /> bez przypisania</label>
+    </div>
+  </div>
+
+  <div id="list"><div class="empty">Ładowanie…</div></div>
+
+  <div class="box" id="settings" hidden>
+    <h2>Ustawienia poczty (administrator)</h2>
+    <p class="sub" style="margin:0 0 10px">Wiadomości trafiają do portalu od razu po nadejściu — serwer poczty przekazuje kopię każdej z nich (skrzynka działa jak dotąd). Sprawdzanie awaryjne (co 30–60 minut) pyta serwer tylko o wiadomości o numerze wyższym niż ostatnio widziany i uzupełnia to, czego przekazanie nie dostarczyło; niczego w skrzynce nie oznacza ani nie przenosi.</p>
+    <div id="setBoxes"></div>
+    <h3>Kto odpowiada za klienta</h3>
+    <p class="sub" style="margin:0 0 8px">Głównym źródłem są profile pracowników na stronie zespołu (skróty nazwisk z arkusza klientów). Poniższa mapa działa tylko wtedy, gdy profil nie daje odpowiedzi.</p>
+    <div id="setMap"></div>
+    <h3>Limity i bezpieczniki</h3>
+    <div class="set4">
+      <div><label for="lNaRaz">Wiadomości na jedno sprawdzenie</label><input type="number" id="lNaRaz" min="1" max="25" /></div>
+      <div><label for="lDzien">Analiz dziennie (na skrzynkę)</label><input type="number" id="lDzien" min="1" max="500" /></div>
+      <div><label for="lNadawca">Od jednego nadawcy dziennie</label><input type="number" id="lNadawca" min="1" max="100" /></div>
+      <div><label for="lAuto">Zadań automatycznych dziennie</label><input type="number" id="lAuto" min="0" max="200" /></div>
+    </div>
+    <label class="chk" style="white-space:normal;margin:0 0 6px"><input type="checkbox" id="lKlienci" /> W trybie automatycznym twórz zadania tylko dla nadawców rozpoznanych w bazie klientów (pozostałe czekają na decyzję pracownika)</label>
+    <p class="sub" style="margin:0 0 10px">Każda analiza to płatne zapytanie. Wiadomości ponad limit są na liście, ale bez opisu. Automatyczne odpowiedzi, zwrotki, newslettery i wiadomości z adresów biura nie są analizowane.</p>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" id="setSave">Zapisz ustawienia</button><button type="button" class="mini" id="setCheck">Sprawdź połączenie</button><span class="sub" id="setMsg"></span></div>
+  </div>
+</main>
+<script src="poczta.js?v=1"></script>
+</body>
+</html>
