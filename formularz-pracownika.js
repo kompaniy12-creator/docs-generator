@@ -61,6 +61,10 @@
   function addFiles(catKey, fl) {
     Array.prototype.forEach.call(fl, function (f) {
       if (f.size > 15 * 1024 * 1024) { alert('Plik „' + f.name + '" jest za duży (max 15 MB).'); return; }
+      // the bucket takes images and PDF only — say so now, not after the whole form is filled in
+      // (some phones give no type for HEIC photos: then the extension decides)
+      var okTyp = f.type ? ((f.type.indexOf('image/') === 0 && f.type !== 'image/svg+xml') || f.type === 'application/pdf') : /\.(jpe?g|png|webp|gif|heic|heif|pdf)$/i.test(f.name);
+      if (!okTyp) { alert('Plik „' + f.name + '” nie jest zdjęciem ani plikiem PDF. Dodaj zdjęcie (JPG, PNG, HEIC) albo PDF.'); return; }
       docFiles[catKey].push({ file: f, url: f.type.indexOf('image/') === 0 ? URL.createObjectURL(f) : null });
     });
     renderCat(catKey);
@@ -235,14 +239,19 @@
         },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      if (!res.ok) {
+        // the function answers in Polish what is wrong (unreadable file, limit of readings) — show that
+        var eb = await res.json().catch(function () { return {}; }), er = new Error(eb.error || 'HTTP ' + res.status);
+        er.zSerwera = !!eb.error;
+        throw er;
+      }
       var out = await res.json();
       var n = applyExtracted(out.fields || {});
       var warn = (out.warnings && out.warnings.length) ? ' Uwagi: ' + out.warnings.join('; ') : '';
       setAi('✅ Odczytano ' + n + ' pól. Sprawdź i uzupełnij brakujące dane.' + warn, 'success');
     } catch (err) {
       console.error(err);
-      setAi('Nie udało się odczytać dokumentów. Wprowadź dane ręcznie. (' + (err.message || err) + ')', 'error');
+      setAi(err && err.zSerwera ? err.message : 'Nie udało się odczytać dokumentów. Wprowadź dane ręcznie. (' + (err.message || err) + ')', 'error');
     } finally {
       aiBtn.disabled = false;
     }

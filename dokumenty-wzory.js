@@ -304,7 +304,7 @@
     id: 'ppk-wniosek-o-wplaty', nazwa: 'Wniosek o dokonywanie wpłat do PPK (po wcześniejszej rezygnacji)', grupa: 'Wynagrodzenia i podatki', dla: 'oba',
     zrodlo: { typ: 'ustawowy', elementy: 'Wniosek uczestnika PPK, który złożył deklarację o rezygnacji, o dokonywanie wpłat (art. 23 ust. 10 ustawy o PPK).' },
     podstawa: [art('art. 23 ust. 10–11', 'PPK')],
-    forma: forma('pisemna', 'pracownik', 'Wniosek składa się podmiotowi zatrudniającemu w formie pisemnej (art. 23 ust. 10 ustawy o PPK).', { rodzaj_podpisy: 'ppk_rezygnacja' }),
+    forma: forma('pisemna', 'pracownik', 'Wniosek składa się podmiotowi zatrudniającemu w formie pisemnej (art. 23 ust. 10 ustawy o PPK).', { rodzaj_podpisy: 'ppk_wniosek' }),
     pola: MD().concat([W('p_imie_nazwisko'), W('p_pesel'), W('z_nazwa'), W('z_siedziba')]),
     tresc: [
       nagl(['{{p_imie_nazwisko}}', 'PESEL: {{p_pesel}}']), ADR_PRACODAWCA(),
@@ -326,7 +326,7 @@
     zrodlo: { typ: 'urzedowy', akt: AKTY.R_BAD.tytul, zalacznik: 'załącznik nr 3a — wzór skierowania na badania lekarskie', eli: AKTY.R_BAD.eli,
       uwaga: 'Treść odwzorowuje wzór urzędowy. W przywołaniu Kodeksu pracy podano aktualny tekst jednolity (wzór z 2023 r. wskazuje Dz. U. z 2022 r. poz. 1510). Zmiany rozporządzenia z 2026 r. (poz. 456 i 726) nie zmieniły załącznika nr 3a.' },
     podstawa: [art('art. 229 § 1–1³, 2, 4 i 4a', 'KP'), art('§ 4 ust. 1–3 i załącznik nr 3a', 'R_BAD')],
-    forma: forma('pisemna', 'pracodawca', 'Skierowanie wydaje pracodawca według wzoru urzędowego z podpisem pracodawcy, w dwóch egzemplarzach (§ 4 ust. 1a rozporządzenia).', { rodzaj_podpisy: 'inny', akta: 'B' }),
+    forma: forma('pisemna', 'pracodawca', 'Skierowanie wydaje pracodawca według wzoru urzędowego z podpisem pracodawcy, w dwóch egzemplarzach (§ 4 ust. 1a rozporządzenia).', { rodzaj_podpisy: 'skierowanie_badania', akta: 'B' }),
     pola: MD().concat([W('z_nazwa'), W('z_siedziba'), W('z_regon'),
       wybor('rodzaj_badania', 'Rodzaj badania', [['wstepne', 'wstępne'], ['okresowe', 'okresowe'], ['kontrolne', 'kontrolne']]),
       W('p_imie_nazwisko'),
@@ -417,7 +417,7 @@
     id: 'upowaznienie-rodo', nazwa: 'Upoważnienie do przetwarzania danych osobowych z oświadczeniem o poufności', grupa: 'RODO', dla: 'oba',
     zrodlo: { typ: 'ustawowy', elementy: 'Przetwarzanie wyłącznie na polecenie administratora (art. 29 RODO); pisemne upoważnienie i obowiązek zachowania tajemnicy przy danych z art. 9 ust. 1 RODO (art. 22¹b § 3 KP).' },
     podstawa: [art('art. 29', 'RODO'), art('art. 22¹b § 3', 'KP')],
-    forma: forma('pisemna', 'obie', 'Do przetwarzania danych szczególnych kategorii mogą być dopuszczone wyłącznie osoby posiadające pisemne upoważnienie (art. 22¹b § 3 KP); dla pozostałych danych forma dokumentowa wystarcza, ale biuro stosuje jedną — pisemną.', { akta: 'B' }),
+    forma: forma('pisemna', 'obie', 'Do przetwarzania danych szczególnych kategorii mogą być dopuszczone wyłącznie osoby posiadające pisemne upoważnienie (art. 22¹b § 3 KP); dla pozostałych danych forma dokumentowa wystarcza, ale biuro stosuje jedną — pisemną.', { rodzaj_podpisy: 'upowaznienie_rodo', akta: 'B' }),
     pola: MD().concat(PRACODAWCA()).concat([W('p_imie_nazwisko'), W('p_stanowisko'),
       pole('zakres', 'dlugi', 'Zakres danych / zbiory, do których osoba ma dostęp', { podpowiedz: 'np. dane pracowników i zleceniobiorców w zakresie prowadzenia akt osobowych i list płac' }),
       wybor('szczegolne', 'Czy upoważnienie obejmuje dane szczególnych kategorii (zdrowie, przynależność związkowa itd.)', [['nie', 'nie'], ['tak', 'tak']]),
@@ -448,7 +448,7 @@
     id: 'zakaz-konkurencji-w-trakcie', nazwa: 'Umowa o zakazie konkurencji w czasie trwania stosunku pracy', grupa: G1, dla: 'pracownik',
     zrodlo: { typ: 'ustawowy', elementy: 'Odrębna umowa określająca zakres zakazu (art. 101¹ § 1 KP), forma pisemna pod rygorem nieważności (art. 101³ KP), odpowiedzialność na zasadach działu piątego rozdziału I (art. 101¹ § 2 KP).' },
     podstawa: [art('art. 26¹, art. 101¹, art. 101³, art. 101⁴', 'KP')],
-    forma: forma('pisemna', 'obie', 'Umowa wymaga formy pisemnej pod rygorem nieważności (art. 101³ KP).', { rygor: 'niewaznosc', rodzaj_podpisy: 'inny', akta: 'B' }),
+    forma: forma('pisemna', 'obie', 'Umowa wymaga formy pisemnej pod rygorem nieważności (art. 101³ KP).', { rygor: 'niewaznosc', rodzaj_podpisy: 'zakaz_konkurencji', akta: 'B' }),
     pola: MD().concat(PRACODAWCA()).concat([W('p_imie_nazwisko'), W('p_adres'), W('p_stanowisko'), W('umowa_data', { etykieta: 'Data zawarcia umowy o pracę' }),
       pole('dzialalnosc', 'dlugi', 'Zakres działalności uznawanej za konkurencyjną (przedmiot, rodzaj usług/produktów)', { podpowiedz: 'opisać konkretnie — zakaz „wszelkiej działalności” jest nieskuteczny' }),
       pole('obszar', 'tekst', 'Obszar terytorialny zakazu', { domyslnie: 'terytorium Rzeczypospolitej Polskiej' })]),
@@ -483,7 +483,7 @@
     id: 'zakaz-konkurencji-po-ustaniu', nazwa: 'Umowa o zakazie konkurencji po ustaniu stosunku pracy', grupa: G1, dla: 'pracownik',
     zrodlo: { typ: 'ustawowy', elementy: 'Pracownik mający dostęp do szczególnie ważnych informacji; okres obowiązywania zakazu i wysokość odszkodowania (art. 101² § 1 KP); odszkodowanie nie niższe niż 25% wynagrodzenia (art. 101² § 3); ustanie zakazu (art. 101² § 2); forma pisemna pod rygorem nieważności (art. 101³).' },
     podstawa: [art('art. 101² § 1–3, art. 101³', 'KP')],
-    forma: forma('pisemna', 'obie', 'Umowa wymaga formy pisemnej pod rygorem nieważności (art. 101³ KP).', { rygor: 'niewaznosc', rodzaj_podpisy: 'inny', akta: 'B' }),
+    forma: forma('pisemna', 'obie', 'Umowa wymaga formy pisemnej pod rygorem nieważności (art. 101³ KP).', { rygor: 'niewaznosc', rodzaj_podpisy: 'zakaz_konkurencji', akta: 'B' }),
     pola: MD().concat(PRACODAWCA()).concat([W('p_imie_nazwisko'), W('p_adres'), W('p_stanowisko'),
       pole('informacje', 'dlugi', 'Szczególnie ważne informacje, do których pracownik ma dostęp'),
       pole('dzialalnosc', 'dlugi', 'Zakres działalności uznawanej za konkurencyjną'),
@@ -698,7 +698,7 @@
     id: 'informacja-monitoring', nazwa: 'Informacja o monitoringu (cele, zakres, sposób zastosowania)', grupa: G1, dla: 'pracownik',
     zrodlo: { typ: 'ustawowy', elementy: 'Informacja o celach, zakresie i sposobie zastosowania monitoringu przekazywana pracownikowi przed dopuszczeniem do pracy (art. 22² § 6 i 8 KP); odpowiednio dla monitoringu poczty elektronicznej i innych form (art. 22³ § 3–4 KP).' },
     podstawa: [art('art. 22² § 1–10, art. 22³', 'KP')],
-    forma: forma('bez_podpisu', 'potwierdzenie', 'Pracodawca przekazuje informację w postaci papierowej lub elektronicznej (art. 22² § 8 KP w brzmieniu od 27.01.2026 r.); podpis pracownika jest tylko potwierdzeniem otrzymania.', { akta: 'B' }),
+    forma: forma('bez_podpisu', 'potwierdzenie', 'Pracodawca przekazuje informację w postaci papierowej lub elektronicznej (art. 22² § 8 KP w brzmieniu od 27.01.2026 r.); podpis pracownika jest tylko potwierdzeniem otrzymania.', { rodzaj_podpisy: 'informacja_monitoring', akta: 'B' }),
     pola: MD().concat([W('z_nazwa'), W('z_siedziba'), W('z_nip'), W('p_imie_nazwisko'),
       wybor('rodzaj', 'Rodzaj monitoringu', [['wizyjny', 'monitoring wizyjny (rejestracja obrazu)', 'szczególny nadzór nad terenem zakładu pracy lub terenem wokół zakładu pracy w postaci środków technicznych umożliwiających rejestrację obrazu (monitoring wizyjny) — na podstawie art. 22² Kodeksu pracy'], ['poczta', 'monitoring służbowej poczty elektronicznej', 'kontrola służbowej poczty elektronicznej pracownika (monitoring poczty elektronicznej) — na podstawie art. 22³ § 1 Kodeksu pracy'], ['inny', 'inna forma monitoringu (np. lokalizacja pojazdów)', 'inna forma monitoringu: {{inny_opis}} — na podstawie art. 22³ § 4 Kodeksu pracy']]),
       pole('inny_opis', 'tekst', 'Opis innej formy monitoringu', { wymagane: false, wymagane_gdy: { pole: 'rodzaj', rowne: 'inny' } }),
@@ -886,7 +886,7 @@
     id: 'kara-porzadkowa', nazwa: 'Zawiadomienie o zastosowaniu kary porządkowej', grupa: G2, dla: 'pracownik',
     zrodlo: { typ: 'ustawowy', elementy: 'Zawiadomienie na piśmie wskazujące rodzaj naruszenia obowiązków pracowniczych, datę naruszenia oraz informację o prawie zgłoszenia sprzeciwu i terminie jego wniesienia (art. 110 KP).' },
     podstawa: [art('art. 108–113', 'KP')],
-    forma: forma('pisemna', 'pracodawca', 'O zastosowanej karze pracodawca zawiadamia pracownika na piśmie (art. 110 KP).', { rodzaj_podpisy: 'inny', akta: 'D' }),
+    forma: forma('pisemna', 'pracodawca', 'O zastosowanej karze pracodawca zawiadamia pracownika na piśmie (art. 110 KP).', { rodzaj_podpisy: 'kara_porzadkowa', akta: 'D' }),
     pola: MD().concat(PRACODAWCA()).concat([W('p_imie_nazwisko'), W('p_stanowisko'),
       wybor('kara', 'Rodzaj kary', [['upomnienie', 'kara upomnienia', 'karę upomnienia'], ['nagana', 'kara nagany', 'karę nagany'], ['pieniezna', 'kara pieniężna (tylko za naruszenia z art. 108 § 2)', 'karę pieniężną w wysokości {{kwota}} zł']]),
       pole('kwota', 'kwota', 'Kwota kary pieniężnej (zł)', { wymagane: false, wymagane_gdy: { pole: 'kara', rowne: 'pieniezna' } }),
@@ -1027,7 +1027,7 @@
     id: 'zgoda-na-potracenie', nazwa: 'Zgoda pracownika na potrącenie z wynagrodzenia', grupa: 'Wynagrodzenia i podatki', dla: 'pracownik',
     zrodlo: { typ: 'ustawowy', elementy: 'Zgoda pracownika wyrażona na piśmie na potrącanie należności innych niż wymienione w art. 87 § 1 i 7 KP (art. 91 § 1 KP); kwota wolna od potrąceń (art. 91 § 2 KP).' },
     podstawa: [art('art. 84, art. 87 § 1, art. 87¹, art. 91', 'KP'), art('art. 59 ust. 1–4', 'CUDZ')],
-    forma: forma('pisemna', 'pracownik', 'Zgoda musi być wyrażona na piśmie (art. 91 § 1 KP).', { rodzaj_podpisy: 'inny', akta: 'B' }),
+    forma: forma('pisemna', 'pracownik', 'Zgoda musi być wyrażona na piśmie (art. 91 § 1 KP).', { rodzaj_podpisy: 'zgoda_potracenie', akta: 'B' }),
     pola: MD().concat([W('z_nazwa'), W('z_siedziba'), W('p_imie_nazwisko'), W('p_stanowisko'),
       pole('tytul', 'dlugi', 'Tytuł należności (konkretnie)', { podpowiedz: 'np. opłata za zakwaterowanie w lokalu przy ul. Przykładowej 1 za październik 2026 r.' }),
       pole('kwota', 'kwota', 'Kwota (zł)'),
@@ -1417,7 +1417,7 @@
     id: 'swiadectwo-pracy', nazwa: 'Świadectwo pracy', grupa: G4, dla: 'pracownik',
     zrodlo: { typ: 'urzedowy', akt: AKTY.R_SWIAD.tytul, zalacznik: 'załącznik — pomocniczy wzór świadectwa pracy', eli: AKTY.R_SWIAD.eli, uwaga: 'Treść i numeracja ustępów odwzorowują wzór urzędowy; pouczenie przytoczono dosłownie.' },
     podstawa: [art('art. 97 § 1–3, art. 99', 'KP'), art('§ 2 ust. 1–3, § 3, § 7 i załącznik', 'R_SWIAD')],
-    forma: forma('pisemna', 'pracodawca', 'Świadectwo pracy podpisuje pracodawca lub osoba go reprezentująca albo upoważniona (wzór urzędowy); wydaje się je w dniu ustania stosunku pracy.', { rodzaj_podpisy: 'inny', akta: 'C' }),
+    forma: forma('pisemna', 'pracodawca', 'Świadectwo pracy podpisuje pracodawca lub osoba go reprezentująca albo upoważniona (wzór urzędowy); wydaje się je w dniu ustania stosunku pracy.', { rodzaj_podpisy: 'swiadectwo_pracy', akta: 'C' }),
     pola: MD().concat([W('z_nazwa'), W('z_siedziba'), W('z_nip'), W('z_regon'), W('p_imie_nazwisko'), W('p_dataur'),
       pole('okresy', 'dlugi', 'Ust. 1 — okres(y) zatrudnienia i wymiar czasu pracy', { podpowiedz: 'np. od 1 marca 2025 r. do 30 września 2026 r. w wymiarze pełnego etatu' }),
       pole('tymczasowa', 'dlugi', 'Ust. 2 — praca tymczasowa (pracodawca użytkownik, okresy)', NIE_DOT),
@@ -1503,7 +1503,7 @@
     id: 'informacja-przechowywanie-dokumentacji', nazwa: 'Informacja o okresie przechowywania dokumentacji pracowniczej (art. 94⁶ KP)', grupa: G4, dla: 'pracownik',
     zrodlo: { typ: 'ustawowy', elementy: 'Treść określona w art. 94⁶ KP: 1) okres przechowywania dokumentacji pracowniczej; 2) możliwość odbioru dokumentacji do końca miesiąca kalendarzowego następującego po upływie okresu przechowywania; 3) zniszczenie dokumentacji w razie jej nieodebrania w tym okresie.' },
     podstawa: [art('art. 94 pkt 9b, art. 94⁵, art. 94⁶', 'KP')],
-    forma: forma('bez_podpisu', 'potwierdzenie', 'Informację wydaje się w postaci papierowej lub elektronicznej wraz ze świadectwem pracy (art. 94⁶ KP); podpis pracownika jest tylko potwierdzeniem odbioru.', { rodzaj_podpisy: 'inny', akta: 'C' }),
+    forma: forma('bez_podpisu', 'potwierdzenie', 'Informację wydaje się w postaci papierowej lub elektronicznej wraz ze świadectwem pracy (art. 94⁶ KP); podpis pracownika jest tylko potwierdzeniem odbioru.', { rodzaj_podpisy: 'informacja_dokumentacja', akta: 'C' }),
     pola: MD().concat(PRACODAWCA()).concat([W('p_imie_nazwisko'),
       pole('data_ustania', 'data', 'Dzień ustania stosunku pracy'),
       wybor('okres', 'Okres przechowywania', [['10', '10 lat (zasada — art. 94 pkt 9b KP)', '10 lat, licząc od końca roku kalendarzowego, w którym stosunek pracy uległ rozwiązaniu lub wygasł'], ['inny', 'inny okres wynikający z przepisów odrębnych', '{{okres_opis}}']]),
@@ -1579,7 +1579,7 @@
     id: 'wypowiedzenie-umowy-zlecenia', nazwa: 'Wypowiedzenie umowy zlecenia', grupa: G5, dla: 'zleceniobiorca',
     zrodlo: { typ: 'ustawowy', elementy: 'Każda ze stron może wypowiedzieć zlecenie w każdym czasie (art. 746 § 1–2 KC); nie można zrzec się z góry wypowiedzenia z ważnych powodów (art. 746 § 3 KC); wypowiedzenie umowy zawartej w formie pisemnej, dokumentowej albo elektronicznej wymaga formy dokumentowej, chyba że umowa zastrzega inną (art. 77 § 2 KC).' },
     podstawa: [art('art. 746, art. 750, art. 77 § 2', 'KC'), art('art. 36 ust. 11', 'SUS')],
-    forma: forma('dokumentowa', 'pracodawca', 'Forma dokumentowa, chyba że umowa zastrzega inną — sprawdzić postanowienia umowy (art. 77 § 2 KC).', { rodzaj_podpisy: 'rozwiazanie' }),
+    forma: forma('dokumentowa', 'pracodawca', 'Forma dokumentowa, chyba że umowa zastrzega inną — sprawdzić postanowienia umowy (art. 77 § 2 KC).', { rodzaj_podpisy: 'wypowiedzenie_zlecenia' }),
     pola: MD().concat([W('z_nazwa', { etykieta: 'Zleceniodawca — nazwa' }), W('z_siedziba', { etykieta: 'Zleceniodawca — adres siedziby' }), W('p_imie_nazwisko', { etykieta: 'Zleceniobiorca — imię i nazwisko' }), W('p_adres', { etykieta: 'Zleceniobiorca — adres' }), W('umowa_data', { etykieta: 'Data zawarcia umowy zlecenia' }),
       wybor('strona', 'Kto wypowiada', [['zleceniodawca', 'zleceniodawca'], ['zleceniobiorca', 'zleceniobiorca']]),
       wybor('tryb', 'Termin', [['natychmiast', 'ze skutkiem natychmiastowym', 'ze skutkiem natychmiastowym'], ['okres', 'z zachowaniem okresu wypowiedzenia z umowy', 'z zachowaniem przewidzianego w umowie okresu wypowiedzenia, tj. ze skutkiem na dzień {{data_konca}}']]),
@@ -1667,7 +1667,7 @@
     id: 'cudzoziemiec-oswiadczenie-zrozumiala-tresc', nazwa: 'Oświadczenie cudzoziemca o otrzymaniu treści umowy w wersji zrozumiałej', grupa: G6, dla: 'oba',
     zrodlo: { typ: 'ustawowy', elementy: 'Dowód wykonania obowiązków z art. 5 ust. 2 (przedstawienie przed podpisaniem treści umowy na piśmie w wersji zrozumiałej) i art. 5 ust. 4 (informacja o prawie wstępowania do związków zawodowych w języku zrozumiałym). Ustawa nie wymaga oświadczenia cudzoziemca — to dowód dla pracodawcy.' },
     podstawa: [art('art. 5 ust. 1–4, art. 4 ust. 6, art. 84 ust. 6', 'CUDZ')],
-    forma: forma('pisemna', 'pracownik', 'Oświadczenie dowodowe; ponieważ dotyczy obowiązków wykonywanych „na piśmie”, biuro stosuje podpis własnoręczny albo kwalifikowany.', { rodzaj_podpisy: 'oswiadczenie', akta: 'B' }),
+    forma: forma('pisemna', 'pracownik', 'Oświadczenie dowodowe; ponieważ dotyczy obowiązków wykonywanych „na piśmie”, biuro stosuje podpis własnoręczny albo kwalifikowany.', { rodzaj_podpisy: 'oswiadczenie_cudz_tresc', akta: 'B' }),
     pola: MD().concat([W('z_nazwa'), W('z_siedziba')]).concat(POLA_CUDZ()).concat([
       wybor('rodzaj_umowy', 'Rodzaj umowy', RODZAJ_UMOWY_CUDZ), W('umowa_data'),
       pole('jezyk', 'tekst', 'Język wersji zrozumiałej (w dopełniaczu)', { podpowiedz: 'np. ukraińskim, rosyjskim, angielskim' }),
@@ -1715,7 +1715,7 @@
     id: 'cudzoziemiec-informacja-wygasajacy-dokument', nazwa: 'Informacja dla cudzoziemca o zbliżającym się końcu ważności dokumentu pobytowego', grupa: G6, dla: 'oba',
     zrodlo: { typ: 'ustawowy', elementy: 'Prawo pracodawcy do żądania przedstawienia dokumentu pobytowego w okresie pracy (art. 4 ust. 3 ustawy o powierzaniu pracy cudzoziemcom); termin złożenia wniosku o pobyt czasowy — nie później niż w ostatnim dniu legalnego pobytu (art. 105 ust. 1 ustawy o cudzoziemcach); wniosek w postaci elektronicznej przez MOS (art. 106c ust. 1 ustawy o cudzoziemcach w brzmieniu od 27.04.2026 r.); legalność pobytu po złożeniu wniosku w terminie (art. 108 ust. 1 pkt 2).' },
     podstawa: [art('art. 4 ust. 3–4, art. 2 pkt 2 lit. a–b, art. 84 ust. 1', 'CUDZ'), art('art. 105 ust. 1, art. 106c ust. 1 i 5, art. 108 ust. 1 (w brzmieniu ustawy z 21.11.2025 r., Dz. U. poz. 1794)', 'UOC')],
-    forma: forma('bez_podpisu', 'potwierdzenie', 'Pismo informacyjne; ważny jest dowód przekazania.', { rodzaj_podpisy: 'inny', akta: 'B' }),
+    forma: forma('bez_podpisu', 'potwierdzenie', 'Pismo informacyjne; ważny jest dowód przekazania.', { rodzaj_podpisy: 'informacja_dok_pobytowy', akta: 'B' }),
     pola: MD().concat(PRACODAWCA()).concat([W('p_imie_nazwisko'),
       pole('dok_pobyt', 'tekst', 'Dokument — rodzaj i numer', { rejestr: 'p_doc_typ' }),
       pole('dok_wazny_do', 'data', 'Ważny do dnia', { rejestr: 'p_karta_do' }),
@@ -1934,12 +1934,14 @@
     return Object.keys(out);
   }
 
+  // dzisiejsza data lokalna (toISOString dałby między północą a 1–2 w nocy wczorajszą datę UTC)
+  function dzisLokalnie() { var t = new Date(), z = function (n) { return n < 10 ? '0' + n : '' + n; }; return t.getFullYear() + '-' + z(t.getMonth() + 1) + '-' + z(t.getDate()); }
   // dane domyślne: wartości `domyslnie` ('dzis' = dzisiejsza data)
   function domyslne(doc, dzis) {
     var d = {};
     doc.pola.forEach(function (pl) {
       if (pl.domyslnie === undefined) return;
-      d[pl.id] = pl.domyslnie === 'dzis' ? (dzis || new Date().toISOString().slice(0, 10)) : pl.domyslnie;
+      d[pl.id] = pl.domyslnie === 'dzis' ? (dzis || dzisLokalnie()) : pl.domyslnie;
     });
     return d;
   }
@@ -2072,6 +2074,11 @@
       else if (pl.typ === 'regon') d[pl.id] = '000000000';
       else if (pl.typ === 'email') d[pl.id] = 'jan.testowy@example.com';
       else d[pl.id] = 'przykład (' + pl.etykieta.split(' — ')[0].split(' (')[0].toLowerCase() + ')';
+    });
+    // pole potrzebne tylko przy innym wyborze (np. kwota kary pieniężnej przy upomnieniu) zostaje puste —
+    // inaczej przykład pokazuje w formularzu wartość, której dokument nie używa
+    doc.pola.forEach(function (pl) {
+      if ((pl.wymagane === false && pl.wymagane_gdy && !spelnia(pl.wymagane_gdy, d)) || (pl.gdy && !spelnia(pl.gdy, d))) d[pl.id] = '';
     });
     return d;
   }

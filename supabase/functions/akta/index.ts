@@ -7,6 +7,12 @@
 //   then looks the person up among the office's workers. A clear match is filed at once;
 //   anything doubtful goes to "do sprawdzenia" with the candidates, for a person to decide.
 //   Nothing is ever filed on a guess.
+// POST { action: "rozpoznaj", id, force: true }   a document a person has already confirmed or that is
+//   already filed ("przypisany"): without `force` -> 409 kod "przypisany". With it the scan is read
+//   again, but nothing a person decided changes (worker, firm, part, kind, date, notes, status):
+//   the new reading is only stored in `ai.ponowny_odczyt` -> { ok, status, ponowny: true }.
+// One reading at a time per document (a conditional update takes the lock) and at most
+// MAX_ODCZYT_DZIEN readings a day per user (table klienci_limity) -> 429 kod "limit".
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -15,6 +21,12 @@ const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 const MODEL = "claude-opus-4-8";
 const BUCKET = "akta-osobowe";
 const MAX_BYTES = 24 * 1024 * 1024;
+const MAX_ODCZYT_DZIEN = 150; // readings a day per user — each one is a paid request
+async function limit(klucz: string, max: number): Promise<boolean> {
+  const r = await db("rpc/klienci_limit", { method: "POST", body: JSON.stringify({ p_klucz: klucz, p_max: max, p_ile: 1 }) });
+  return r.ok && (await r.json()) === true; // no counter, no paid call
+}
+const enc = encodeURIComponent;
 
 function cors(origin: string | null) {
   return { "Access-Control-Allow-Origin": origin ?? "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Vary": "Origin" };
@@ -130,18 +142,31 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { return json({ error: "Nieprawidłowy JSON." }, 400, origin); }
   if (body.action !== "rozpoznaj" || !/^[0-9a-f-]{36}$/i.test(body.id ?? "")) return json({ error: "Nieznana akcja." }, 400, origin);
   const id = body.id;
-  const fail = async (msg: string) => { await db(`akta_dokumenty?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ status: "blad", uwagi: msg }) }); return json({ error: msg }, 200, origin); };
+  const force = body.force === true;
+  // a confirmed / filed document keeps its status and its notes whatever happens to the new reading
+  let chroniony = false, poprzedni = "nowy";
+  const fail = async (msg: string) => {
+    await db(`akta_dokumenty?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(chroniony ? { status: poprzedni } : { status: "blad", uwagi: msg }) });
+    return json({ error: msg }, 200, origin);
+  };
 
   try {
     const r = await db(`akta_dokumenty?id=eq.${id}&select=*`);
     const row = r.ok ? (await r.json())[0] : null;
     if (!row) return json({ error: "Nie znaleziono dokumentu." }, 404, origin);
-    // the path comes from a row the browser inserted: accept only "<row id>/<plain file name>" inside our bucket
-    if (typeof row.path !== "string" || !/^[0-9a-f-]{36}\/[A-Za-z0-9_.\-]+$/i.test(row.path) || row.path.includes("..") || !row.path.startsWith(row.id + "/")) return await fail("Nieprawidłowa ścieżka pliku.");
-    if (Number(row.rozmiar) > MAX_BYTES) return await fail(TOO_BIG);
-    // one reading at a time per document (each one is a paid request)
+    const potwierdzony = !!row.sprawdzil || row.status === "przypisany";
+    if (potwierdzony && !force) return json({ error: "Ten dokument jest już przypisany albo potwierdzony przez osobę. Ponowny odczyt trzeba wyraźnie potwierdzić — nie zmieni on przypisania.", kod: "przypisany" }, 409, origin);
     if (row.status === "analiza" && Date.now() - Date.parse(row.analiza_at ?? "") < 120000) return json({ error: "Ten dokument jest właśnie odczytywany." }, 200, origin);
-    await db(`akta_dokumenty?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ status: "analiza", analiza_at: new Date().toISOString() }) });
+    // the path comes from a row the browser inserted: accept only "<row id>/<plain file name>" inside our bucket
+    if (typeof row.path !== "string" || !/^[0-9a-f-]{36}\/[A-Za-z0-9_.\-]+$/i.test(row.path) || row.path.includes("..") || !row.path.startsWith(row.id + "/")) return potwierdzony ? json({ error: "Nieprawidłowa ścieżka pliku." }, 200, origin) : await fail("Nieprawidłowa ścieżka pliku.");
+    if (Number(row.rozmiar) > MAX_BYTES) return potwierdzony ? json({ error: TOO_BIG }, 200, origin) : await fail(TOO_BIG);
+    if (!(await limit("akta-odczyt:" + me.toLowerCase(), MAX_ODCZYT_DZIEN))) return json({ error: "Dzienny limit odczytów (" + MAX_ODCZYT_DZIEN + ") jest wyczerpany — pozostałe dokumenty przypisz ręcznie albo odczytaj jutro.", kod: "limit" }, 429, origin);
+    // one reading at a time per document (each one is a paid request): the lock is taken by a single
+    // conditional update, so two requests arriving together cannot both get it
+    const stara = new Date(Date.now() - 120000).toISOString();
+    const lock = await db(`akta_dokumenty?id=eq.${id}&or=(status.neq.analiza,analiza_at.is.null,analiza_at.lt.${enc(stara)})`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ status: "analiza", analiza_at: new Date().toISOString() }) });
+    if (!lock.ok || !(await lock.json()).length) return json({ error: "Ten dokument jest właśnie odczytywany." }, 200, origin);
+    chroniony = potwierdzony; poprzedni = row.status === "analiza" ? "do_sprawdzenia" : row.status;
 
     const f = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${row.path.split("/").map(encodeURIComponent).join("/")}`, { headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` } });
     if (!f.ok) return await fail("Nie udało się odczytać pliku z magazynu.");
@@ -173,12 +198,23 @@ Deno.serve(async (req) => {
     const best = ranked[0], second = ranked[1];
     // filed automatically only when the match is strong, unique, and the model was not in doubt
     const sure = !!best && best.s >= 80 && (!second || best.s - second.s >= 15) && a.pewnosc !== "niska";
+    const kandydaci = ranked.slice(0, 5).map((x) => ({ id: x.w.id, nazwa: x.w.worker_name, firma: x.w.z_nazwa, nip: x.w.z_nip, status: x.w.status, wynik: x.s }));
+    if (chroniony) {
+      // a person has decided about this document: the new reading is kept beside it, nothing else changes
+      const odczyt = {
+        at: new Date().toISOString(), przez: me, rodzaj: String(a.rodzaj ?? "").slice(0, 200), czesc: a.czesc ?? null, data: isDate(a.data) ? a.data : null, strony: Number(a.strony) || null,
+        uwagi: String(a.uwagi ?? "").slice(0, 600), dokumenty: Array.isArray(a.dokumenty) ? a.dokumenty.slice(0, 80) : [],
+        pracownik: a.pracownik, pracodawca: a.pracodawca, pewnosc: a.pewnosc, analiza: String(a.analiza ?? "").slice(0, 600), kandydaci,
+      };
+      await db(`akta_dokumenty?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ status: poprzedni, ai: { ...(row.ai && typeof row.ai === "object" ? row.ai : {}), ponowny_odczyt: odczyt } }) });
+      return json({ ok: true, status: poprzedni, ponowny: true }, 200, origin);
+    }
     const patch: Any = {
       status: sure ? "przypisany" : "do_sprawdzenia",
       rodzaj: String(a.rodzaj ?? "").slice(0, 200) || null, czesc: a.czesc ?? null, data_dok: isDate(a.data) ? a.data : null,
       strony: Number(a.strony) || null, spis: Array.isArray(a.dokumenty) ? a.dokumenty.slice(0, 80) : [],
       uwagi: String(a.uwagi ?? "").slice(0, 600) || null,
-      ai: { pracownik: a.pracownik, pracodawca: a.pracodawca, pewnosc: a.pewnosc, analiza: String(a.analiza ?? "").slice(0, 600), kandydaci: ranked.slice(0, 5).map((x) => ({ id: x.w.id, nazwa: x.w.worker_name, firma: x.w.z_nazwa, nip: x.w.z_nip, status: x.w.status, wynik: x.s })) },
+      ai: { pracownik: a.pracownik, pracodawca: a.pracodawca, pewnosc: a.pewnosc, analiza: String(a.analiza ?? "").slice(0, 600), kandydaci },
     };
     if (sure) Object.assign(patch, { worker_id: best.w.id, worker_name: best.w.worker_name, nip: digits(best.w.z_nip) || null, firma: best.w.z_nazwa ?? null });
     else {

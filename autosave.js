@@ -5,6 +5,20 @@
      lists – tablica [containerSelector, addButtonSelector] dla list dynamicznych
    Skrypt należy dołączyć PO głównym skrypcie strony (gdy istnieją już początkowe pola). */
 (function () {
+  // Wylogowanie: dane formularzy (PESEL, numery dokumentów) nie mogą zostać w przeglądarce.
+  // TdcgAutosave.clearAll() usuwa wszystkie zapisane formularze (tdcg_autosave_*) i dane przekazywane
+  // ze zgłoszenia do kompletu (tdcg_zlecenie_import) oraz blokuje ponowny zapis przy opuszczaniu strony.
+  // clearAll({ tlumaczenia: true }) usuwa też pamięć tłumaczeń (tdcg_tr_v1_*: teksty wzorów i pól
+  // opisowych, bez imion, numerów i adresów) — kolejne dokumenty dwujęzyczne tłumaczą się wtedy od nowa.
+  let zablokowany = false;
+  window.TdcgAutosave = {
+    clearAll: function (opts) {
+      zablokowany = true;
+      const re = opts && opts.tlumaczenia ? /^tdcg_(autosave_|zlecenie_import$|tr_v1_)/ : /^tdcg_(autosave_|zlecenie_import$)/;
+      try { Object.keys(localStorage).forEach(function (k) { if (re.test(k)) localStorage.removeItem(k); }); } catch (e) { /* brak dostępu */ }
+    },
+  };
+
   const cfg = window.AUTOSAVE;
   if (!cfg || !cfg.key) return;
 
@@ -32,14 +46,14 @@
   }
 
   function save() {
-    if (restoring || cleared) return;
+    if (restoring || cleared || zablokowany) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot()));
     } catch (e) { /* quota / brak dostępu — ignorujemy */ }
   }
 
   function scheduleSave() {
-    if (restoring) return;
+    if (restoring || zablokowany) return;
     cleared = false; // użytkownik znów edytuje — wznawiamy zapis
     clearTimeout(saveTimer);
     saveTimer = setTimeout(save, 300);

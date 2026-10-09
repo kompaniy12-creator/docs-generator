@@ -62,10 +62,11 @@
     var sel = $('hintFirm'), nip = sel.value, firma = nip ? sel.options[sel.selectedIndex].textContent : '';
     var skipped = 0;
     Array.prototype.forEach.call(list, function (f) {
-      if (f.size > MAX || !(/^image\//.test(f.type) || f.type === 'application/pdf' || /\.pdf$/i.test(f.name))) { skipped++; return; }
+      // what the bucket takes: PDF and JPG / PNG / WEBP / GIF (not HEIC — the reader cannot open it)
+      if (f.size > MAX || !(/^image\/(jpeg|png|webp|gif)$/.test(f.type) || f.type === 'application/pdf' || /\.pdf$/i.test(f.name))) { skipped++; return; }
       queue.push({ file: f, name: f.name, state: 'w kolejce', cls: 'p-grey', nip: nip, firma: firma });
     });
-    $('upMsg').textContent = skipped ? skipped + ' plik(ów) pominięto — tylko PDF i zdjęcia do 24 MB.' : '';
+    $('upMsg').textContent = skipped ? skipped + ' plik(ów) pominięto — przyjmujemy PDF oraz zdjęcia JPG, PNG i WEBP do 24 MB (zdjęcie HEIC z iPhone’a zapisz najpierw jako JPG albo PDF).' : '';
     drawQueue(); pump();
   }
   var drop = $('drop');

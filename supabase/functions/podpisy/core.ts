@@ -538,9 +538,11 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       if (!C.RODZAJE[rodzaj]) return json({ error: "Nieznany rodzaj dokumentu." }, 400, o);
       if (tytul.length < 3) return json({ error: "Podaj tytuł dokumentu." }, 400, o);
       let podpisuje = C.PODPISUJE[String(body.podpisuje ?? "")] ? String(body.podpisuje) : C.domyslniePodpisuje(rodzaj, p.cudzoziemiec);
-      // art. 29 § 3 KP: delivered, never signed here; and nothing else is "acknowledge only"
-      if (rodzaj === "informacja_warunki") podpisuje = "potwierdzenie";
-      else if (podpisuje === "potwierdzenie") return json({ error: "Samo potwierdzenie odbioru dotyczy tylko informacji o warunkach zatrudnienia." }, 400, o);
+      // informational documents are delivered, never signed here; some are signed by the employer alone;
+      // and nothing else is "acknowledge only"
+      const wym = C.wymuszonePodpisuje(rodzaj);
+      if (wym) podpisuje = wym;
+      else if (podpisuje === "potwierdzenie") return json({ error: "Samo potwierdzenie odbioru dotyczy tylko dokumentów informacyjnych (informacja o warunkach zatrudnienia, o monitoringu, o przechowywaniu dokumentacji, o wygasającym dokumencie pobytowym)." }, 400, o);
       const czesc = /^[A-EZ]$/.test(String(body.czesc ?? "")) ? String(body.czesc) : p.typ === "zlecenie" ? "Z" : "B";
       if (!plik) return json({ error: "Brak pliku." }, 400, o);
       const bytes = new Uint8Array(await plik.arrayBuffer());

@@ -15,7 +15,9 @@
 
   // rates in force on the given ISO date (default: today)
   function at(iso) {
-    var day = /^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? iso : new Date().toISOString().slice(0, 10);
+    // today = the local date (toISOString is UTC: in the first hours of 1 January it would still give last year's rates)
+    var t = new Date(), z = function (n) { return n < 10 ? '0' + n : '' + n; };
+    var day = /^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? iso : t.getFullYear() + '-' + z(t.getMonth() + 1) + '-' + z(t.getDate());
     var cur = rows[0];
     rows.forEach(function (r) { if (r.valid_from <= day) cur = r; });
     return { wage: Number(cur.min_wage), hourly: Number(cur.min_hourly), year: day.slice(0, 4), from: cur.valid_from };

@@ -60,7 +60,7 @@ async function tellKadry(text: string) {
     await fetch(`https://api.telegram.org/bot${TG}/sendMessage`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: c.id, text, disable_web_page_preview: true }),
-    }).catch((e) => console.error("telegram", e));
+    }).catch(() => console.error("telegram: błąd sieci")); // never the error itself: its text carries the URL with the bot token
   }
 }
 

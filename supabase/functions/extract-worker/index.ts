@@ -5,13 +5,29 @@
 //
 // PUBLIC endpoint (called from the client-facing form, no portal auth). The
 // Anthropic key lives only in the ANTHROPIC_API_KEY secret — never exposed.
-// Guards: max files / total size, image+pdf only.
+// Guards (logic.ts), all BEFORE the paid model call: request size, number / size / real type
+// of the files (first bytes), `docType` from a fixed list, at most LIMIT_IP_H readings an hour
+// from one address and LIMIT_DZIEN a day in total (table klienci_limity through klienci_limit():
+// no counter, no call). Errors of the provider are logged, never returned.
+
+import { docType, ip, kluczIp, LIMIT_DZIEN, LIMIT_IP_H, MAX_BODY, sprawdz } from "./logic.ts";
 
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const MODEL = "claude-opus-4-8";
-const MAX_FILES = 6;
-const MAX_TOTAL_B64 = 9 * 1024 * 1024; // ~6.7 MB of binary across all files
-const OK_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"]);
+const LIMIT_TXT = "Automatyczny odczyt dokumentów jest chwilowo niedostępny (osiągnięto limit odczytów). Wpisz dane ręcznie — zgłoszenie można wysłać bez odczytu.";
+
+// one atomic step of a counter; false = the limit is reached (or the counter could not be written)
+async function limit(klucz: string, max: number): Promise<boolean> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/klienci_limit`, {
+      method: "POST", headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_klucz: klucz, p_max: max, p_ile: 1 }),
+    });
+    return r.ok && (await r.json()) === true;
+  } catch { console.error("extract-worker: limit counter unavailable"); return false; }
+}
 
 function cors(origin: string | null) {
   return {
@@ -78,31 +94,26 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
   if (!ANTHROPIC_KEY) return json({ error: "Brak konfiguracji ANTHROPIC_API_KEY." }, 500, origin);
 
-  let payload: { docType?: string; files?: Array<{ mime?: string; data?: string }> };
+  const dl = Number(req.headers.get("content-length") ?? "0");
+  if (dl > MAX_BODY) return json({ error: "Pliki są za duże." }, 413, origin);
+  // deno-lint-ignore no-explicit-any
+  let payload: any;
   try {
     payload = await req.json();
   } catch {
     return json({ error: "Nieprawidłowy JSON." }, 400, origin);
   }
-  const files = Array.isArray(payload.files) ? payload.files : [];
-  if (!files.length) return json({ error: "Brak plików." }, 400, origin);
-  if (files.length > MAX_FILES) return json({ error: `Za dużo plików (max ${MAX_FILES}).` }, 400, origin);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return json({ error: "Nieprawidłowy JSON." }, 400, origin);
+  const w = sprawdz(payload.files);
+  if (!w.ok) return json({ error: w.error }, w.status, origin);
+  // only a well-formed request counts against the limits — and nothing is read without a counter
+  if (!(await limit(await kluczIp(ip(req)), LIMIT_IP_H))) return json({ error: LIMIT_TXT, kod: "limit" }, 429, origin);
+  if (!(await limit("extract:all", LIMIT_DZIEN))) return json({ error: LIMIT_TXT, kod: "limit" }, 429, origin);
 
-  let total = 0;
-  const blocks: unknown[] = [];
-  for (const f of files) {
-    const mime = (f.mime || "").toLowerCase();
-    const data = f.data || "";
-    if (!OK_MIME.has(mime)) return json({ error: `Nieobsługiwany format: ${mime}` }, 400, origin);
-    total += data.length;
-    if (total > MAX_TOTAL_B64) return json({ error: "Pliki są za duże." }, 413, origin);
-    if (mime === "application/pdf") {
-      blocks.push({ type: "document", source: { type: "base64", media_type: mime, data } });
-    } else {
-      blocks.push({ type: "image", source: { type: "base64", media_type: mime, data } });
-    }
-  }
-  blocks.push({ type: "text", text: INSTRUCTION + `\n\nWskazówka: typ dokumentu zgłoszony przez użytkownika: ${payload.docType || "(nieznany)"}.` });
+  const blocks: unknown[] = w.files.map((f) => f.mime === "application/pdf"
+    ? { type: "document", source: { type: "base64", media_type: f.mime, data: f.data } }
+    : { type: "image", source: { type: "base64", media_type: f.mime, data: f.data } });
+  blocks.push({ type: "text", text: INSTRUCTION + `\n\nWskazówka: typ dokumentu zgłoszony przez użytkownika: ${docType(payload.docType) || "(nieznany)"}.` });
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -121,8 +132,8 @@ Deno.serve(async (req) => {
     });
     if (!res.ok) {
       const errText = await res.text();
-      console.error("Anthropic error", res.status, errText);
-      return json({ error: "Błąd modelu (" + res.status + ")." }, 502, origin);
+      console.error("Anthropic error", res.status, errText.slice(0, 500));
+      return json({ error: "Nie udało się odczytać dokumentów — wpisz dane ręcznie." }, 502, origin);
     }
     const data = await res.json();
     if (data.stop_reason === "refusal") {
@@ -145,7 +156,7 @@ Deno.serve(async (req) => {
     }
     return json({ fields, warnings }, 200, origin);
   } catch (e) {
-    console.error(e);
+    console.error("extract-worker", e instanceof Error ? e.name : "error");
     return json({ error: "Wewnętrzny błąd serwera." }, 500, origin);
   }
 });

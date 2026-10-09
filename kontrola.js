@@ -308,6 +308,9 @@
     // open on the most urgent non-empty category
     var first = TILES.filter(function (t) { return VIEWS[t.v].items().length; })[0];
     view = first ? first.v : 'wszyscy';
+    // opened from the register for one worker (kontrola.html#w=<id>): show that person in the full list
+    var m = /[#&]w=([0-9a-f-]{36})/i.exec(location.hash), one = m ? rows.filter(function (w) { return w.id === m[1]; })[0] : null;
+    if (one) { view = 'wszyscy'; $('q').value = one.worker_name || ''; q = (one.worker_name || '').toLowerCase().trim(); }
     render();
     loadReminders();
   }

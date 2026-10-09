@@ -1590,6 +1590,28 @@ const submitBtn = document.getElementById('submitBtn');
 const statusEl = document.getElementById('status');
 function showStatus(msg, type) { statusEl.textContent = msg; statusEl.className = 'status ' + type; }
 
+// Pay below the statutory minimum in force on the contract's start date -> a message, else ''.
+// (The public intake form checks the same; here the officer may have typed the terms by hand.)
+// A wymiar the function cannot read (free text) is not judged.
+function placaPonizejMinimum(d) {
+  const u = d.umowa;
+  if (u.minimalna || !window.Stawki) return '';
+  const st = parseFloat(String(u.stawka || '').replace(/\s/g, '').replace(',', '.'));
+  if (!(st > 0)) return '';
+  const min = window.Stawki.at(u.od || d.sign.data), zl = window.Stawki.zl;
+  const od = min.from.split('-').reverse().join('.');
+  if (u.jedn === 'godz' || (d.typ === 'zlecenie' && u.jedn !== 'mies')) {
+    return st < min.hourly ? `Stawka ${zl(st)} zł za godzinę jest niższa niż minimalna stawka godzinowa: ${zl(min.hourly)} zł brutto (obowiązuje od ${od} r.).` : '';
+  }
+  if (d.typ !== 'praca') return ''; // zlecenie paid monthly: depends on the hours actually worked
+  const w = String(u.wymiar || '').toLowerCase().replace(',', '.');
+  const m = /(\d+)\s*\/\s*(\d+)/.exec(w), dz = /(^|[^\d.])(0\.\d+|1(\.0+)?)(?![\d.])/.exec(w);
+  const etat = m && +m[2] ? +m[1] / +m[2] : /pe[łl]n/.test(w) || !w ? 1 : dz ? parseFloat(dz[2]) : NaN;
+  if (!(etat > 0 && etat <= 1)) return '';
+  const prog = Math.round(min.wage * etat * 100) / 100;
+  return st < prog ? `Wynagrodzenie ${zl(st)} zł miesięcznie jest niższe niż minimalne wynagrodzenie za pracę: ${zl(prog)} zł brutto (${u.wymiar || 'pełny etat'}; obowiązuje od ${od} r.).` : '';
+}
+
 function anyDocSelected(d) {
   return DOC_ORDER[d.typ].some(k => d.docs[k]);
 }
@@ -1615,6 +1637,8 @@ form.addEventListener('submit', async (e) => {
   await window.Stawki.ready;
   const data = collectData();
   if (!anyDocSelected(data)) { showStatus('Zaznacz przynajmniej jeden dokument do wygenerowania.', 'error'); return; }
+  const zaMalo = placaPonizejMinimum(data);
+  if (zaMalo && !confirm(zaMalo + '\n\nWygenerować dokumenty mimo to?')) { showStatus(zaMalo, 'error'); document.getElementById('u_stawka').focus(); return; }
 
   submitBtn.disabled = true;
   const orig = submitBtn.textContent;

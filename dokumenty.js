@@ -73,19 +73,22 @@
   // ---------------- podpis elektroniczny: co wolno wysłać ----------------
   // Serwer podpisów (supabase/functions/podpisy/checks.ts, regula()) wymusza formę pisemną tylko dla
   // tych rodzajów; dokument „pisemny” z innym rodzajem przyjąłby z podpisem zaufanym — takich nie wysyłamy.
-  var RODZAJE_PISEMNE = ['rozwiazanie', 'ppk_rezygnacja', 'odpowiedzialnosc', 'umowa_praca', 'aneks_praca'];
-  // rodzaj z katalogu jest wystarczająco ostry, ale serwer pokazałby podpisującemu podstawę prawną innego dokumentu
-  var EPODPIS_INNA_PODSTAWA = {
-    'ppk-wniosek-o-wplaty': 'serwer zna tylko rodzaj „Rezygnacja z PPK” i pokazałby podpisującemu podstawę rezygnacji (art. 23 ust. 2), a to wniosek o wpłaty (art. 23 ust. 10)',
-    'wypowiedzenie-umowy-zlecenia': 'serwer zna tylko rodzaj „Wypowiedzenie / rozwiązanie umowy o pracę” i pokazałby art. 30 § 3 Kodeksu pracy, który zlecenia nie dotyczy',
-  };
-  function epodpis(doc, cudz) {
-    var f = K.formaDla(doc, cudz);
-    if (f.kategoria === 'bez_podpisu' || f.podpisuje === 'potwierdzenie') return { ok: false, powod: 'Tego dokumentu się nie podpisuje — przekaż go pracownikowi i zachowaj dowód przekazania.' };
+  var RODZAJE_PISEMNE = ['rozwiazanie', 'ppk_rezygnacja', 'odpowiedzialnosc', 'umowa_praca', 'aneks_praca',
+    'zakaz_konkurencji', 'kara_porzadkowa', 'zgoda_potracenie', 'swiadectwo_pracy', 'skierowanie_badania', 'upowaznienie_rodo', 'oswiadczenie_cudz_tresc', 'ppk_wniosek'];
+  // dokumenty informacyjne: bez podpisu — pracownik pobiera plik z linku i potwierdza odbiór (serwer sam ustawia „potwierdzenie”)
+  var RODZAJE_ODBIOR = ['informacja_warunki', 'informacja_monitoring', 'informacja_dokumentacja', 'informacja_dok_pobytowy'];
+  function epodpis(doc, cudz, dane) {
+    var f = K.formaDla(doc, cudz), czesc = /^[A-E]$/.test(f.akta || '') ? f.akta : null;
     if (doc.tresc.some(function (b) { return b.t === 'tabela' && b.puste_wiersze; })) return { ok: false, powod: 'Dokument z tabelą wypełnianą ręcznie — drukuje się go i podpisuje na papierze.' };
+    if (f.kategoria === 'bez_podpisu' || f.podpisuje === 'potwierdzenie') {
+      if (f.podpisuje === 'potwierdzenie' && RODZAJE_ODBIOR.indexOf(f.rodzaj_podpisy) >= 0) return { ok: true, odbior: true, rodzaj: f.rodzaj_podpisy, podpisuje: 'potwierdzenie', czesc: czesc };
+      return { ok: false, powod: 'Tego dokumentu się nie podpisuje — przekaż go pracownikowi i zachowaj dowód przekazania.' };
+    }
     if (f.kategoria === 'pisemna' && RODZAJE_PISEMNE.indexOf(f.rodzaj_podpisy) < 0) return { ok: false, przygotowanie: true, powod: 'Podpis elektroniczny dla tego dokumentu: w przygotowaniu. Wymaga formy pisemnej (podpis własnoręczny albo kwalifikowany), a moduł podpisów nie zna jeszcze tego rodzaju dokumentu i przyjąłby podpis zaufany.' };
-    if (EPODPIS_INNA_PODSTAWA[doc.id]) return { ok: false, przygotowanie: true, powod: 'Podpis elektroniczny dla tego dokumentu: w przygotowaniu (' + EPODPIS_INNA_PODSTAWA[doc.id] + ').' };
-    return { ok: true, rodzaj: f.rodzaj_podpisy, podpisuje: f.podpisuje, czesc: /^[A-E]$/.test(f.akta || '') ? f.akta : null };
+    var podpisuje = f.podpisuje;
+    // zlecenie może wypowiedzieć każda ze stron (art. 746 KC) — podpisuje ta, która składa oświadczenie
+    if (doc.id === 'wypowiedzenie-umowy-zlecenia' && dane && dane.strona === 'zleceniobiorca') podpisuje = 'pracownik';
+    return { ok: true, rodzaj: f.rodzaj_podpisy, podpisuje: podpisuje, czesc: czesc };
   }
 
   // ---------------- dane: pracownicy i firmy ----------------
@@ -260,7 +263,7 @@
   }
 
   function opisFormy(doc) {
-    var f = K.formaDla(doc, osoba.cudz), e = epodpis(doc, osoba.cudz);
+    var f = K.formaDla(doc, osoba.cudz), e = epodpis(doc, osoba.cudz, cur && cur.dane);
     return '<h3>Forma i podpisy</h3><ul class="list"><li><b>' + FORMA[f.kategoria] + '</b> — podpisuje: ' + KTO[f.podpisuje] + (f.metody.length ? '; dopuszczalne: ' + f.metody.map(function (m) { return METODA[m]; }).join(', ') : '') + '.</li><li>' + esc(f.podstawa) + '</li>' +
       (f.rygor ? '<li>' + esc(f.rygor) + '</li>' : '') + (f.akta ? '<li>Akta: ' + esc(/^[A-E]$/.test(f.akta) ? 'część ' + f.akta + ' akt osobowych' : f.akta) + '.</li>' : '') +
       (doc.tresc.length && !e.ok ? '<li>' + esc(e.powod) + '</li>' : '') + '</ul>';
@@ -326,7 +329,7 @@
         '<a class="mini go big" href="' + strona + '" target="_blank" rel="noopener">Otwórz ' + (doc.zrodlo.komplet_id ? '„Komplet dokumentów”' : 'stronę dokumentu') + '</a></div>' +
         uwagi(doc) + '<div class="box">' + opisFormy(doc) + opisPodstawy(doc) + '</div>';
     } else {
-      var e = epodpis(doc, osoba.cudz);
+      var e = epodpis(doc, osoba.cudz, cur.dane);
       h += banerZatwierdzenia(doc);
       h += '<div class="cols"><div>' +
         '<div class="box" id="kto">' + ktoHtml() + '</div>' +
@@ -336,7 +339,7 @@
         '<button type="button" class="mini go big" data-a="generuj">Generuj PDF</button>' +
         '<button type="button" class="mini big" data-a="przyklad" title="Fikcyjne dane do wypróbowania wzoru">Wypełnij przykładem</button>' +
         '<button type="button" class="mini big" data-a="wyczysc">Wyczyść</button>' +
-        (e.ok ? '<button type="button" class="mini big" data-a="podpis">✍️ Wyślij do podpisu elektronicznego</button>' : '') + '</div>' +
+        (e.ok ? '<button type="button" class="mini big" data-a="podpis">' + (e.odbior ? '✍️ Przekaż elektronicznie (potwierdzenie odbioru)' : '✍️ Wyślij do podpisu elektronicznego') + '</button>' : '') + '</div>' +
         (e.ok ? '' : '<p class="hint" style="margin:10px 0 0">' + esc(e.powod) + '</p>') + '</div>' +
         '</div><div>' +
         '<div class="box"><h2>Podgląd treści</h2><p class="hint">Tekst zmienia się razem z formularzem. Układ strony (marginesy, podział na strony) zobaczysz w PDF.</p><div class="prev" id="prev"></div></div>' +
@@ -472,13 +475,14 @@
   function otworzPodpis() {
     cur.proba = true;
     if (odswiezPola()) { stat('<span class="pill p-red">Do poprawienia</span> Do podpisu można wysłać tylko kompletny dokument — uzupełnij zaznaczone pola.'); return; }
-    var e = epodpis(cur.doc, osoba.cudz), p = osoba.worker && osoba.worker.payload;
+    var e = epodpis(cur.doc, osoba.cudz, cur.dane), p = osoba.worker && osoba.worker.payload;
     $('sgKto').innerHTML = '<b>' + esc(cur.dane.p_imie_nazwisko || '—') + '</b> · ' + esc(cur.dane.z_nazwa || '—') + ' · NIP ' + esc(digits(cur.dane.z_nip) || '—') +
       (osoba.worker ? '' : '<br>Pracownik nie został wybrany z rejestru — po podpisaniu dokument trafi do akt „do sprawdzenia” i trzeba go będzie przypisać ręcznie.');
     $('sgCudz').checked = osoba.cudz;
     $('sgTypBox').hidden = cur.doc.dla !== 'oba';
     $('sgTyp').value = cur.doc.dla === 'zleceniobiorca' ? 'zlecenie' : cur.doc.dla === 'pracownik' ? 'praca' : (p && p.u_typ === 'praca' ? 'praca' : p ? 'zlecenie' : 'praca');
-    $('sgOpis').innerHTML = 'Do podpisu trafi jeden plik PDF: <b>' + esc(cur.doc.nazwa) + '</b>' + (dj.on && cur.doc.dwujezyczny.poziom !== 'nie' ? ' (wersja dwujęzyczna)' : '') + '. Podpisuje: ' + KTO[e.podpisuje] + '.' +
+    $('sgOpis').innerHTML = 'Do podpisu trafi jeden plik PDF: <b>' + esc(cur.doc.nazwa) + '</b>' + (dj.on && cur.doc.dwujezyczny.poziom !== 'nie' ? ' (wersja dwujęzyczna)' : '') + '. ' +
+      (e.odbior ? 'Tego dokumentu nikt nie podpisuje: pracownik pobiera go z linku i potwierdza odbiór — to potwierdzenie jest dowodem przekazania.' : 'Podpisuje: ' + KTO[e.podpisuje] + '.') +
       (doZatwierdzenia(cur.doc) ? '<div class="warnbox" style="margin:8px 0 0">Wzór nie jest jeszcze zatwierdzony przez kadrową — PDF ma w stopce dopisek „wzór do zatwierdzenia”.</div>' : '');
     sgSay(''); $('sgGo').disabled = false; $('sgGo').hidden = false; $('sgCancel').textContent = 'Anuluj';
     $('sign').hidden = false;
@@ -488,7 +492,7 @@
     busy = true; $('sgGo').disabled = true;
     var pid = null;
     try {
-      var cudz = $('sgCudz').checked, e = epodpis(cur.doc, cudz);
+      var cudz = $('sgCudz').checked, e = epodpis(cur.doc, cudz, cur.dane);
       if (!e.ok) throw new Error(e.powod);
       var nip = digits(cur.dane.z_nip), w = osoba.worker;
       if (nip.length !== 10) throw new Error('Uzupełnij NIP pracodawcy (10 cyfr).');

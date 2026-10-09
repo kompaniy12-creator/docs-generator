@@ -9,6 +9,9 @@
 
   // workers = current people; archive = former staff, kept apart (status 'archiwum')
   var firms = [], workers = [], archive = [], byNip = {}, tab = 'firmy', q = '';
+  // employers of registered workers that are not in the client base: shown as well, so that nobody is lost
+  var spoza = [];
+  function wszystkieFirmy() { return firms.concat(spoza); }
   var $ = function (id) { return document.getElementById(id); };
   function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function digits(s) { return (s || '').replace(/[^0-9]/g, ''); }
@@ -100,6 +103,12 @@
       var key = digits(p.z_nip) || ('nazwa:' + (p.z_nazwa || '').toLowerCase().trim());
       (byNip[key] = byNip[key] || []).push(wk);
     });
+    var maja = {};
+    firms.forEach(function (f) { maja[digits(f.nip)] = 1; maja['nazwa:' + (f.nazwa || '').toLowerCase().trim()] = 1; });
+    spoza = Object.keys(byNip).filter(function (k) { return !maja[k]; }).map(function (k) {
+      var p = byNip[k][0].payload || {};
+      return { nazwa: p.z_nazwa || '(pracodawca bez nazwy)', nip: /^\d+$/.test(k) ? k : '', miasto: '', opiekun: '', kadrowy: '', spoza: true, klucz: k };
+    }).sort(function (a, b) { return a.nazwa.localeCompare(b.nazwa, 'pl'); });
   }
 
   // move a person to the archive of former staff, or back
@@ -118,6 +127,7 @@
   });
 
   function workersFor(f) {
+    if (f.spoza) return byNip[f.klucz] || [];
     return byNip[digits(f.nip)] || byNip['nazwa:' + (f.nazwa || '').toLowerCase().trim()] || [];
   }
   function badge(st) { return '<span class="badge b-' + (st || 'nowe') + '">' + esc(STL[st] || st) + '</span>'; }
@@ -181,7 +191,7 @@
 
   function renderFirmy() {
     var el = $('panel-firmy');
-    var list = firms.filter(function (f) {
+    var list = wszystkieFirmy().filter(function (f) {
       if (!q) return true;
       return (f.nazwa + ' ' + f.nip + ' ' + f.miasto + ' ' + f.opiekun + ' ' + f.kadrowy).toLowerCase().indexOf(q) !== -1
         || workersFor(f).some(function (w) { return (w.worker_name || '').toLowerCase().indexOf(q) !== -1; });
@@ -203,7 +213,7 @@
         return byName;
       });
     }
-    if (hasF) $('fCount').textContent = list.length + ' z ' + firms.length + ' firm';
+    if (hasF) $('fCount').textContent = list.length + ' z ' + wszystkieFirmy().length + ' firm';
     if (!list.length) { el.innerHTML = '<div class="empty">Brak firm dla tych filtrów.</div>'; return; }
     el.innerHTML = '';
     list.forEach(function (f) {
@@ -215,6 +225,7 @@
           '<div class="firm-main"><strong>' + esc(f.nazwa) + '</strong>' +
             '<small>NIP ' + esc(f.nip || '—') + (f.miasto ? ' · ' + esc(f.miasto) : '') +
             (f.opiekun ? ' · opiekun: ' + esc(f.opiekun) : '') + '</small></div>' +
+          (f.spoza ? '<span class="pill zero" title="Pracodawca z rejestru pracowników, którego nie ma w bazie klientów (inny NIP albo klient usunięty z bazy)">spoza bazy klientów</span>' : '') +
           (zakonczona(f) ? '<span class="pill zero">obsługa zakończona od ' + esc(zakonczona(f).split('-').reverse().join('.')) + '</span>' : '') +
           '<span class="pill' + (ws.length ? '' : ' zero') + '">' + ws.length + ' prac.</span>' +
           '<span class="chev">›</span>' +
@@ -233,8 +244,10 @@
           '</div>' +
           (ws.length
             ? '<ul class="wlist">' + ws.map(function (w) {
+                // a submission still in progress opens in the task list; a hired worker is no longer there —
+                // the link leads to that worker's deadlines in Kontrola
                 return '<li><span class="nm">' + esc(w.worker_name || '(bez nazwy)') + '</span>' + badge(w.status) +
-                  '<a class="tlink" href="zatrudnienie.html">otwórz →</a></li>';
+                  (w.status === 'zatrudniony' ? '<a class="tlink" href="kontrola.html#w=' + esc(w.id) + '">terminy →</a>' : '<a class="tlink" href="zatrudnienie.html">otwórz →</a>') + '</li>';
               }).join('') + '</ul>'
             : '<div class="muted" style="font-size:13px">Brak zgłoszonych pracowników.</div>') +
         '</div>';

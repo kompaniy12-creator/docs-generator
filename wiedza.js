@@ -9,26 +9,43 @@
   function pl(iso) { var p = (iso || '').slice(0, 10).split('-'); return p.length === 3 ? p[2] + '.' + p[1] + '.' + p[0] : ''; }
   function dzu(eli) { var p = (eli || '').split('/'); return p.length === 3 ? 'Dz.U. ' + p[1] + ' poz. ' + p[2] : eli; }
   function link(eli) { return 'https://eli.gov.pl/eli/' + eli + '/ogl'; }
-  var rules = [], acts = [], q = '';
+  var rules = [], acts = [], q = '', fd = '';
+  // rules are shown dział by dział (in the order each dział first appears), not interleaved by `kolejnosc`
+  function dzialy() { var seen = {}, out = []; rules.forEach(function (r) { if (!seen[r.dzial]) { seen[r.dzial] = 1; out.push(r.dzial); } }); return out; }
+  function fillDzialy() {
+    var el = $('fDzial'); if (!el) return; // a page cached before the filter existed
+    var n = {}, spr = 0;
+    rules.forEach(function (r) { n[r.dzial] = (n[r.dzial] || 0) + 1; if (r.do_sprawdzenia) spr++; });
+    el.innerHTML = '<option value="">wszystkie działy (' + rules.length + ')</option>' +
+      dzialy().map(function (d) { return '<option value="' + esc(d) + '">' + esc(d) + ' (' + n[d] + ')</option>'; }).join('') +
+      '<option value="__spr">do sprawdzenia (' + spr + ')</option>';
+    if (fd && fd !== '__spr' && !n[fd]) fd = '';
+    el.value = fd;
+  }
 
   function render() {
     var admin = !!(window.PortalUser && window.PortalUser.admin);
-    var list = rules.filter(function (r) { return !q || (r.temat + ' ' + r.tresc + ' ' + r.podstawa + ' ' + r.dzial).toLowerCase().indexOf(q) !== -1; });
-    var html = '', dzial = '';
+    var order = dzialy();
+    var list = rules.filter(function (r) {
+      if (fd === '__spr' ? !r.do_sprawdzenia : fd && r.dzial !== fd) return false;
+      return !q || (r.temat + ' ' + r.tresc + ' ' + r.podstawa + ' ' + r.dzial).toLowerCase().indexOf(q) !== -1;
+    }).map(function (r, i) { return { r: r, i: i }; })
+      .sort(function (a, b) { return order.indexOf(a.r.dzial) - order.indexOf(b.r.dzial) || a.i - b.i; }).map(function (x) { return x.r; });
+    var html = '', dzial = null;
     list.forEach(function (r) {
       if (r.dzial !== dzial) { dzial = r.dzial; html += '<h2>' + esc(dzial) + '</h2>'; }
       html += '<div class="rule' + (r.do_sprawdzenia ? ' check' : '') + '"><h3>' + esc(r.temat) + '</h3><p>' + esc(r.tresc) + '</p><div class="meta">' +
         '<span><b>Podstawa:</b> ' + esc(r.podstawa) + '</span>' +
-        (r.eli ? '<a href="' + link(r.eli) + '" target="_blank" rel="noopener">' + esc(dzu(r.eli)) + ' ↗</a>' : '') +
+        (r.eli ? '<a href="' + esc(link(r.eli)) + '" target="_blank" rel="noopener">' + esc(dzu(r.eli)) + ' ↗</a>' : '') +
         (r.do_sprawdzenia
           ? '<span class="pill p-amber">ustawa zmieniona — do sprawdzenia</span>' + (admin ? '<button type="button" class="mini" data-ok="' + esc(r.id) + '">Sprawdzone, aktualne</button>' : '')
           : '<span class="pill p-ok">sprawdzono ' + pl(r.zweryfikowano) + '</span>') +
         '</div></div>';
     });
-    $('rules').innerHTML = html || '<div class="empty">Brak zasad.</div>';
+    $('rules').innerHTML = html || '<div class="empty">' + (rules.length ? 'Brak zasad dla tego wyszukiwania lub filtra.' : 'Brak zasad.') + '</div>';
     $('acts').innerHTML = '<thead><tr><th>Akt</th><th>Publikacja</th><th>Tekst jednolity</th><th>Ostatnie sprawdzenie</th><th>Stan</th></tr></thead><tbody>' +
       acts.map(function (a) {
-        return '<tr><td>' + esc(a.skrot) + '</td><td><a href="' + link(a.eli) + '" target="_blank" rel="noopener">' + esc(dzu(a.eli)) + '</a></td>' +
+        return '<tr><td>' + esc(a.skrot) + '</td><td><a href="' + esc(link(a.eli)) + '" target="_blank" rel="noopener">' + esc(dzu(a.eli)) + '</a></td>' +
           '<td>' + (a.tekst_jednolity ? esc(dzu(a.tekst_jednolity)) : '—') + '</td><td>' + (a.checked_at ? new Date(a.checked_at).toLocaleString('pl-PL') : '—') + '</td>' +
           '<td>' + (a.zmiana_wykryta ? '<span class="pill p-red">zmiana ' + pl(a.zmiana_wykryta) + '</span>' + (admin ? ' <button type="button" class="mini" data-akt="' + esc(a.eli) + '">OK</button>' : '') : '<span class="pill p-ok">bez zmian</span>') + '</td></tr>';
       }).join('') + '</tbody>';
@@ -50,6 +67,7 @@
     } catch (err) { alert(err.message); b.disabled = false; }
   });
   $('q').addEventListener('input', function (e) { q = e.target.value.toLowerCase().trim(); render(); });
+  if ($('fDzial')) $('fDzial').addEventListener('change', function () { fd = this.value; render(); });
 
   async function load() {
     if (!window.sb) return;
@@ -57,6 +75,7 @@
     var a = await window.sb.from('portal_prawo_akty').select('*').order('skrot');
     if (r.error) { $('rules').innerHTML = '<div class="empty">Błąd: ' + esc(r.error.message) + '</div>'; return; }
     rules = r.data || []; acts = a.data || [];
+    fillDzialy();
     render();
   }
   document.addEventListener('portal:access', render);

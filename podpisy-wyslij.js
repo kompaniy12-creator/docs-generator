@@ -3,7 +3,7 @@
    form one by one (window.KompletDokumenty — the same generator, one PDF per document) and
    hands them to the `podpisy` function: a package for the worker, issued to the employer.
    Nothing is sent to anybody; the office then follows the package in podpisy.html. */
-/* global zgloszenieId, anyDocSelected */
+/* global zgloszenieId, anyDocSelected, placaPonizejMinimum */
 (function () {
   'use strict';
   var FN = 'https://dpfxwkxpzqqjtmgqwozw.supabase.co/functions/v1/podpisy';
@@ -55,6 +55,8 @@
     data = window.KompletDokumenty.dane();
     docs = window.KompletDokumenty.lista(data).filter(function (d) { return !d.wewnetrzny; });
     if (!docs.length) { alert('Zaznacz przynajmniej jeden dokument.'); return; }
+    var zaMalo = typeof placaPonizejMinimum === 'function' ? placaPonizejMinimum(data) : '';
+    if (zaMalo && !confirm(zaMalo + '\n\nWysłać dokumenty do podpisu mimo to?')) return;
     var nip = (data.z.nip || '').replace(/\D/g, '');
     $('pwKto').innerHTML = '<b>' + esc((data.p.imiona + ' ' + data.p.nazwisko).trim()) + '</b> · ' + esc(data.z.nazwa) + ' · NIP ' + esc(nip || '—') +
       (zgloszenieId ? '' : '<br>Komplet nie pochodzi ze zgłoszenia pracownika — po podpisaniu dokumenty trafią do akt „do sprawdzenia” i trzeba je będzie przypisać ręcznie.');

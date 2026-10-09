@@ -162,7 +162,41 @@ export const RODZAJE: Record<string, string> = {
   rozwiazanie: "Wypowiedzenie / porozumienie o rozwiązaniu umowy", ppk_rezygnacja: "Rezygnacja z PPK", odpowiedzialnosc: "Umowa o odpowiedzialności materialnej",
   pit2: "PIT-2", kwestionariusz: "Kwestionariusz osobowy", oswiadczenie: "Oświadczenie / wniosek", zgoda_rodo: "RODO — klauzula / zgoda",
   informacja_warunki: "Informacja o warunkach zatrudnienia", inny: "Inny dokument",
+  // single HR documents (dokumenty.html) whose form the law — or the office's practice — fixes
+  zakaz_konkurencji: "Umowa o zakazie konkurencji", kara_porzadkowa: "Zawiadomienie o karze porządkowej", zgoda_potracenie: "Zgoda na potrącenie z wynagrodzenia",
+  swiadectwo_pracy: "Świadectwo pracy", skierowanie_badania: "Skierowanie na badania lekarskie", upowaznienie_rodo: "Upoważnienie do przetwarzania danych osobowych",
+  oswiadczenie_cudz_tresc: "Oświadczenie cudzoziemca o otrzymaniu umowy w zrozumiałej wersji", ppk_wniosek: "Wniosek o dokonywanie wpłat do PPK",
+  wypowiedzenie_zlecenia: "Wypowiedzenie umowy zlecenia", informacja_monitoring: "Informacja o monitoringu",
+  informacja_dokumentacja: "Informacja o okresie przechowywania dokumentacji pracowniczej", informacja_dok_pobytowy: "Informacja o wygasającym dokumencie pobytowym",
 };
+// written form only: qualified or handwritten signature, never podpis zaufany. The sentence is shown to the signer.
+const PISEMNE: Record<string, string> = {
+  rozwiazanie: "Oświadczenie o wypowiedzeniu lub rozwiązaniu umowy o pracę wymaga formy pisemnej (art. 30 § 3 Kodeksu pracy)",
+  ppk_rezygnacja: "Rezygnację z wpłat do PPK składa się w formie pisemnej (art. 23 ust. 2 ustawy o pracowniczych planach kapitałowych)",
+  odpowiedzialnosc: "Umowa o odpowiedzialności materialnej wymaga formy pisemnej",
+  zakaz_konkurencji: "Umowa o zakazie konkurencji wymaga formy pisemnej pod rygorem nieważności (art. 101³ Kodeksu pracy)",
+  kara_porzadkowa: "O zastosowanej karze porządkowej pracodawca zawiadamia pracownika na piśmie (art. 110 Kodeksu pracy)",
+  zgoda_potracenie: "Zgoda pracownika na potrącenie z wynagrodzenia musi być wyrażona na piśmie (art. 91 § 1 Kodeksu pracy)",
+  swiadectwo_pracy: "Świadectwo pracy wydaje pracodawca (art. 97 § 1 Kodeksu pracy); podpisuje je pracodawca albo osoba go reprezentująca lub upoważniona, zgodnie z wzorem z rozporządzenia w sprawie świadectwa pracy",
+  skierowanie_badania: "Skierowanie na badania lekarskie wydaje pracodawca według wzoru urzędowego, z podpisem pracodawcy (§ 4 ust. 1a rozporządzenia w sprawie badań lekarskich pracowników)",
+  upowaznienie_rodo: "Do przetwarzania danych szczególnych kategorii mogą być dopuszczone wyłącznie osoby posiadające pisemne upoważnienie (art. 22¹b § 3 Kodeksu pracy); biuro stosuje formę pisemną dla każdego upoważnienia",
+  oswiadczenie_cudz_tresc: "Oświadczenie dotyczy obowiązków wykonywanych wobec cudzoziemca na piśmie (art. 5 ust. 1, 2 i 4 ustawy o powierzaniu pracy cudzoziemcom); biuro stosuje dla niego formę pisemną",
+  ppk_wniosek: "Wniosek o dokonywanie wpłat do PPK składa się podmiotowi zatrudniającemu w formie pisemnej (art. 23 ust. 10 ustawy o pracowniczych planach kapitałowych)",
+};
+// delivered, never signed: the worker only confirms the receipt
+const ODBIOR: Record<string, string> = {
+  informacja_warunki: "Informacja o warunkach zatrudnienia (art. 29 § 3 Kodeksu pracy) nie wymaga podpisu — można ją przekazać w postaci elektronicznej (art. 29 § 3³ Kodeksu pracy); portal zapisuje potwierdzenie odbioru przez pracownika.",
+  informacja_monitoring: "Informację o monitoringu pracodawca przekazuje w postaci papierowej lub elektronicznej (art. 22² § 8 Kodeksu pracy) — podpis nie jest wymagany; portal zapisuje potwierdzenie odbioru przez pracownika.",
+  informacja_dokumentacja: "Informację o okresie przechowywania dokumentacji pracowniczej wydaje się w postaci papierowej lub elektronicznej wraz ze świadectwem pracy (art. 94⁶ Kodeksu pracy) — podpis nie jest wymagany; portal zapisuje potwierdzenie odbioru przez pracownika.",
+  informacja_dok_pobytowy: "Pismo informacyjne — przepisy nie wymagają podpisu; ważny jest dowód przekazania. Portal zapisuje potwierdzenie odbioru przez pracownika.",
+};
+// signed by the employer alone (the worker only receives the document)
+const TYLKO_PRACODAWCA = ["kara_porzadkowa", "swiadectwo_pracy", "skierowanie_badania"];
+// who signs when the kind leaves no choice (null = the office chooses)
+export function wymuszonePodpisuje(rodzaj: string): string | null {
+  if (ODBIOR[rodzaj]) return "potwierdzenie";
+  return TYLKO_PRACODAWCA.includes(rodzaj) ? "pracodawca" : null;
+}
 export const METODY: Record<string, string> = { kwalifikowany: "kwalifikowany podpis elektroniczny", zaufany: "podpis zaufany (podpis.gov.pl)", odreczny: "podpis odręczny na wydruku + skan / zdjęcie" };
 // what the officer may find in the validator's report ("osobisty" = e-dowód: never accepted here)
 export const STWIERDZONO: Record<string, string> = { kwalifikowany: "kwalifikowany podpis elektroniczny", zaufany: "podpis zaufany", osobisty: "podpis osobisty (e-dowód)", odreczny: "podpis odręczny — skan / zdjęcie" };
@@ -181,8 +215,11 @@ export const PODPISUJE: Record<string, string> = { obie: "pracodawca i pracownik
 
 // who signs by default (the office may choose otherwise, except for informacja_warunki)
 export function domyslniePodpisuje(rodzaj: string, cudzoziemiec: boolean): string {
-  if (rodzaj === "informacja_warunki") return "potwierdzenie";
-  if (["umowa_praca", "aneks_praca", "umowa_zlecenie", "aneks_zlecenie", "tlumaczenie", "rozwiazanie", "odpowiedzialnosc"].includes(rodzaj)) return "obie";
+  const w = wymuszonePodpisuje(rodzaj);
+  if (w) return w;
+  if (["umowa_praca", "aneks_praca", "umowa_zlecenie", "aneks_zlecenie", "tlumaczenie", "rozwiazanie", "odpowiedzialnosc", "zakaz_konkurencji", "upowaznienie_rodo"].includes(rodzaj)) return "obie";
+  // either side may terminate (art. 746 KC); most often the principal — the office may choose the worker
+  if (rodzaj === "wypowiedzenie_zlecenia") return "pracodawca";
   // for a foreigner the employer's information itself needs the written form
   if (rodzaj === "zwiazki_info") return cudzoziemiec ? "obie" : "pracownik";
   return "pracownik";
@@ -209,16 +246,12 @@ const m = (id: string, extra: { ostrzezenie?: string; uwaga?: string } = {}) => 
 // Which methods a party may use for a document. `pdMetoda` — how the employer signed
 // (matters for the worker's podpis zaufany under an employment contract).
 export function regula(rodzaj: string, cudzoziemiec: boolean, strona: "pracodawca" | "pracownik", pdMetoda: string | null): Regula {
-  if (rodzaj === "informacja_warunki") {
-    return { metody: [], podstawa: "Informacja o warunkach zatrudnienia (art. 29 § 3 Kodeksu pracy) nie wymaga podpisu — można ją przekazać w postaci elektronicznej (art. 29 § 3³ Kodeksu pracy); portal zapisuje potwierdzenie odbioru przez pracownika." };
+  if (ODBIOR[rodzaj]) return { metody: [], podstawa: ODBIOR[rodzaj] };
+  if (PISEMNE[rodzaj]) {
+    return { metody: [m("kwalifikowany"), m("odreczny")], podstawa: PISEMNE[rodzaj] + " — tylko podpis kwalifikowany (art. 78¹ Kodeksu cywilnego) albo własnoręczny. Podpis zaufany nie jest tu przyjmowany." };
   }
-  if (["rozwiazanie", "ppk_rezygnacja", "odpowiedzialnosc"].includes(rodzaj)) {
-    const p: Record<string, string> = {
-      rozwiazanie: "Oświadczenie o wypowiedzeniu lub rozwiązaniu umowy o pracę wymaga formy pisemnej (art. 30 § 3 Kodeksu pracy)",
-      ppk_rezygnacja: "Rezygnację z wpłat do PPK składa się w formie pisemnej (art. 23 ust. 2 ustawy o pracowniczych planach kapitałowych)",
-      odpowiedzialnosc: "Umowa o odpowiedzialności materialnej wymaga formy pisemnej",
-    };
-    return { metody: [m("kwalifikowany"), m("odreczny")], podstawa: p[rodzaj] + " — tylko podpis kwalifikowany (art. 78¹ Kodeksu cywilnego) albo własnoręczny. Podpis zaufany nie jest tu przyjmowany." };
+  if (rodzaj === "wypowiedzenie_zlecenia") {
+    return { metody: [m("kwalifikowany"), m("zaufany"), m("odreczny")], podstawa: "Wypowiedzenie umowy zlecenia (art. 746 Kodeksu cywilnego) wymaga zachowania formy dokumentowej, chyba że ustawa lub umowa zastrzega inną (art. 77 § 2 Kodeksu cywilnego) — sprawdź postanowienia umowy. Jeżeli umowa nie stanowi inaczej, można użyć każdego z trzech sposobów." };
   }
   if (cudzoziemiec && ["umowa_praca", "aneks_praca", "umowa_zlecenie", "aneks_zlecenie", "tlumaczenie", "zwiazki_info"].includes(rodzaj)) {
     return {
@@ -239,7 +272,8 @@ export function macierz() {
   for (const rodzaj of Object.keys(RODZAJE)) {
     for (const cudz of [false, true]) {
       const pd = regula(rodzaj, cudz, "pracodawca", null), pr = regula(rodzaj, cudz, "pracownik", null), prQ = regula(rodzaj, cudz, "pracownik", "kwalifikowany");
-      out.push({ rodzaj, cudzoziemiec: cudz, pracodawca: pd.metody, pracownik: pr.metody, pracownik_po_kwalifikowanym: prQ.metody, podstawa: pd.podstawa });
+      out.push({ rodzaj, cudzoziemiec: cudz, pracodawca: pd.metody, pracownik: pr.metody, pracownik_po_kwalifikowanym: prQ.metody, podstawa: pd.podstawa,
+        podpisuje_domyslnie: domyslniePodpisuje(rodzaj, cudz), podpisuje_wymuszone: wymuszonePodpisuje(rodzaj) });
     }
   }
   return out;

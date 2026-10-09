@@ -91,7 +91,9 @@
       return h + msg + '</div>';
     }
     if (z === 'potwierdz_odbior') {
-      h += '<p class="hint">Tego dokumentu się nie podpisuje — pracodawca przekazuje Ci go do wiadomości (art. 29 § 3 Kodeksu pracy). Pobierz go, przeczytaj i potwierdź, że go otrzymałaś/eś.</p>' +
+      // the legal basis comes from the server: not every "receipt only" document is the art. 29 § 3 information
+      h += '<p class="hint">Tego dokumentu się nie podpisuje — pracodawca przekazuje Ci go do wiadomości. Pobierz go, przeczytaj i potwierdź, że go otrzymałaś/eś.</p>' +
+        (d.reguly && d.reguly.pracownik && d.reguly.pracownik.podstawa ? '<p class="hint">' + esc(d.reguly.pracownik.podstawa) + '</p>' : '') +
         '<div class="acts">' + dl(d, 'wydany', 'Pobierz dokument') + '</div>' +
         '<label class="chk"><input type="checkbox" data-odb /><span>Potwierdzam, że otrzymałam/em ten dokument i mogę go zapisać oraz wydrukować.</span></label>' +
         '<button type="button" class="btn green wide" data-odbior disabled>Potwierdzam odbiór</button>';

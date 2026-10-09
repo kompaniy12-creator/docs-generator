@@ -313,8 +313,10 @@
     function sync() {
       var k = $('mKind').value, m = reguly.macierz.filter(function (r) { return r.rodzaj === k && r.cudzoziemiec === p.cudzoziemiec; })[0];
       $('mRule').textContent = m ? m.podstawa : '';
-      var def = k === 'informacja_warunki' ? 'potwierdzenie' : ['umowa_praca', 'aneks_praca', 'umowa_zlecenie', 'aneks_zlecenie', 'tlumaczenie', 'rozwiazanie', 'odpowiedzialnosc'].indexOf(k) !== -1 || (k === 'zwiazki_info' && p.cudzoziemiec) ? 'obie' : 'pracownik';
-      $('mSign').innerHTML = Object.keys(reguly.podpisuje).filter(function (x) { return k === 'informacja_warunki' ? x === 'potwierdzenie' : x !== 'potwierdzenie'; }).map(function (x) { return '<option value="' + esc(x) + '"' + (x === def ? ' selected' : '') + '>' + esc(reguly.podpisuje[x]) + '</option>'; }).join('');
+      // who signs: the server's default for this kind; where the kind leaves no choice (receipt only, employer only) only that one
+      var def = (m && m.podpisuje_domyslnie) || (k === 'informacja_warunki' ? 'potwierdzenie' : ['umowa_praca', 'aneks_praca', 'umowa_zlecenie', 'aneks_zlecenie', 'tlumaczenie', 'rozwiazanie', 'odpowiedzialnosc'].indexOf(k) !== -1 || (k === 'zwiazki_info' && p.cudzoziemiec) ? 'obie' : 'pracownik');
+      var wym = m && m.podpisuje_wymuszone !== undefined ? m.podpisuje_wymuszone : (k === 'informacja_warunki' ? 'potwierdzenie' : null);
+      $('mSign').innerHTML = Object.keys(reguly.podpisuje).filter(function (x) { return wym ? x === wym : x !== 'potwierdzenie'; }).map(function (x) { return '<option value="' + esc(x) + '"' + (x === def ? ' selected' : '') + '>' + esc(reguly.podpisuje[x]) + '</option>'; }).join('');
       if (!$('mTitle').value || $('mTitle').dataset.auto === '1') { $('mTitle').value = reguly.rodzaje[k]; $('mTitle').dataset.auto = '1'; }
     }
     $('mKind').addEventListener('change', sync); $('mTitle').addEventListener('input', function () { this.dataset.auto = ''; });

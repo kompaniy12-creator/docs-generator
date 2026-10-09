@@ -19,6 +19,11 @@
 //   reguly                      -> { rodzaje, metody, podpisuje, macierz[], ostrzezenia, potwierdzenia, stwierdzono,
 //                                    potwierdzenia_weryfikacji, powod_rodzaj, max_mb, max_mb_link: 15, formaty }
 //                                  max_mb is the caller's own upload limit: 15 with x-podpis-token, otherwise 24
+//                                  macierz row: { rodzaj, cudzoziemiec, pracodawca[], pracownik[], pracownik_po_kwalifikowanym[],
+//                                  podstawa, podpisuje_domyslnie, podpisuje_wymuszone } — podpisuje_wymuszone: "potwierdzenie"
+//                                  for informational kinds (receipt only), "pracodawca" for kinds the employer signs alone
+//                                  (świadectwo pracy, skierowanie na badania, kara porządkowa), else null; dokument_dodaj
+//                                  overrides whatever `podpisuje` was sent with it
 //   The caller is established from the headers BEFORE the body is read: without a valid token /
 //   session only a JSON body up to 10 KB is accepted (`reguly`). Uploads must carry Content-Length
 //   (411 kod "dlugosc") and are refused above the cap before reading (413 kod "rozmiar"):

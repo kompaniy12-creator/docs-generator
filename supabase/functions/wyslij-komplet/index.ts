@@ -119,12 +119,21 @@ Deno.serve(async (req) => {
     if (!komplet?.path) return json({ error: "Najpierw wygeneruj komplet dokumentów dla tego zgłoszenia." }, 400, origin);
     if (!body.mail && !body.telegram) return json({ error: "Wybierz e-mail lub Telegram." }, 400, origin);
 
-    const file = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${komplet.path}`, {
+    // The path sits in the submission's payload, which a Kadry user can edit: it is read with the
+    // service role, so only a komplet the portal itself saved is accepted — the exact shape
+    // history.js writes ("umowa-zlecenie/<date>/<id>.pdf"), known to the document history, and a PDF.
+    const path = String(komplet.path);
+    const ZLY = "Zapisany komplet ma nieprawidłową ścieżkę pliku — wygeneruj komplet ponownie.";
+    if (!/^umowa-zlecenie\/\d{4}-\d{2}-\d{2}\/[A-Za-z0-9-]{1,64}\.pdf$/.test(path) || path.includes("..")) return json({ error: ZLY, kod: "sciezka" }, 400, origin);
+    const h = await db(`portal_doc_history?pdf_path=eq.${encodeURIComponent(path)}&doc_type=eq.umowa-zlecenie&select=id&limit=1`);
+    if (!h.ok || !(await h.json()).length) return json({ error: ZLY, kod: "sciezka" }, 400, origin);
+    const file = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
       headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` },
     });
     if (!file.ok) return json({ error: "Nie udało się odczytać pliku kompletu." }, 502, origin);
     const pdf = new Uint8Array(await file.arrayBuffer());
-    const filename = komplet.filename || "komplet.pdf";
+    if (!(pdf.length > 4 && pdf[0] === 0x25 && pdf[1] === 0x50 && pdf[2] === 0x44 && pdf[3] === 0x46)) return json({ error: ZLY, kod: "sciezka" }, 400, origin);
+    const filename = String(komplet.filename || "komplet.pdf").replace(/[^A-Za-z0-9_.\-]+/g, "_").slice(0, 120) || "komplet.pdf";
     const text = messageText(row.worker_name ?? "", p.z_nazwa ?? "", p.u_typ ?? "");
 
     let mail = "skipped", telegram = "skipped";
@@ -154,9 +163,15 @@ Deno.serve(async (req) => {
         fd.append("chat_id", contact.chat);
         fd.append("caption", text.slice(0, 1000));
         fd.append("document", new Blob([pdf], { type: "application/pdf" }), filename);
-        const t = await fetch(`https://api.telegram.org/bot${TG}/sendDocument`, { method: "POST", body: fd });
-        telegram = t.ok ? "ok" : "Błąd wysyłki Telegram (" + t.status + ").";
-        if (!t.ok) console.error("telegram", t.status, await t.text());
+        // the bot token is part of the URL and a network error's text carries the URL: never log it as it is
+        try {
+          const t = await fetch(`https://api.telegram.org/bot${TG}/sendDocument`, { method: "POST", body: fd });
+          telegram = t.ok ? "ok" : "Błąd wysyłki Telegram (" + t.status + ").";
+          if (!t.ok) console.error("telegram", t.status, (await t.text()).split(TG).join("***").slice(0, 300));
+        } catch (e) {
+          console.error("telegram: błąd sieci", e instanceof Error ? e.name : "error");
+          telegram = "Błąd wysyłki Telegram (brak połączenia).";
+        }
       }
     }
 

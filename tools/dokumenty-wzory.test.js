@@ -14,7 +14,9 @@ const KATEGORIE = ['pisemna', 'dokumentowa', 'bez_podpisu'];
 const PODPISUJE = ['obie', 'pracodawca', 'pracownik', 'potwierdzenie'];
 const METODY = ['odreczny', 'kwalifikowany', 'zaufany'];
 const RODZAJE_PODPISY = ['umowa_praca', 'aneks_praca', 'umowa_zlecenie', 'aneks_zlecenie', 'tlumaczenie', 'zwiazki_info', 'rozwiazanie',
-  'ppk_rezygnacja', 'odpowiedzialnosc', 'pit2', 'kwestionariusz', 'oswiadczenie', 'zgoda_rodo', 'informacja_warunki', 'inny'];
+  'ppk_rezygnacja', 'odpowiedzialnosc', 'pit2', 'kwestionariusz', 'oswiadczenie', 'zgoda_rodo', 'informacja_warunki', 'inny',
+  'zakaz_konkurencji', 'kara_porzadkowa', 'zgoda_potracenie', 'swiadectwo_pracy', 'skierowanie_badania', 'upowaznienie_rodo', 'oswiadczenie_cudz_tresc',
+  'ppk_wniosek', 'wypowiedzenie_zlecenia', 'informacja_monitoring', 'informacja_dokumentacja', 'informacja_dok_pobytowy'];
 const TYPY_POL = ['tekst', 'dlugi', 'data', 'kwota', 'liczba', 'wybor', 'pesel', 'nip', 'regon', 'iban', 'email'];
 const TYPY_BLOKOW = Object.keys(K.BLOKI);
 const KLUCZE = ['id', 'nazwa', 'grupa', 'dla', 'zrodlo', 'podstawa', 'forma', 'pola', 'tresc', 'uwagi', 'dwujezyczny', 'do_zatwierdzenia', 'zweryfikowano'];

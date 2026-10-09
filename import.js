@@ -65,10 +65,14 @@
       var d = new Date(Math.round((v - 25569) * 86400000));
       return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
     }
-    var s = String(v).trim(), m;
-    if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return m[1] + '-' + pad(m[2]) + '-' + pad(m[3]);
-    if ((m = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})/))) return m[3] + '-' + pad(m[2]) + '-' + pad(m[1]);
-    return '';
+    var s = String(v).trim(), m, y, mo, d2;
+    if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) { y = +m[1]; mo = +m[2]; d2 = +m[3]; }
+    else if ((m = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})/))) { y = +m[3]; mo = +m[2]; d2 = +m[1]; }
+    else return '';
+    // a real calendar day only ("32.13.2020" is not a date)
+    var t = new Date(Date.UTC(y, mo - 1, d2));
+    if (y < 1900 || y > 2100 || t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== d2) return '';
+    return y + '-' + pad(mo) + '-' + pad(d2);
   }
   function cell(v) { return v instanceof Date ? toIso(v) : String(v == null ? '' : v).trim(); }
 
@@ -103,7 +107,15 @@
 
   // file -> { headers, rows } (the header row is the first one with at least 3 filled cells)
   async function parse(f) {
-    var wb = XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: true });
+    var buf = await f.arrayBuffer(), wb;
+    if (/\.csv$/i.test(f.name) || f.type === 'text/csv') {
+      // A CSV is plain text. Read as UTF-8 (Excel's older exports: Windows-1250) and keep every cell as it
+      // was typed — the spreadsheet library would otherwise guess: "01.11.2026" as 11 January, "31,40" as 3140,
+      // the postcode "00-000" or a PESEL starting with 0 as a number.
+      var text;
+      try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch (e) { text = new TextDecoder('windows-1250').decode(buf); }
+      wb = XLSX.read(text.replace(/^\uFEFF/, ''), { type: 'string', raw: true });
+    } else wb = XLSX.read(buf, { type: 'array', cellDates: true });
     var data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: true });
     var h = data.findIndex(function (r) { return r.filter(function (c) { return String(c).trim() !== ''; }).length >= 3; });
     if (h < 0) throw new Error('Nie znaleziono wiersza z nagłówkami kolumn.');
@@ -181,7 +193,8 @@
     if (p._typ) p.u_umowa = p._typ;
     if (p._typ) { p.u_typ = /zlec/.test(norm(p._typ)) ? 'zlecenie' : /prac/.test(norm(p._typ)) ? 'praca' : ''; if (!p.u_typ) delete p.u_typ; }
     delete p._typ;
-    if (p.p_pesel) p.p_pesel = digits(p.p_pesel).padStart(11, '0').slice(-11);
+    // Excel drops the leading zeros of a PESEL (people born 2000–2009): put back at most two; anything shorter is not a PESEL
+    if (p.p_pesel) { var pe = digits(p.p_pesel); if (pe.length >= 9 && pe.length <= 11) p.p_pesel = pe.padStart(11, '0'); else delete p.p_pesel; }
     if (p.a_kod && /^\d{5}$/.test(digits(p.a_kod))) p.a_kod = digits(p.a_kod).replace(/^(\d{2})(\d{3})$/, '$1-$2');
     return p;
   }
@@ -195,6 +208,10 @@
     $('preview').innerHTML = '<thead><tr>' + cols.map(function (f) { return '<th>' + esc(f.label) + '</th>'; }).join('') + '</tr></thead><tbody>' +
       list.map(function (p) { return '<tr>' + cols.map(function (f) { return '<td>' + esc(p[f.k] || '') + '</td>'; }).join('') + '</tr>'; }).join('') +
       '</tbody>';
+    // what will happen to the whole file, not only to the six rows shown
+    var ile = people().length, bez = rows.length - ile;
+    $('preview').innerHTML += '<tfoot><tr><td colspan="' + cols.length + '">Do importu: ' + ile + ' os.' + (ile > list.length ? ' (podgląd pokazuje pierwsze ' + list.length + ')' : '') +
+      (bez > 0 ? ' · wiersze bez nazwiska, które zostaną pominięte: ' + bez : '') + '</td></tr></tfoot>';
   }
 
   // ---------------- step 4: import ----------------

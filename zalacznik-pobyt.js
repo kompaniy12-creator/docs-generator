@@ -318,10 +318,10 @@ async function generate(data) {
   drawWrapAcross(p3, data.wymiar, 96, [524.2, 512.2], 426, 9, font);
   // wynagrodzenie
   if (data.kwota) {
-    const amount = `${formatAmountZL(data.kwota)} miesięcznie brutto`;
+    // amount and amount in words on the one line the form gives for them: written separately under the
+    // line, the words ran over the form's own caption "(słownie) / (in words) / …"
+    const amount = `${formatAmountZL(data.kwota)} miesięcznie brutto (słownie: ${amountInWords(data.kwota)})`;
     drawFit(p3, amount, 96, 467.4, 426, 9, font);
-    const slownie = `(słownie: ${amountInWords(data.kwota)} miesięcznie brutto)`;
-    drawFit(p3, slownie, 300, 458, 225, 8, font);
   }
   drawWrapAcross(p3, data.obowiazki, 96, [416.7, 403.0, 391.0], 430, 8.5, font);
   // okres od / do — both on one line (yyyy / mm / dd, one digit per cell)
@@ -394,7 +394,8 @@ form.addEventListener('submit', async (e) => {
   try {
     await loadFonts();
     const bytes = await generate(data);
-    const safe = (data.company.split(' ')[0] || 'spolka').toLowerCase().replace(/[^a-z0-9]/g, '');
+    // Polish letters become their plain counterparts (ł has no decomposition), the rest is dropped
+    const safe = (data.company.split(' ')[0] || 'spolka').toLowerCase().replace(/ł/g, 'l').normalize('NFD').replace(/[^a-z0-9]/g, '');
     const res = await saveAndDownload({
       docType: 'zalacznik-pobyt',
       title: 'Załącznik nr 1 do wniosku o pobyt czasowy',

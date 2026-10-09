@@ -119,6 +119,7 @@
         'color:#fff;background:#1B3F7F;padding:6px 12px;border-radius:999px;';
       btn.addEventListener('click', function () {
         btn.disabled = true; btn.textContent = '...';
+        try { Object.keys(localStorage).forEach(function (k) { if (/^tdcg_(autosave_|zlecenie_import$)/.test(k)) localStorage.removeItem(k); }); } catch (e) {}
         window.sb.auth.signOut().then(function () { location.replace('login.html'); });
       });
       bar.appendChild(who);

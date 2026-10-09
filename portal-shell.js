@@ -410,6 +410,8 @@
     if (drop && !drop.hidden && !t.closest('#psDrop')) drop.hidden = true;
     if (t.closest('#psOut') || t.closest('#psOut2')) {
       (t.closest('#psOut') || t.closest('#psOut2')).disabled = true;
+      // drafts of forms hold PESEL and passport numbers: they do not stay in the browser after sign-out
+      try { Object.keys(localStorage).forEach(function (k) { if (/^tdcg_(autosave_|zlecenie_import$)/.test(k)) localStorage.removeItem(k); }); } catch (e) {}
       return window.sb.auth.signOut().then(function () { location.replace('login.html'); });
     }
     var copy = t.closest('#psCopy');
