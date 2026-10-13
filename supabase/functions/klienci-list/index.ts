@@ -7,14 +7,26 @@ import { loadKlienciRows } from "../_shared/klienci.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
+// The portal's own pages may read how long each step took (Server-Timing: durations only, no data);
+// the preflight answer is remembered by the browser, so each call is one request instead of two.
+const PORTAL_ORIGIN = "https://docgenerator.td-group.pl";
 function cors(origin: string | null) {
   return {
     "Access-Control-Allow-Origin": origin ?? "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Vary": "Origin",
+    "Access-Control-Max-Age": "7200", "Access-Control-Expose-Headers": "Server-Timing", ...(origin === PORTAL_ORIGIN ? { "Timing-Allow-Origin": origin } : {}),
   };
 }
+function stoper() {
+  const t0 = performance.now(), kroki: string[] = [];
+  return {
+    m<T>(nazwa: string, p: Promise<T>): Promise<T> { const s = performance.now(); return p.finally(() => { kroki.push(`${nazwa};dur=${(performance.now() - s).toFixed(1)}`); }); },
+    naglowek: () => [...kroki, `total;dur=${(performance.now() - t0).toFixed(1)}`].join(", "),
+  };
+}
+type Stoper = ReturnType<typeof stoper>;
 function json(body: unknown, status: number, origin: string | null) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...cors(origin) } });
 }
@@ -32,14 +44,20 @@ async function requirePortal(req: Request) {
 }
 
 Deno.serve(async (req) => {
+  const t = stoper();
+  const res = await obsluz(req, t);
+  res.headers.set("Server-Timing", t.naglowek());
+  return res;
+});
+async function obsluz(req: Request, t: Stoper): Promise<Response> {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
-  if (!(await requirePortal(req))) return json({ error: "Brak dostępu (portal)." }, 403, origin);
+  if (!(await t.m("auth", requirePortal(req)))) return json({ error: "Brak dostępu (portal)." }, 403, origin);
 
   try {
-    return json({ clients: await loadKlienciRows() }, 200, origin);
+    return json({ clients: await t.m("klienci", loadKlienciRows()) }, 200, origin);
   } catch (e) {
     console.error(e);
     return json({ error: "Nie udało się odczytać bazy klientów." }, 502, origin);
   }
-});
+}

@@ -57,14 +57,26 @@ const CO_ZROBIC: Record<Doc["grupa"], string> = {
   umowa: "Umowa: prosimy o informację, czy umowa będzie przedłużona (przygotujemy dokumenty), czy współpraca się kończy.",
 };
 
+// The portal's own pages may read how long each step took (Server-Timing: durations only, no data);
+// the preflight answer is remembered by the browser, so each call is one request instead of two.
+const PORTAL_ORIGIN = "https://docgenerator.td-group.pl";
 function cors(origin: string | null) {
   return {
     "Access-Control-Allow-Origin": origin ?? "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Vary": "Origin",
+    "Access-Control-Max-Age": "7200", "Access-Control-Expose-Headers": "Server-Timing", ...(origin === PORTAL_ORIGIN ? { "Timing-Allow-Origin": origin } : {}),
   };
 }
+function stoper() {
+  const t0 = performance.now(), kroki: string[] = [];
+  return {
+    m<T>(nazwa: string, p: Promise<T>): Promise<T> { const s = performance.now(); return p.finally(() => { kroki.push(`${nazwa};dur=${(performance.now() - s).toFixed(1)}`); }); },
+    naglowek: () => [...kroki, `total;dur=${(performance.now() - t0).toFixed(1)}`].join(", "),
+  };
+}
+type Stoper = ReturnType<typeof stoper>;
 function json(body: unknown, status: number, origin: string | null) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...cors(origin) } });
 }
@@ -241,12 +253,14 @@ async function zakonczeni(dzis: string): Promise<Set<string>> {
   } catch (e) { console.error("klienci_baza", e); }
   return koniec;
 }
-async function plan(rows: Row[], dzis: string): Promise<{ plans: Plan[]; klienciBlad: string }> {
-  const sent = await sentKeys();
-  const koniec = await zakonczeni(dzis);
-  const due = windowItems(rows, dzis).filter((i) => !sent.has(key(i)) && !koniec.has(i.nip));
+// `wiersze`: the rows, or the read of them still under way — the other three reads do not wait for it
+async function plan(wiersze: Row[] | Promise<Row[]>, dzis: string): Promise<{ plans: Plan[]; klienciBlad: string }> {
   let klienci = new Map<string, Klient>(), klienciBlad = "";
-  try { klienci = await loadKlienci(); } catch (e) { klienciBlad = String((e as Error)?.message ?? e); }
+  const [rows, sent, koniec] = await Promise.all([
+    wiersze, sentKeys(), zakonczeni(dzis),
+    loadKlienci().then((k) => { klienci = k; }, (e) => { klienciBlad = String((e as Error)?.message ?? e); }),
+  ]);
+  const due = windowItems(rows, dzis).filter((i) => !sent.has(key(i)) && !koniec.has(i.nip));
   const by = new Map<string, Plan>();
   for (const i of due) {
     const id = i.nip || "nazwa:" + i.firma.toLowerCase();
@@ -440,6 +454,12 @@ async function run(dzis: string, dry = false) {
 }
 
 Deno.serve(async (req) => {
+  const t = stoper();
+  const res = await obsluz(req, t);
+  res.headers.set("Server-Timing", t.naglowek());
+  return res;
+});
+async function obsluz(req: Request, t: Stoper): Promise<Response> {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
@@ -474,7 +494,13 @@ Deno.serve(async (req) => {
       return json({ ok: problems.length === 0, problems }, 200, origin);
     }
 
-    const me = await portalUser(req);
+    // the preview: everything it shows is read at once — after the auth server has confirmed the caller
+    const podglad = () => Promise.all([
+      t.m("plan", plan(loadRows(), dzis)),
+      t.m("dziennik", db("portal_zadania_log?select=zadanie,dzien,started_at,ok,info&order=id.desc&limit=6").then(async (r) => (r.ok ? await r.json() : []))),
+      t.m("ustawienia", setting("terminy")),
+    ]);
+    const me = await t.m("auth", portalUser(req));
     if (!me) return json({ error: "Brak dostępu (portal, sekcja Kadry)." }, 403, origin);
 
     if (body.action === "settings") {
@@ -487,24 +513,23 @@ Deno.serve(async (req) => {
       return json({ ok: true, klient }, 200, origin);
     }
     if (body.action === "preview") {
-      const { plans, klienciBlad } = await plan(await loadRows(), dzis);
-      const last = await db("portal_zadania_log?select=zadanie,dzien,started_at,ok,info&order=id.desc&limit=6");
+      const [{ plans, klienciBlad }, last, tryb] = await podglad();
       return json({
-        mode: (await setting("terminy"))?.klient === "auto" ? "auto" : "off",
+        mode: tryb?.klient === "auto" ? "auto" : "off",
         admin: me.admin, mail_from: SMTP_USER, mail_configured: !!SMTP_PASS, klienciBlad,
         firmy: plans.map((p) => ({
           nip: p.nip, firma: p.firma, email: p.email,
           items: p.items.map((i) => ({ worker: i.worker, doc: i.doc.label, date: i.date, d: i.d })),
           ...mailFor(p.firma, p.items),
         })),
-        zadania: last.ok ? await last.json() : [],
+        zadania: last,
       }, 200, origin);
     }
     if (body.action === "send_firm") {
       const nip = digits(body.nip);
       if (nip.length !== 10) return json({ error: "Brak NIP firmy." }, 400, origin);
       if (!SMTP_PASS) return json({ error: "Poczta nie jest skonfigurowana." }, 400, origin);
-      const { plans, klienciBlad } = await plan(await loadRows(), dzis);
+      const { plans, klienciBlad } = await plan(loadRows(), dzis);
       if (klienciBlad) return json({ error: klienciBlad }, 502, origin);
       const p = plans.find((x) => x.nip === nip);
       if (!p) return json({ error: "Dla tej firmy nie ma nic do wysłania (już wysłano albo terminy się zmieniły)." }, 200, origin);
@@ -517,4 +542,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return json({ error: "Wewnętrzny błąd serwera." }, 500, origin);
   }
-});
+}

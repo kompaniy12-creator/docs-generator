@@ -27,12 +27,16 @@ function cleanSections(v: unknown): string[] | null {
   return Array.isArray(v) ? SECTIONS.filter((s) => v.includes(s)) : null;
 }
 
+// The portal's own pages may read how long each step took (Server-Timing: durations only, no data);
+// the preflight answer is remembered by the browser, so each call is one request instead of two.
+const PORTAL_ORIGIN = "https://docgenerator.td-group.pl";
 function cors(origin: string | null) {
   return {
     "Access-Control-Allow-Origin": origin ?? "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Vary": "Origin",
+    "Access-Control-Max-Age": "7200", "Access-Control-Expose-Headers": "Server-Timing", ...(origin === PORTAL_ORIGIN ? { "Timing-Allow-Origin": origin } : {}),
   };
 }
 function json(body: unknown, status: number, origin: string | null) {
@@ -157,7 +161,15 @@ const view = (u: AuthUser) => ({
   created_at: u.created_at ?? null, last_sign_in_at: u.last_sign_in_at ?? null,
 });
 
-Deno.serve(async (req) => {
+// Server-Timing: the handler's own time (a duration only), readable from the portal's pages
+function zCzasem(h: (req: Request) => Response | Promise<Response>) {
+  return async (req: Request) => {
+    const t0 = performance.now(), res = await h(req);
+    try { res.headers.set("Server-Timing", `total;dur=${(performance.now() - t0).toFixed(1)}`); } catch { /* headers that cannot be changed */ }
+    return res;
+  };
+}
+Deno.serve(zCzasem(async (req) => {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
@@ -184,9 +196,11 @@ Deno.serve(async (req) => {
     const kto = String(me.email ?? "").toLowerCase();
 
     if (body.action === "team") {
-      const all = await allUsers();
+      // four independent reads, at once
+      const [all, pr, kb, zs] = await Promise.all([
+        allUsers(), db("portal_pracownicy?select=*&order=imie_nazwisko.asc,email.asc"), db("klienci_baza?select=opiekun,kadrowy,status"), db("portal_ustawienia?key=eq.zadania&select=value"),
+      ]);
       const byMail = new Map(all.filter((u) => u.email).map((u) => [u.email!.toLowerCase(), u]));
-      const pr = await db("portal_pracownicy?select=*&order=imie_nazwisko.asc,email.asc");
       const tabela = pr.ok;
       // deno-lint-ignore no-explicit-any
       const profiles = (tabela ? await pr.json() : []).map((p: any) => {
@@ -196,7 +210,6 @@ Deno.serve(async (req) => {
       });
       // short names as the clients base has them, with the number of clients still served
       const skroty = new Map<string, { nazwa: string; opiekun: number; kadrowy: number }>();
-      const kb = await db("klienci_baza?select=opiekun,kadrowy,status");
       for (const k of (kb.ok ? await kb.json() : []) as { opiekun: string | null; kadrowy: string | null; status: string }[]) {
         if (k.status === "zakonczony") continue;
         for (const pole of ["opiekun", "kadrowy"] as const) {
@@ -208,7 +221,6 @@ Deno.serve(async (req) => {
         }
       }
       // what the Zadania settings still hold, so the administrator can move it into the profiles
-      const zs = await db("portal_ustawienia?key=eq.zadania&select=value");
       const zv = zs.ok ? (await zs.json())[0]?.value ?? {} : {};
       return json({
         me: me.id, email: kto, tabela, profiles,
@@ -304,4 +316,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return json({ error: "Wewnętrzny błąd serwera." }, 500, origin);
   }
-});
+}));

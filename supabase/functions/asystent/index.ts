@@ -191,9 +191,17 @@ const model: Model = {
   },
 };
 
-Deno.serve((req) => obsluz(req, {
+// Server-Timing: the handler's own time (a duration only), readable from the portal's pages
+function zCzasem(h: (req: Request) => Response | Promise<Response>) {
+  return async (req: Request) => {
+    const t0 = performance.now(), res = await h(req);
+    try { res.headers.set("Server-Timing", `total;dur=${(performance.now() - t0).toFixed(1)}`); } catch { /* headers that cannot be changed */ }
+    return res;
+  };
+}
+Deno.serve(zCzasem((req) => obsluz(req, {
   ja, baza, store, model, modelGotowy: !!klientApi,
   teraz: () => new Date(),
   // the run continues after the 202 answer; the page polls `stan`
   wTle: (p) => { const er = (globalThis as Any).EdgeRuntime; if (er?.waitUntil) er.waitUntil(p); },
-}));
+})));

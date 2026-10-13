@@ -9,12 +9,26 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
+// The portal's own pages may read how long each step took (Server-Timing: durations only, no data);
+// the preflight answer is remembered by the browser, so each call is one request instead of two.
+const PORTAL_ORIGIN = "https://docgenerator.td-group.pl";
 function cors(origin: string | null) {
-  return { "Access-Control-Allow-Origin": origin ?? "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Vary": "Origin" };
+  return {
+    "Access-Control-Allow-Origin": origin ?? "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Vary": "Origin",
+    "Access-Control-Max-Age": "7200", "Access-Control-Expose-Headers": "Server-Timing", ...(origin === PORTAL_ORIGIN ? { "Timing-Allow-Origin": origin } : {}),
+  };
 }
 function json(body: unknown, status: number, origin: string | null) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...cors(origin) } });
 }
+function stoper() {
+  const t0 = performance.now(), kroki: string[] = [];
+  return {
+    m<T>(nazwa: string, p: Promise<T>): Promise<T> { const s = performance.now(); return p.finally(() => { kroki.push(`${nazwa};dur=${(performance.now() - s).toFixed(1)}`); }); },
+    naglowek: () => [...kroki, `total;dur=${(performance.now() - t0).toFixed(1)}`].join(", "),
+  };
+}
+type Stoper = ReturnType<typeof stoper>;
 function db(path: string, init: RequestInit = {}) {
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, { ...init, headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, "Content-Type": "application/json", ...(init.headers ?? {}) } });
 }
@@ -60,37 +74,49 @@ async function portalEmails(): Promise<string[]> {
 }
 const top = (m: Map<string, number>, n: number) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([nazwa, ile]) => ({ nazwa, ile }));
 
+// every table the dashboard needs, read at once
+function czytaj(t: Stoper) {
+  return Promise.all([
+    t.m("rows", all("zatrudnienie_zgloszenia?select=id,worker_name,status,created_at,payload")),
+    t.m("zadania", all("portal_zadania?select=assignee,status,termin,pilne,eskalacja,done_at,done_by,created_at,created_by,zrodlo,tytul")),
+    t.m("onb", all("onboarding_clients?select=data")),
+    t.m("klienci", all("portal_klienci?select=id,nip,dane")),
+    t.m("konta", all("klient_konta?select=aktywny,last_login,haslo_hash")),
+    t.m("klog", all(`klient_log?select=akcja,at,email&at=gte.${ago(7)}`)),
+    t.m("joby", all(`portal_zadania_log?select=zadanie,started_at,ok,info&started_at=gte.${ago(8)}&order=started_at.desc`)),
+    t.m("powiad", all(`portal_powiadomienia?select=rodzaj,status,created_at&created_at=gte.${ago(30)}`)),
+    t.m("wiedza", all("portal_wiedza?select=do_sprawdzenia")),
+    t.m("akty", all("portal_prawo_akty?select=skrot,zmiana_wykryta,checked_at")),
+    t.m("faktury", db("invoices?select=synced_at&order=synced_at.desc&limit=1").then((r) => (r.ok ? r.json() : []))),
+    t.m("hist", all(`portal_doc_history?select=doc_type,created_at,user_email,title,subject&created_at=gte.${ago(30)}`)),
+    t.m("baza", soft("klienci_baza?select=id,nip,nazwa,forma,opiekun,kadrowy,status")),
+    t.m("umowy", soft("klienci_umowy?select=klient,status,rodzaj,podtyp,obejmuje,data_zawarcia,obowiazuje_od,obowiazuje_do,bezterminowa,kontrahent,kontrahent_krs,kontrahent_nip,reprezentanci,sprawdzil")),
+    t.m("tgWyniki", soft("klienci_telegram?select=klient,chat_id,status")),
+    t.m("podpisy", soft("podpisy_dokumenty?select=pakiet_id,pd_status,pr_status")),
+    t.m("pakiety", soft("podpisy_pakiety?select=id,status")),
+    t.m("poczta", soft("poczta_wiadomosci?select=status,wymaga&status=eq.nowa")),
+    t.m("sms", soft(`sms_wiadomosci?select=status,test,created_at&created_at=gte.${ago(7)}`)),
+    t.m("smsUst", soft("portal_ustawienia?select=value&key=eq.sms")),
+    t.m("prac", soft("portal_pracownicy?select=email,aktywny,telegram_chat")),
+    t.m("konta_portalu", portalEmails()),
+  ]);
+}
+
 Deno.serve(async (req) => {
+  const t = stoper();
+  const res = await obsluz(req, t);
+  res.headers.set("Server-Timing", t.naglowek());
+  return res;
+});
+async function obsluz(req: Request, t: Stoper): Promise<Response> {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
-  if (!(await isAdmin(req))) return json({ error: "Tylko administrator." }, 403, origin);
+  // nothing is read before the auth server has confirmed the caller
+  if (!(await t.m("auth", isAdmin(req)))) return json({ error: "Tylko administrator." }, 403, origin);
   try {
     const dzis = today();
-    const [rows, zadania, onb, klienci, konta, klog, joby, powiad, wiedza, akty, faktury, hist, baza, umowy, tgWyniki, podpisy, pakiety, poczta, sms, smsUst, prac, konta_portalu] = await Promise.all([
-      all("zatrudnienie_zgloszenia?select=id,worker_name,status,created_at,payload"),
-      all("portal_zadania?select=assignee,status,termin,pilne,eskalacja,done_at,done_by,created_at,created_by,zrodlo,tytul"),
-      all("onboarding_clients?select=data"),
-      all("portal_klienci?select=id,nip,dane"),
-      all("klient_konta?select=aktywny,last_login,haslo_hash"),
-      all(`klient_log?select=akcja,at,email&at=gte.${ago(7)}`),
-      all(`portal_zadania_log?select=zadanie,started_at,ok,info&started_at=gte.${ago(8)}&order=started_at.desc`),
-      all(`portal_powiadomienia?select=rodzaj,status,created_at&created_at=gte.${ago(30)}`),
-      all("portal_wiedza?select=do_sprawdzenia"),
-      all("portal_prawo_akty?select=skrot,zmiana_wykryta,checked_at"),
-      db("invoices?select=synced_at&order=synced_at.desc&limit=1").then((r) => (r.ok ? r.json() : [])),
-      all(`portal_doc_history?select=doc_type,created_at,user_email,title,subject&created_at=gte.${ago(30)}`),
-      soft("klienci_baza?select=id,nip,nazwa,forma,opiekun,kadrowy,status"),
-      soft("klienci_umowy?select=klient,status,rodzaj,podtyp,obejmuje,data_zawarcia,obowiazuje_od,obowiazuje_do,bezterminowa,kontrahent,kontrahent_krs,kontrahent_nip,reprezentanci,sprawdzil"),
-      soft("klienci_telegram?select=klient,chat_id,status"),
-      soft("podpisy_dokumenty?select=pakiet_id,pd_status,pr_status"),
-      soft("podpisy_pakiety?select=id,status"),
-      soft("poczta_wiadomosci?select=status,wymaga&status=eq.nowa"),
-      soft(`sms_wiadomosci?select=status,test,created_at&created_at=gte.${ago(7)}`),
-      soft("portal_ustawienia?select=value&key=eq.sms"),
-      soft("portal_pracownicy?select=email,aktywny,telegram_chat"),
-      portalEmails(),
-    ]);
+    const [rows, zadania, onb, klienci, konta, klog, joby, powiad, wiedza, akty, faktury, hist, baza, umowy, tgWyniki, podpisy, pakiety, poczta, sms, smsUst, prac, konta_portalu] = await czytaj(t);
 
     // ---- Kadry
     const st: Record<string, number> = {};
@@ -242,4 +268,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return json({ error: "Wewnętrzny błąd serwera." }, 500, origin);
   }
-});
+}

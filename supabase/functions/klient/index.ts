@@ -40,12 +40,16 @@ const SMTP_PASS = Deno.env.get("SMTP_PASS") ?? "";
 const APP = "https://docgenerator.td-group.pl/klient/";
 const LINK_MIN = 20, SESSION_DAYS = 30, LINKS_PER_15MIN = 3;
 
+// The portal's own pages may read how long each step took (Server-Timing: durations only, no data);
+// the preflight answer is remembered by the browser, so each call is one request instead of two.
+const PORTAL_ORIGIN = "https://docgenerator.td-group.pl";
 function cors(origin: string | null) {
   return {
     "Access-Control-Allow-Origin": origin ?? "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-klient-token",
     "Vary": "Origin",
+    "Access-Control-Max-Age": "7200", "Access-Control-Expose-Headers": "Server-Timing", ...(origin === PORTAL_ORIGIN ? { "Timing-Allow-Origin": origin } : {}),
   };
 }
 function json(body: unknown, status: number, origin: string | null) {
@@ -275,7 +279,15 @@ async function firmNames(nips: string[]): Promise<{ nip: string; nazwa: string }
   return nips.map((n) => ({ nip: n, nazwa: list.find((x) => x.nip === n)?.dane?.nazwa ?? `NIP ${n}` }));
 }
 
-Deno.serve(async (req) => {
+// Server-Timing: the handler's own time (a duration only), readable from the portal's pages
+function zCzasem(h: (req: Request) => Response | Promise<Response>) {
+  return async (req: Request) => {
+    const t0 = performance.now(), res = await h(req);
+    try { res.headers.set("Server-Timing", `total;dur=${(performance.now() - t0).toFixed(1)}`); } catch { /* headers that cannot be changed */ }
+    return res;
+  };
+}
+Deno.serve(zCzasem(async (req) => {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
@@ -491,4 +503,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return json({ error: "Wewnętrzny błąd serwera." }, 500, origin);
   }
-});
+}));

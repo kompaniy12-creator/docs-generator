@@ -63,8 +63,14 @@ KONTA.kadry.pass = Deno.env.get("IMAP_PASS_KADRY") ?? (SMTP_USER === KONTA.kadry
 
 // deno-lint-ignore no-explicit-any
 type Any = any;
+// The portal's own pages may read how long each step took (Server-Timing: durations only, no data);
+// the preflight answer is remembered by the browser, so each call is one request instead of two.
+const PORTAL_ORIGIN = "https://docgenerator.td-group.pl";
 function cors(origin: string | null) {
-  return { "Access-Control-Allow-Origin": origin ?? "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Vary": "Origin" };
+  return {
+    "Access-Control-Allow-Origin": origin ?? "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Vary": "Origin",
+    "Access-Control-Max-Age": "7200", "Access-Control-Expose-Headers": "Server-Timing", ...(origin === PORTAL_ORIGIN ? { "Timing-Allow-Origin": origin } : {}),
+  };
 }
 function db(path: string, init: RequestInit = {}) {
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, { ...init, headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, "Content-Type": "application/json", ...(init.headers ?? {}) } });
@@ -307,7 +313,15 @@ const deps: Deps = {
   bg(p) { const rt = (globalThis as Any).EdgeRuntime; if (rt?.waitUntil) rt.waitUntil(p); },
 };
 
-Deno.serve(async (req) => {
+// Server-Timing: the handler's own time (a duration only), readable from the portal's pages
+function zCzasem(h: (req: Request) => Response | Promise<Response>) {
+  return async (req: Request) => {
+    const t0 = performance.now(), res = await h(req);
+    try { res.headers.set("Server-Timing", `total;dur=${(performance.now() - t0).toFixed(1)}`); } catch { /* headers that cannot be changed */ }
+    return res;
+  };
+}
+Deno.serve(zCzasem(async (req) => {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (req.method !== "POST") return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: { "Content-Type": "application/json", ...cors(origin) } });
@@ -317,4 +331,4 @@ Deno.serve(async (req) => {
   // an attachment: bytes for a download, never a page
   if (out.raw) return new Response(out.raw.bytes as BodyInit, { status: 200, headers: { ...out.raw.headers, ...cors(origin) } });
   return new Response(JSON.stringify(out.body), { status: out.status, headers: { "Content-Type": "application/json", ...cors(origin) } });
-});
+}));

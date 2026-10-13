@@ -35,8 +35,14 @@ const STRONA = 50;
 // deno-lint-ignore no-explicit-any
 type Any = any;
 
+// The portal's own pages may read how long each step took (Server-Timing: durations only, no data);
+// the preflight answer is remembered by the browser, so each call is one request instead of two.
+const PORTAL_ORIGIN = "https://docgenerator.td-group.pl";
 function cors(origin: string | null) {
-  return { "Access-Control-Allow-Origin": origin ?? "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Vary": "Origin" };
+  return {
+    "Access-Control-Allow-Origin": origin ?? "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Vary": "Origin",
+    "Access-Control-Max-Age": "7200", "Access-Control-Expose-Headers": "Server-Timing", ...(origin === PORTAL_ORIGIN ? { "Timing-Allow-Origin": origin } : {}),
+  };
 }
 function json(body: unknown, status: number, origin: string | null) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...cors(origin) } });
@@ -103,7 +109,15 @@ async function saldo(): Promise<{ punkty: number | null; platnosc?: string; blad
   return { punkty: Number(w.dane.points), platnosc: String(w.dane.payment_type ?? "").slice(0, 20) };
 }
 
-Deno.serve(async (req) => {
+// Server-Timing: the handler's own time (a duration only), readable from the portal's pages
+function zCzasem(h: (req: Request) => Response | Promise<Response>) {
+  return async (req: Request) => {
+    const t0 = performance.now(), res = await h(req);
+    try { res.headers.set("Server-Timing", `total;dur=${(performance.now() - t0).toFixed(1)}`); } catch { /* headers that cannot be changed */ }
+    return res;
+  };
+}
+Deno.serve(zCzasem(async (req) => {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   const url = new URL(req.url);
@@ -227,4 +241,4 @@ Deno.serve(async (req) => {
     console.error("sms", action, String((e as Error)?.message ?? e).slice(0, 200));
     return json({ error: "Błąd serwera — spróbuj ponownie." }, 500, origin);
   }
-});
+}));

@@ -316,8 +316,9 @@
     document.body.appendChild(dim);
     document.body.appendChild(tabs);
     refresh();
-    loadBadge();
-    loadTasks();
+    loadBadge(true);
+    loadTasks(true);
+    firstMail();
   }
 
   var FOLD_KEY = 'tdcg_menu_open';
@@ -417,6 +418,7 @@
       (t.closest('#psOut') || t.closest('#psOut2')).disabled = true;
       // drafts of forms hold PESEL and passport numbers: they do not stay in the browser after sign-out
       try { Object.keys(localStorage).forEach(function (k) { if (/^tdcg_(autosave_|zlecenie_import$)/.test(k)) localStorage.removeItem(k); }); } catch (e) {}
+      try { sessionStorage.removeItem('tdcg_liczniki'); } catch (e) {}
       return window.sb.auth.signOut().then(function () { location.replace('login.html'); });
     }
     var copy = t.closest('#psCopy');
@@ -429,37 +431,65 @@
   });
   window.addEventListener('hashchange', refresh);
 
+  // The three counters of the menu. Each is a bare number, remembered for a minute in this tab (sessionStorage) and
+  // shown at once on the next page. New submissions and tasks are still asked for on every page (cheap); unread
+  // mail — the slow one, the server signs in to the mailboxes — is asked for again only when the number is older
+  // than a minute or a page calls PortalShell.refreshMail(). Nothing but the numbers is stored.
+  var CNT_KEY = 'tdcg_liczniki', CNT_TTL = 60000;
+  var cntWho = (function (e) { var h = 5381; for (var i = 0; i < e.length; i++) h = ((h << 5) + h + e.charCodeAt(i)) | 0; return String(h); })(String(user.email || ''));
+  function cntRead() { try { var o = JSON.parse(sessionStorage.getItem(CNT_KEY) || '{}'); return o && o.u === cntWho ? o : { u: cntWho }; } catch (e) { return { u: cntWho }; } }
+  function cntGet(k) { var c = cntRead()[k]; return c && Date.now() - c.at < CNT_TTL && Date.now() >= c.at ? c.n : null; }
+  function cntSet(k, n) { try { var o = cntRead(); o[k] = { n: n, at: Date.now() }; sessionStorage.setItem(CNT_KEY, JSON.stringify(o)); } catch (e) {} }
+  function show(attr, n) { document.querySelectorAll('[' + attr + ']').forEach(function (b) { b.hidden = !n; b.textContent = n; }); }
+
   // number of new submissions waiting for the HR team
-  function loadBadge() {
+  function loadBadge(cached) {
     if (!acc.has('kadry') || !window.sb) return;
+    var c = cached === true ? cntGet('b') : null;
+    if (c !== null) show('data-badge', c);
     window.sb.from('zatrudnienie_zgloszenia').select('id', { count: 'exact', head: true }).eq('status', 'nowe').then(function (r) {
       var n = r && !r.error ? r.count : 0;
-      document.querySelectorAll('[data-badge]').forEach(function (b) { b.hidden = !n; b.textContent = n; });
+      if (r && !r.error) cntSet('b', n);
+      show('data-badge', n);
     });
   }
   // my open tasks
-  function loadTasks() {
+  function loadTasks(cached) {
     if (!window.sb || !user.email) return;
+    var c = cached === true ? cntGet('t') : null;
+    if (c !== null) show('data-tbadge', c);
     window.sb.from('portal_zadania').select('id', { count: 'exact', head: true }).eq('assignee', String(user.email).toLowerCase()).in('status', ['nowe', 'w_toku']).then(function (r) {
       var n = r && !r.error ? r.count : 0;
-      document.querySelectorAll('[data-tbadge]').forEach(function (b) { b.hidden = !n; b.textContent = n; });
+      if (r && !r.error) cntSet('t', n);
+      show('data-tbadge', n);
     });
   }
   // unread mail in the office mailboxes the user may see (the function keeps a one-minute cache)
-  function loadMail() {
+  function loadMail(cached) {
     if (!(acc.has('kadry') || acc.has('onboarding')) || !window.sb) return;
+    var c = cached === true ? cntGet('p') : null;
+    if (c !== null) return show('data-pbadge', c);
     window.sb.auth.getSession().then(function (r) {
       var t = r && r.data && r.data.session && r.data.session.access_token; if (!t) return;
       return fetch('https://dpfxwkxpzqqjtmgqwozw.supabase.co/functions/v1/poczta', { method: 'POST',
         headers: { 'Content-Type': 'application/json', apikey: window.sb.supabaseKey || '', Authorization: 'Bearer ' + t },
-        body: JSON.stringify({ action: 'nieprzeczytane' }) }).then(function (x) { return x.json(); }).then(function (o) {
-          var n = (o && o.razem) || 0;
-          document.querySelectorAll('[data-pbadge]').forEach(function (b) { b.hidden = !n; b.textContent = n; });
+        body: JSON.stringify({ action: 'nieprzeczytane' }) }).then(function (x) { return x.json().then(function (o) { return { ok: x.ok, o: o }; }); }).then(function (w) {
+          var n = (w.o && w.o.razem) || 0;
+          if (w.ok && w.o && typeof w.o.razem === 'number') cntSet('p', n);
+          show('data-pbadge', n);
         });
     }).catch(function () {});
   }
-  loadMail(); setInterval(loadMail, 180000);
-  window.PortalShell = { refreshBadge: loadBadge, refreshTasks: loadTasks, refreshMail: loadMail };
+  // the first look at the mailboxes waits until the page itself has loaded its data: nothing on the page depends on it
+  function firstMail() {
+    var first = function () { loadMail(true); };
+    var idle = function () { if (window.requestIdleCallback) window.requestIdleCallback(first, { timeout: 2500 }); else setTimeout(first, 600); };
+    if (cntGet('p') !== null) first();
+    else if (document.readyState === 'complete') idle();
+    else window.addEventListener('load', idle, { once: true });
+  }
+  setInterval(loadMail, 180000);
+  window.PortalShell = { refreshBadge: function () { loadBadge(); }, refreshTasks: function () { loadTasks(); }, refreshMail: function () { loadMail(); } };
 
   if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
 })();

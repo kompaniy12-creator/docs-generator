@@ -25,14 +25,26 @@ const CRON_KEY = Deno.env.get("CRON_KEY") ?? "";
 const PORTAL = "https://docgenerator.td-group.pl";
 const KEY = "zadania";
 
+// The portal's own pages may read how long each step took (Server-Timing: durations only, no data);
+// the preflight answer is remembered by the browser, so each call is one request instead of two.
+const PORTAL_ORIGIN = "https://docgenerator.td-group.pl";
 function cors(origin: string | null) {
   return {
     "Access-Control-Allow-Origin": origin ?? "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Vary": "Origin",
+    "Access-Control-Max-Age": "7200", "Access-Control-Expose-Headers": "Server-Timing", ...(origin === PORTAL_ORIGIN ? { "Timing-Allow-Origin": origin } : {}),
   };
 }
+function stoper() {
+  const t0 = performance.now(), kroki: string[] = [];
+  return {
+    m<T>(nazwa: string, p: Promise<T>): Promise<T> { const s = performance.now(); return p.finally(() => { kroki.push(`${nazwa};dur=${(performance.now() - s).toFixed(1)}`); }); },
+    naglowek: () => [...kroki, `total;dur=${(performance.now() - t0).toFixed(1)}`].join(", "),
+  };
+}
+type Stoper = ReturnType<typeof stoper>;
 function json(body: unknown, status: number, origin: string | null) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...cors(origin) } });
 }
@@ -78,19 +90,32 @@ async function settings(): Promise<Settings> {
 // What is in force: the staff profiles (portal_pracownicy, page Zespół) win over the settings key —
 // a person's Telegram chat, and the default HR person (the deputy while that person is away).
 // No table, no profile or any error leaves the stored settings in force.
-async function effective(): Promise<Settings> {
-  const set = await settings();
+// The three reads are independent and run at once. `zapisane` is the settings key exactly as stored (what an
+// administrator edits); `users` lets the caller share one list of portal accounts with this check.
+async function efektywne(users: () => Promise<{ email: string; admin: boolean }[]> = portalUsers, t?: Stoper): Promise<{ set: Settings; zapisane: Settings }> {
+  const m = <T>(nazwa: string, p: Promise<T>) => (t ? t.m(nazwa, p) : p);
+  const profile = Promise.all([
+    m("pracownicy", db("portal_pracownicy?aktywny=is.true&telegram_chat=not.is.null&select=email,telegram_chat")),
+    m("domyslny", db("rpc/portal_pracownik_domyslny", { method: "POST", body: JSON.stringify({ p_dzial: "kadry" }) })),
+  ]).catch((e) => { console.error("pracownicy", e); return null; });
+  const set = await m("ustawienia", settings());
+  const zapisane: Settings = { telegram: { ...set.telegram }, szef: set.szef, kadry: set.kadry };
   try {
-    const r = await db("portal_pracownicy?aktywny=is.true&telegram_chat=not.is.null&select=email,telegram_chat");
-    for (const p of (r.ok ? await r.json() : []) as { email: string; telegram_chat: string }[]) {
-      if (/^-?\d{4,20}$/.test(p.telegram_chat ?? "")) set.telegram[p.email] = p.telegram_chat;
+    const odp = await profile;
+    if (odp) {
+      const [r, d] = odp;
+      for (const p of (r.ok ? await r.json() : []) as { email: string; telegram_chat: string }[]) {
+        if (/^-?\d{4,20}$/.test(p.telegram_chat ?? "")) set.telegram[p.email] = p.telegram_chat;
+      }
+      const who = d.ok ? await d.json() : null;
+      // tasks may only go to somebody who can sign in to the portal
+      if (typeof who === "string" && who && who !== set.kadry && (await users()).some((u) => u.email === who)) set.kadry = who;
     }
-    const d = await db("rpc/portal_pracownik_domyslny", { method: "POST", body: JSON.stringify({ p_dzial: "kadry" }) });
-    const who = d.ok ? await d.json() : null;
-    // tasks may only go to somebody who can sign in to the portal
-    if (typeof who === "string" && who && who !== set.kadry && (await portalUsers()).some((u) => u.email === who)) set.kadry = who;
   } catch (e) { console.error("pracownicy", e); }
-  return set;
+  return { set, zapisane };
+}
+async function effective(): Promise<Settings> {
+  return (await efektywne()).set;
 }
 async function tgSend(chat: string, text: string): Promise<boolean> {
   if (!TG || !/^-?\d{4,20}$/.test(chat)) return false;
@@ -267,6 +292,12 @@ async function run(dry: boolean) {
 }
 
 Deno.serve(async (req) => {
+  const t = stoper();
+  const res = await obsluz(req, t);
+  res.headers.set("Server-Timing", t.naglowek());
+  return res;
+});
+async function obsluz(req: Request, t: Stoper): Promise<Response> {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
@@ -290,16 +321,21 @@ Deno.serve(async (req) => {
       }
     }
 
-    const me = await portalUser(req);
+    // Nothing is read before the auth server has confirmed the caller. After that the settings and (for the team
+    // list) the portal accounts are read at once; one list of accounts serves both the settings and the answer.
+    let konta: Promise<{ email: string; admin: boolean }[]> | null = null;
+    const users = () => (konta ??= t.m("konta", portalUsers()));
+    const me = await t.m("auth", portalUser(req));
     if (!me) return json({ error: "Brak dostępu (portal)." }, 403, origin);
-    const set = await effective();
+    if (body.action === "team") users().catch(() => {});
+    const { set, zapisane } = await efektywne(users, t);
 
     if (body.action === "team") {
-      const users = await portalUsers();
+      const lista = await users();
       return json({
         me: me.email, admin: me.admin,
-        team: users.map((u) => ({ email: u.email, admin: u.admin, telegram: !!set.telegram[u.email] })),
-        settings: me.admin ? await settings() : undefined, szef: !!set.szef, bot: !!TG,
+        team: lista.map((u) => ({ email: u.email, admin: u.admin, telegram: !!set.telegram[u.email] })),
+        settings: me.admin ? zapisane : undefined, szef: !!set.szef, bot: !!TG,
       }, 200, origin);
     }
     if (body.action === "notify") {
@@ -326,7 +362,7 @@ Deno.serve(async (req) => {
 
     if (!me.admin) return json({ error: "Tylko administrator." }, 403, origin);
     if (body.action === "settings") {
-      const emails = new Set((await portalUsers()).map((u) => u.email));
+      const emails = new Set((await users()).map((u) => u.email));
       const telegram: Record<string, string> = {};
       for (const [k, v] of Object.entries(body.telegram ?? {})) {
         const chat = String(v ?? "").trim();
@@ -351,4 +387,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return json({ error: "Wewnętrzny błąd serwera." }, 500, origin);
   }
-});
+}

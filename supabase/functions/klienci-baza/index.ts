@@ -78,9 +78,23 @@ async function limit(klucz: string, max: number, ile = 1): Promise<boolean> {
 // deno-lint-ignore no-explicit-any
 type Any = any;
 
+// The portal's own pages may read how long each step took (Server-Timing: durations only, no data);
+// the preflight answer is remembered by the browser, so each call is one request instead of two.
+const PORTAL_ORIGIN = "https://docgenerator.td-group.pl";
 function cors(origin: string | null) {
-  return { "Access-Control-Allow-Origin": origin ?? "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Vary": "Origin" };
+  return {
+    "Access-Control-Allow-Origin": origin ?? "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type", "Vary": "Origin",
+    "Access-Control-Max-Age": "7200", "Access-Control-Expose-Headers": "Server-Timing", ...(origin === PORTAL_ORIGIN ? { "Timing-Allow-Origin": origin } : {}),
+  };
 }
+function stoper() {
+  const t0 = performance.now(), kroki: string[] = [];
+  return {
+    m<T>(nazwa: string, p: Promise<T>): Promise<T> { const s = performance.now(); return p.finally(() => { kroki.push(`${nazwa};dur=${(performance.now() - s).toFixed(1)}`); }); },
+    naglowek: () => [...kroki, `total;dur=${(performance.now() - t0).toFixed(1)}`].join(", "),
+  };
+}
+type Stoper = ReturnType<typeof stoper>;
 function json(body: unknown, status: number, origin: string | null) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...cors(origin) } });
 }
@@ -118,14 +132,16 @@ const REJ_KOL = "id,klient,nip,fetched_at,sprawdzono_at,zrodlo,znaleziono,krs,re
 // ---------------------------------------------------------------- klienci_baza follows the list (portal_klienci)
 // the clients as stored: [{ id, dane }]
 const listaKlientow = () => all("portal_klienci?select=id,dane&order=id");
-async function sync(force: boolean): Promise<{ zsynchronizowano: boolean; blad?: string }> {
+const ostatniSync = () => db("klienci_baza?select=arkusz_at&arkusz_at=not.is.null&order=arkusz_at.desc&limit=1").then(async (r) => (r.ok ? (await r.json())[0]?.arkusz_at : null) as string | null);
+// `pre`: the same two reads already started by the caller (the list page) — used instead of reading again.
+// `proba` says whether the list was compared at all (false = it was fresh enough and nothing was touched).
+async function sync(force: boolean, pre?: { ostatni: Promise<string | null>; pk: Promise<Any[]> }): Promise<{ zsynchronizowano: boolean; blad?: string; proba?: boolean }> {
   if (!force) {
-    const r = await db("klienci_baza?select=arkusz_at&arkusz_at=not.is.null&order=arkusz_at.desc&limit=1");
-    const last = r.ok ? (await r.json())[0]?.arkusz_at : null;
-    if (last && Date.now() - Date.parse(last) < SYNC_MIN * 60000) return { zsynchronizowano: false };
+    const last = await (pre ? pre.ostatni : ostatniSync());
+    if (last && Date.now() - Date.parse(last) < SYNC_MIN * 60000) return { zsynchronizowano: false, proba: false };
   }
   try {
-    const list = await listaKlientow();
+    const list = await (pre ? pre.pk : listaKlientow());
     if (list.length < 3) throw new Error("podejrzanie mało wierszy w bazie klientów"); // never mark everybody as gone on a broken read
     const now = new Date().toISOString(), seen = new Set<string>(), rows: Any[] = [];
     const t = (v: unknown, n = 300) => String(v ?? "").trim().slice(0, n) || null;
@@ -489,15 +505,34 @@ async function rozpoznaj(id: string, ja: Ja, force: boolean, origin: string | nu
 }
 
 // ---------------------------------------------------------------- everything the page shows
-async function lista(ja: Ja) {
-  const s = await sync(false);
+// The reads of the list that depend neither on who asks nor on each other: started at once, together with the
+// administrator's extras — always AFTER the auth server has confirmed the caller.
+function wstepne(t?: Stoper) {
+  const m = <T>(nazwa: string, p: Promise<T>): Promise<T> => { const x = t ? t.m(nazwa, p) : p; x.catch(() => {}); return x; };
+  return {
+    ostatni: m("sync_kiedy", ostatniSync()),
+    klienci: m("klienci_baza", all("klienci_baza?select=*&order=nazwa")),
+    rej: m("rejestr", all(`klienci_rejestr?select=${REJ_KOL}&order=fetched_at.desc`)),
+    jdgDane: m("rejestr_jdg", all("klienci_rejestr?zrodlo=neq.krs&select=id,dane")), // sole traders: the normalised record (no raw answers are kept for them)
+    odpisy: m("odpisy", all("portal_odpisy_cache?select=krs,fetched_at")),
+    pk: m("portal_klienci", listaKlientow()),
+    tgWyniki: m("telegram", all("klienci_telegram?select=*")),
+  };
+}
+async function lista(ja: Ja, t?: Stoper) {
+  const pre = wstepne(t);
+  const m = <T>(nazwa: string, p: Promise<T>): Promise<T> => (t ? t.m(nazwa, p) : p);
+  // the administrator's extras do not depend on the sync either
+  const dlaAdmina = ja.admin ? m("admin", Promise.all([
+    all("klienci_umowy?select=*&order=created_at.desc"), all("klienci_status_historia?select=*&order=created_at.desc"), all("klienci_zmiany?select=*&order=created_at.desc"), tgUstawienia(),
+    // short names of the staff (module Zespół), when that table is there and filled
+    all("portal_pracownicy?select=aliasy,aktywny").then((l) => l.filter((p) => p.aktywny !== false).flatMap((p) => Array.isArray(p.aliasy) ? p.aliasy : []).map((a) => String(a).trim()).filter(Boolean) as string[]).catch(() => [] as string[] /* no such table yet */),
+  ])) : null;
+  dlaAdmina?.catch(() => {});
+  const { proba, ...s } = await m("sync", sync(false, pre));
   const [klienci, rej, jdgDane, odpisy, pk, tgWyniki] = await Promise.all([
-    all("klienci_baza?select=*&order=nazwa"),
-    all(`klienci_rejestr?select=${REJ_KOL}&order=fetched_at.desc`),
-    all("klienci_rejestr?zrodlo=neq.krs&select=id,dane"), // sole traders: the normalised record (no raw answers are kept for them)
-    all("portal_odpisy_cache?select=krs,fetched_at"),
-    listaKlientow(),
-    all("klienci_telegram?select=*"),
+    proba === false ? pre.klienci : m("klienci_baza_po_sync", all("klienci_baza?select=*&order=nazwa")), // the sync may have changed these rows: read again
+    pre.rej, pre.jdgDane, pre.odpisy, pre.pk, pre.tgWyniki,
   ]);
   const dane = new Map<string, Any>(pk.map((x) => [x.id, x.dane ?? {}]));
   const jdgBy = new Map<string, Any>(jdgDane.map((x) => [x.id, x.dane ?? {}]));
@@ -515,11 +550,7 @@ async function lista(ja: Ja) {
   for (const r of rej) { const l = rejBy.get(r.klient) ?? []; l.push(r); rejBy.set(r.klient, l); }
   const odpis = new Map<string, string>(odpisy.map((o) => [String(o.krs), String(o.fetched_at)]));
   let umowy: Any[] = [], historia: Any[] = [], zmiany: Any[] = [], ust: Any = {}, aliasy: string[] = [];
-  if (ja.admin) {
-    [umowy, historia, zmiany, ust] = await Promise.all([all("klienci_umowy?select=*&order=created_at.desc"), all("klienci_status_historia?select=*&order=created_at.desc"), all("klienci_zmiany?select=*&order=created_at.desc"), tgUstawienia()]);
-    // short names of the staff (module Zespół), when that table is there and filled
-    try { aliasy = (await all("portal_pracownicy?select=aliasy,aktywny")).filter((p) => p.aktywny !== false).flatMap((p) => Array.isArray(p.aliasy) ? p.aliasy : []).map((a) => String(a).trim()).filter(Boolean); } catch { /* no such table yet */ }
-  }
+  if (dlaAdmina) [umowy, historia, zmiany, ust, aliasy] = await dlaAdmina;
   const dzis = new Date().toISOString().slice(0, 10), teraz = Date.now();
   const out = klienci.map((k) => {
     const rs = rejBy.get(k.id) ?? [], r = rs[0] ?? null;
@@ -576,6 +607,12 @@ async function lista(ja: Ja) {
 }
 
 Deno.serve(async (req) => {
+  const t = stoper();
+  const res = await obsluz(req, t);
+  res.headers.set("Server-Timing", t.naglowek());
+  return res;
+});
+async function obsluz(req: Request, t: Stoper): Promise<Response> {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
@@ -587,15 +624,15 @@ Deno.serve(async (req) => {
     try { return json(await tgCron(), 200, origin); }
     catch (e) { console.error("klienci-baza telegram_cron", String((e as Error)?.message ?? e).slice(0, 200)); return json({ error: "Błąd kontroli Telegram." }, 500, origin); }
   }
-  const ja = await portal(req);
+  const action = String(body?.action ?? "");
+  const ja = await t.m("auth", portal(req));
   if (!ja) return json({ error: "Brak dostępu (portal)." }, 403, origin);
   if (zly) return json({ error: "Nieprawidłowy JSON." }, 400, origin);
-  const action = String(body?.action ?? "");
   const tylkoAdmin = () => json({ error: "Tę czynność może wykonać tylko administrator portalu." }, 403, origin);
 
   try {
-    if (action === "lista") return json(await lista(ja), 200, origin);
-    if (action === "sync") { if (!ja.admin) return tylkoAdmin(); return json(await sync(true), 200, origin); }
+    if (action === "lista") return json(await lista(ja, t), 200, origin);
+    if (action === "sync") { if (!ja.admin) return tylkoAdmin(); const { proba: _p, ...w } = await sync(true); return json(w, 200, origin); }
 
     if (action === "rejestr") {
       if (!ja.admin) return tylkoAdmin();
@@ -746,4 +783,4 @@ Deno.serve(async (req) => {
     console.error("klienci-baza", action, String((e as Error)?.message ?? e).slice(0, 200));
     return json({ error: "Błąd serwera — spróbuj ponownie." }, 500, origin);
   }
-});
+}

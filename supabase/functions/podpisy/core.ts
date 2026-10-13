@@ -50,12 +50,16 @@ const LINK_ZLY = "Link jest nieważny albo wygasł. Poproś dział kadr o nowy l
 const digits = (s: unknown) => String(s ?? "").replace(/\D/g, "");
 const txt = (s: unknown, max: number) => String(s ?? "").trim().slice(0, max);
 
+// The portal's own pages may read how long each step took (Server-Timing: durations only, no data);
+// the preflight answer is remembered by the browser, so each call is one request instead of two.
+const PORTAL_ORIGIN = "https://docgenerator.td-group.pl";
 export function cors(origin: string | null) {
   return {
     "Access-Control-Allow-Origin": origin ?? "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-klient-token, x-podpis-token",
     "Vary": "Origin",
+    "Access-Control-Max-Age": "7200", "Access-Control-Expose-Headers": "Server-Timing", ...(origin === PORTAL_ORIGIN ? { "Timing-Allow-Origin": origin } : {}),
   };
 }
 function json(body: unknown, status: number, origin: string | null) {

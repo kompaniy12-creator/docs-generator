@@ -256,4 +256,12 @@ const auth: Auth = {
   },
 };
 
-Deno.serve((req) => handle(req, { store, auth, app: APP }));
+// Server-Timing: the handler's own time (a duration only), readable from the portal's pages
+function zCzasem(h: (req: Request) => Response | Promise<Response>) {
+  return async (req: Request) => {
+    const t0 = performance.now(), res = await h(req);
+    try { res.headers.set("Server-Timing", `total;dur=${(performance.now() - t0).toFixed(1)}`); } catch { /* headers that cannot be changed */ }
+    return res;
+  };
+}
+Deno.serve(zCzasem((req) => handle(req, { store, auth, app: APP })));
