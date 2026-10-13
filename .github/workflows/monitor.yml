@@ -1,0 +1,64 @@
+# External health check of the portal's backend (Supabase): runs outside Supabase, so it still works when the
+# database is down. On failure the owner gets a Telegram message through the `alarm` function (which uses no
+# database); a repeat goes out at most every 30 minutes, and one message when the portal is back.
+name: monitor
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: monitor
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: supabase-config.js
+          sparse-checkout-cone-mode: false
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: .monitor-state
+          key: monitor-state-${{ github.run_id }}
+          restore-keys: monitor-state-
+      - name: Check
+        id: check
+        env:
+          ALARM_KEY: ${{ secrets.ALARM_KEY }}
+        run: |
+          B=https://dpfxwkxpzqqjtmgqwozw.supabase.co
+          K=$(grep -o -E "['\"][A-Za-z0-9_.-]{40,}['\"]" supabase-config.js | head -1 | tr -d "'\"")
+          probe() {
+            db=$(curl -s -o /dev/null -m 12 -w '%{http_code}' -H "apikey: $K" "$B/rest/v1/portal_stawki?select=*&limit=1" || true)
+            auth=$(curl -s -o /dev/null -m 12 -w '%{http_code}' -H "apikey: $K" "$B/auth/v1/settings" || true)
+            [ "$db" = "200" ] && [ "$auth" = "200" ]
+          }
+          ok=0
+          for i in 1 2 3; do if probe; then ok=1; break; fi; sleep 20; done
+          mkdir -p .monitor-state
+          was=$(cat .monitor-state/stan 2>/dev/null || echo ok)
+          last=$(cat .monitor-state/alarm_at 2>/dev/null || echo 0)
+          now=$(date +%s)
+          send() { curl -s -o /dev/null -m 20 -X POST -H "content-type: application/json" -H "x-alarm-key: $ALARM_KEY" -d "$1" "$B/functions/v1/alarm" || true; }
+          if [ "$ok" = "1" ]; then
+            if [ "$was" != "ok" ]; then send '{"stan":"ok"}'; fi
+            echo ok > .monitor-state/stan
+          else
+            if [ "$was" = "ok" ] || [ $((now - last)) -ge 1800 ]; then
+              send "{\"stan\":\"awaria\",\"szczegoly\":\"rest=$db auth=$auth\"}"
+              echo "$now" > .monitor-state/alarm_at
+            fi
+            echo awaria > .monitor-state/stan
+          fi
+          echo "ok=$ok db=$db auth=$auth was=$was"
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .monitor-state
+          key: monitor-state-${{ github.run_id }}
