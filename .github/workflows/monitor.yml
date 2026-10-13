@@ -49,7 +49,13 @@ jobs:
             if [ "$was" != "ok" ]; then send '{"stan":"ok"}'; fi
             echo ok > .monitor-state/stan
           else
-            if [ "$was" = "ok" ] || [ $((now - last)) -ge 1800 ]; then
+            # a restart is asked for at most once per 20 minutes; the function restarts only if Supabase itself reports the database unhealthy
+            rlast=$(cat .monitor-state/restart_at 2>/dev/null || echo 0)
+            if [ $((now - rlast)) -ge 1200 ]; then
+              send "{\"stan\":\"awaria\",\"restart\":true,\"szczegoly\":\"rest=$db auth=$auth\"}"
+              echo "$now" > .monitor-state/restart_at
+              echo "$now" > .monitor-state/alarm_at
+            elif [ "$was" = "ok" ] || [ $((now - last)) -ge 1800 ]; then
               send "{\"stan\":\"awaria\",\"szczegoly\":\"rest=$db auth=$auth\"}"
               echo "$now" > .monitor-state/alarm_at
             fi
