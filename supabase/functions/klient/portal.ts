@@ -31,9 +31,9 @@ import { kluczAkcji, mozna, odmowa, type Wyl } from "../_shared/uprawnienia.ts";
 // deno-lint-ignore no-explicit-any
 type Any = any;
 export type Konto = { id: string; email: string; nip: string[]; nazwa: string | null };
-// sekcje null = every section; wyl = the per-function switch-off list (index.ts always sets it — without it, as in
-// the tests' fakes, a person is not restricted)
-export type Staff = { email: string; admin: boolean; sekcje: string[] | null; wyl?: Wyl };
+// sekcje null = every section; wyl = the per-function switch-off list. REQUIRED — a resolver that forgets it does
+// not compile; [] is the explicit "not restricted".
+export type Staff = { email: string; admin: boolean; sekcje: string[] | null; wyl: Wyl };
 export type Odp = { status: number; body: Any };
 export type Plik = { nazwa: string; typ: string; bytes: Uint8Array };
 export type Zalacznik = { n: number; nazwa: string; mime: string; rozmiar: number; path: string; sha256: string };
@@ -526,7 +526,7 @@ export async function biuroAkcja(d: Deps, s: Staff, body: Any): Promise<Odp> {
   const akcja = String(body?.action ?? "");
   // only the office path comes here (a portal session) — the client's token never does
   const klucz = kluczAkcji(BIURO_KLUCZE, akcja, BIURO_BAZA);
-  if (!mozna({ admin: s.admin, wyl: s.wyl ?? [] }, klucz)) return odp(403, odmowa(klucz));
+  if (!mozna({ admin: s.admin, wyl: s.wyl }, klucz)) return odp(403, odmowa(klucz));
   const kat = kategorieStaff(s);
   if (akcja === "biuro_zgloszenia") {
     if (!kat.length) return odp(403, { error: "Brak uprawnień do zgłoszeń klientów." });

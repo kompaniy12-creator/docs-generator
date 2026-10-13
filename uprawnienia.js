@@ -11,9 +11,11 @@
    (tests/uprawnienia.test.cjs) and — as an IDENTICAL copy in supabase/functions/_shared/uprawnienia.js — by the
    edge functions. After every change: cp uprawnienia.js supabase/functions/_shared/ (a test compares the two).
 
-   The browser side only hides things. What really stops a person is the server; `e` on each entry says, phase
-   by phase, where a key is enforced:  G = page guard + menu,  F = edge function,  R = row level security,
-   followed by the phase that brings it (1 = live now, 2 and 3 = planned). The admin page shows this honestly. */
+   The browser side only hides things. What really stops a person is the server; `e` on each entry says where a
+   key is enforced:  G = page guard + menu,  F = edge function,  R = row level security, followed by the phase
+   that brought it (all three phases are live). `c` holds, in Polish, why a server block is only partial — the
+   admin page shows it under the entry. An entry with G alone is a page without data of its own: hiding it is
+   all there is to enforce. The admin page shows this honestly. */
 (function (root, factory) {
   var api = factory();
   if (typeof module === 'object' && module && module.exports) module.exports = api;
@@ -21,21 +23,22 @@
 })(typeof window !== 'undefined' ? window : globalThis, function () {
   'use strict';
 
-  var FAZA = 1;          // the phase that is live: enforcement marked with a higher number is not active yet
+  var FAZA = 3;          // the phase that is live: enforcement marked with a higher number is not active yet
   var MAX_KLUCZY = 150, MAX_BAJTOW = 4096;
   var SEKCJE = [['rejestracja', 'Rejestracja spółki'], ['biezaca', 'Bieżąca działalność'], ['kadry', 'Kadry'], ['legalizacja', 'Legalizacja pobytu'], ['onboarding', 'Księgowość']];
 
   // [key, label, { s: section(s) needed — a list means "any of", w: sections needed — all of them,
   //                p: page (with its query when the query picks the screen), a: administrator only (greyed, never
   //                in a deny list), m: the module is one section (ticking it writes portal_sections), e: enforcement,
-  //                c: the server block is partial for another reason than a later phase — the page's function refuses,
-  //                but data the page shows is also read straight from tables that other pages need }]
+  //                c: the server block is partial — the text (Polish, shown to the administrator) says what is
+  //                blocked and what stays reachable another way }]
   // The order is the order of the menu: the first permitted page of this list is where a person lands.
+  var KADRY_WSPOLNE = 'Podgląd i wysyłkę na tej stronie blokuje serwer; sam rejestr pracowników czytają też inne strony Kadr, więc te dane pozostają dostępne, dopóki choć jedna z nich jest włączona.';
   var WPISY = [
     ['kadry', 'Kadry', { s: 'kadry', m: 'kadry' }],
-    ['kadry.kontrola', 'Kontrola', { p: 'kontrola.html', e: 'G1 F1', c: 1 }],
+    ['kadry.kontrola', 'Kontrola', { p: 'kontrola.html', e: 'G1 F1', c: KADRY_WSPOLNE }],
     ['kadry.kontrola.przypomnienia', 'Wysyłanie przypomnień do klienta', { e: 'F1' }],
-    ['kadry.zgloszenia', 'Zgłoszenia pracowników', { p: 'zatrudnienie.html', e: 'G1 F1', c: 1 }],
+    ['kadry.zgloszenia', 'Zgłoszenia pracowników', { p: 'zatrudnienie.html', e: 'G1 F1', c: KADRY_WSPOLNE }],
     ['kadry.zgloszenia.pliki', 'Podgląd załączonych dokumentów', { e: 'R3' }],
     ['kadry.zgloszenia.wyslij', 'Wysyłka kompletu do pracodawcy', { e: 'F1' }],
     ['kadry.zgloszenia.usun', 'Usuwanie zgłoszeń', { e: 'R3' }],
@@ -51,7 +54,7 @@
     ['kadry.akta.edycja', 'Zmiana opisu dokumentów w aktach', { e: 'R3' }],
     ['kadry.akta.usun', 'Usuwanie dokumentów z akt', { e: 'R3' }],
     ['kadry.akta.ai', 'Rozpoznawanie skanu (AI)', { e: 'F1' }],
-    ['kadry.podpisy', 'Podpisy elektroniczne', { p: 'podpisy.html', e: 'G1 F1', c: 1 }],
+    ['kadry.podpisy', 'Podpisy elektroniczne', { p: 'podpisy.html', e: 'G1 F1 R3' }],
     ['kadry.podpisy.wyslij', 'Tworzenie pakietu i wydanie do podpisu', { e: 'F1' }],
     ['kadry.podpisy.link', 'Link dla pracownika (wydanie i unieważnienie)', { e: 'F2' }],
     ['kadry.podpisy.weryfikacja', 'Wgrywanie i weryfikacja podpisanych plików', { e: 'F2' }],
@@ -86,13 +89,13 @@
     ['ksiegowosc.terminy_klientow', 'Terminy klientów', { p: 'onboarding.html?p=/deadlines', e: 'G1' }],
 
     ['klienci', 'Klienci', {}],
-    ['klienci.baza', 'Baza klientów', { p: 'klienci.html', e: 'G1 F1', c: 1 }],
-    ['klienci.baza.kontakty', 'Dane kontaktowe klientów', { s: 'kadry', e: 'F1', c: 1 }],
-    ['klienci.zgloszenia', 'Zgłoszenia klientów', { s: ['kadry', 'onboarding'], p: 'zgloszenia-klientow.html', e: 'G1 F1', c: 1 }],
+    ['klienci.baza', 'Baza klientów', { p: 'klienci.html', e: 'G1 F1', c: 'Stronę i jej listę blokuje serwer; nazwy, NIP, adresy i opiekunowie firm pozostają dostępne w listach wyboru innych stron (Rejestr, Akta, Dokumenty, Import, Księgowość).' }],
+    ['klienci.baza.kontakty', 'Dane kontaktowe klientów', { s: 'kadry', e: 'F1 F2', c: 'Telefon, e-mail, osoba kontaktowa i Telegram znikają z Bazy klientów, z list klientów i z SMS-ów (numery zamaskowane). Adres e-mail klienta nadal widać tam, gdzie się na niego wysyła: przypomnienia w Kontroli, wysyłka kompletu, zgłoszenia pracowników, poczta.' }],
+    ['klienci.zgloszenia', 'Zgłoszenia klientów', { s: ['kadry', 'onboarding'], p: 'zgloszenia-klientow.html', e: 'G1 F1' }],
     ['klienci.zgloszenia.odpowiedz', 'Odpowiedź, status i notatka', { e: 'F1' }],
     ['klienci.zgloszenia.zalaczniki', 'Pobieranie załączników', { e: 'F1' }],
     ['klienci.zgloszenia.udostepnianie', 'Udostępnianie dokumentów klientowi', { e: 'F1' }],
-    ['klienci.sms', 'SMS do klientów', { s: ['kadry', 'onboarding'], p: 'sms.html', e: 'G1 F1', c: 1 }],
+    ['klienci.sms', 'SMS do klientów', { s: ['kadry', 'onboarding'], p: 'sms.html', e: 'G1 F1' }],
     ['klienci.sms.wyslij', 'Wysyłanie SMS', { e: 'F1' }],
     ['klienci.sms.historia', 'Historia SMS', { e: 'F1 R3' }],
     ['klienci.rozsylki', 'Rozsyłki do klientów', { s: ['kadry', 'onboarding'], p: 'rozsylka.html', e: 'G1 F1 R3' }],
@@ -106,7 +109,7 @@
     ['klienci.telegram', 'Grupy Telegram klientów', { a: 1 }],
     ['klienci.umowy', 'Umowy z klientami — generator', { a: 1, p: 'umowy.html' }],
 
-    ['poczta', 'Poczta', { s: ['kadry', 'onboarding'], p: 'poczta.html', e: 'G1 F1', c: 1 }],
+    ['poczta', 'Poczta', { s: ['kadry', 'onboarding'], p: 'poczta.html', e: 'G1 F1' }],
     ['poczta.kadry', 'Skrzynka Kadry', { s: 'kadry', e: 'F1 R3' }],
     ['poczta.kadry.wyslij', 'Wysyłanie, szkice, wysyłka później', { e: 'F2' }],
     ['poczta.kadry.porzadki', 'Przenoszenie, usuwanie, foldery', { e: 'F2' }],
@@ -146,7 +149,7 @@
 
   var STATUSY = {
     serwer: 'blokada na serwerze',
-    serwer_czesc: 'blokada na serwerze — częściowa',
+    serwer_czesc: 'blokada na serwerze — częściowa',   // why: the entry's `powod`
     strona: 'ukrycie strony',
     strona_oczekuje: 'ukrycie strony — blokada serwera w przygotowaniu',
     oczekuje: 'jeszcze nie działa — blokada w przygotowaniu',
@@ -158,7 +161,7 @@
 
   var KLUCZE = {}, LISTA = [];
   WPISY.forEach(function (w) {
-    var o = w[2] || {}, n = { klucz: w[0], nazwa: w[1], rodzic: rodzic(w[0]), strona: o.p || '', tylkoAdmin: !!o.a, modulSekcja: o.m || '', egz: [], dzieci: [], sekcja: o.s || null, sekcjeWsz: o.w || null, czesciowa: !!o.c };
+    var o = w[2] || {}, n = { klucz: w[0], nazwa: w[1], rodzic: rodzic(w[0]), strona: o.p || '', tylkoAdmin: !!o.a, modulSekcja: o.m || '', egz: [], dzieci: [], sekcja: o.s || null, sekcjeWsz: o.w || null, czesciowa: !!o.c, powod: typeof o.c === 'string' ? o.c : '' };
     String(o.e || '').split(' ').filter(Boolean).forEach(function (x) { n.egz.push({ typ: x.charAt(0), faza: +x.slice(1) }); });
     KLUCZE[n.klucz] = n; LISTA.push(n);
   });

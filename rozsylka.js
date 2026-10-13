@@ -61,7 +61,9 @@
   function rysujTaby() {
     var l = [['lista', 'Rozsyłki'], ['edytor', R && R.id ? 'Edycja szkicu' : 'Nowa rozsyłka'], ['postep', 'Postęp i dziennik'], ['subskrypcje', 'Subskrypcje bota']];
     if (st && st.ja.admin) l.push(['bot', 'Bot i ustawienia']);
-    $('tabs').innerHTML = l.map(function (x) { return '<button type="button" data-tab="' + x[0] + '"' + (tab === x[0] ? ' class="on"' : '') + '>' + esc(x[1]) + '</button>'; }).join('');
+    // Uprawnienia szczegółowe: a tab whose function is switched off for the account is hidden by the shell (data-upr)
+    var UPR = { postep: 'klienci.rozsylki.dziennik', subskrypcje: 'klienci.rozsylki.subskrybenci' };
+    $('tabs').innerHTML = l.map(function (x) { return '<button type="button" data-tab="' + x[0] + '"' + (UPR[x[0]] ? ' data-upr="' + UPR[x[0]] + '"' : '') + (tab === x[0] ? ' class="on"' : '') + '>' + esc(x[1]) + '</button>'; }).join('');
     l.forEach(function (x) { $('t-' + x[0]).hidden = tab !== x[0]; });
     if (!(st && st.ja.admin)) $('t-bot').hidden = true;
   }
@@ -311,7 +313,7 @@
       (x.powod ? '<div class="warn">' + esc(x.powod) + '</div>' : '') + (d.wstrzymana_do && new Date(d.wstrzymana_do) > new Date() ? '<div class="warn">Telegram poprosił o przerwę do ' + esc(kiedy(d.wstrzymana_do)) + '.</div>' : '');
     $('dPasek').style.width = (razem ? Math.round(100 * ((w.wyslano || 0) + (w.blad || 0) + (w.niepewny || 0)) / razem) : 0) + '%';
     $('dLiczby').innerHTML = liczbyHtml(l) + Object.keys(WST).filter(function (k) { return w[k]; }).map(function (k) { return pill(WST[k][0] + ': ' + w[k], WST[k][1]); }).join('');
-    var a = [], btn = function (akcja, tekst, kl) { a.push('<button type="button" class="mini ' + (kl || '') + '" data-akcja="' + akcja + '">' + tekst + '</button>'); };
+    var a = [], btn = function (akcja, tekst, kl) { a.push('<button type="button" class="mini ' + (kl || '') + '" data-akcja="' + akcja + '" data-upr="klienci.rozsylki.wyslij">' + tekst + '</button>'); };
     if (moje && ['do_akceptacji', 'zaplanowana'].indexOf(x.status) !== -1) btn('cofnij', 'Cofnij do szkicu');
     if (moje && ['w_trakcie', 'zaplanowana'].indexOf(x.status) !== -1) btn('wstrzymaj', 'Wstrzymaj');
     if (moje && x.status === 'wstrzymana') btn('wznow', 'Wznów', 'ok');

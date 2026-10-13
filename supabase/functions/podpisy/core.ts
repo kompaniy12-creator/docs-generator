@@ -36,8 +36,8 @@ export type Store = {
 export type Auth = {
   staff(req: Request): Promise<string | null>;
   // Uprawnienia szczegółowe: the switch-off list of the member of staff `staff(req)` has just recognised
-  // (undefined = not known -> refused). An Auth without it (the tests' fakes) does not restrict anybody.
-  upr?(req: Request): Upr | undefined;
+  // (undefined = not known -> refused). REQUIRED: an Auth that forgets it does not compile.
+  upr(req: Request): Upr | undefined;
   klient(req: Request): Promise<{ email: string; nip: string[]; haslo: boolean } | null>;
 };
 export type Deps = { store: Store; auth: Auth; app: string };
@@ -329,8 +329,12 @@ async function spusc(req: Request, cap: number): Promise<void> {
 
 // Uprawnienia szczegółowe: the catalogue key of each office action (the rest of them need the page's key)
 const BIURO_BAZA = "kadry.podpisy";
-const BIURO_KLUCZE: Record<string, string> = Object.fromEntries(["utworz", "dokument_dodaj", "dokument_usun", "wydaj"].map((a) => [a, "kadry.podpisy.wyslij"]));
-const BEZ_OGRANICZEN: Upr = { admin: false, wyl: [] };
+const BIURO_KLUCZE: Record<string, string> = Object.fromEntries([
+  ...["utworz", "dokument_dodaj", "dokument_usun", "wydaj"].map((a) => [a, "kadry.podpisy.wyslij"]),
+  ...["link", "link_uniewaznij"].map((a) => [a, "kadry.podpisy.link"]),
+  ...["wgraj", "weryfikuj", "zakoncz"].map((a) => [a, "kadry.podpisy.weryfikacja"]),
+  ["anuluj", "kadry.podpisy.anuluj"],
+]);
 export async function handle(req: Request, deps: Deps): Promise<Response> {
   const origin = req.headers.get("origin"), o = origin, store = deps.store;
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
@@ -444,7 +448,7 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
     // ======================= office (portal JWT, Kadry) =======================
     if (!me) return brak ?? json({ error: "Brak dostępu." }, 403, o);
     // Uprawnienia szczegółowe — the office role only: the worker's link and the employer's session ended above
-    const klucz = kluczAkcji(BIURO_KLUCZE, action, BIURO_BAZA), upr = deps.auth.upr ? deps.auth.upr(req) : BEZ_OGRANICZEN;
+    const klucz = kluczAkcji(BIURO_KLUCZE, action, BIURO_BAZA), upr = deps.auth.upr(req);
     if (!upr || !mozna(upr, klucz)) return json(odmowa(klucz), 403, o);
     const c = mk("biuro", me);
 

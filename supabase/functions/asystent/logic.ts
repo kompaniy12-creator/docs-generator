@@ -4,6 +4,8 @@
 
 import { CENA_NIEZNANA, CENY, DOMYSLNE, GRANICE, MAX_PLIK, MAX_PLIKI_RAZEM, MAX_PLIKOW, MODELE } from "./modele.ts";
 
+import { mozna as moznaKlucz, type Wyl } from "../_shared/uprawnienia.ts";
+
 // deno-lint-ignore no-explicit-any
 export type Any = any;
 
@@ -60,9 +62,9 @@ export function normalizujUstawienia(raw: Any): Ustawienia {
 
 // sekcje: the portal sections of the account (app_metadata.portal_sections); null = no list = every
 // section, exactly as has_portal_section() in the database and the page guard treat it.
-// wyl: the per-function switch-off list of the account (app_metadata.portal_wylaczone as _shared/uprawnienia.ts reads it);
-// index.ts always sets it — a caller without it (the tests' fakes) is not restricted
-export type Ja = { email: string; portal: boolean; admin: boolean; sekcje: string[] | null; wyl?: string[] | "blad" };
+// wyl: the per-function switch-off list of the account (app_metadata.portal_wylaczone as _shared/uprawnienia.ts reads it).
+// REQUIRED — a resolver that forgets it does not compile; [] is the explicit "not restricted".
+export type Ja = { email: string; portal: boolean; admin: boolean; sekcje: string[] | null; wyl: Wyl };
 export type Odmowa = { status: number; error: string; kod: string };
 
 // TEST MODE: a portal administrator who is on the testers list — nobody else, for every action.
@@ -80,10 +82,27 @@ export function bramka(ja: Ja | null, ust: Ustawienia): Odmowa | null {
 
 // ---------------------------------------------------------------- who may run / read what
 // The caller as the tools see it. Built from the verified session only — never from the request body.
-export type Kto = { admin: boolean; sekcje: string[] | null; email: string };
+// wyl: the person's switch-off list (Uprawnienia szczegółowe) — the tools and the store are narrowed by it too
+export type Kto = { admin: boolean; sekcje: string[] | null; email: string; wyl: Wyl };
 export const SEKCJE = ["rejestracja", "biezaca", "kadry", "legalizacja", "onboarding"] as const;
 export const SEKCJA_NAZWA: Record<string, string> = { kadry: "Kadry", onboarding: "Księgowość", legalizacja: "Legalizacja", rejestracja: "Rejestracja spółek", biezaca: "Obsługa bieżąca" };
-export const ktoZ = (ja: Ja): Kto => ({ email: String(ja.email ?? "").trim().toLowerCase(), admin: ja.admin === true, sekcje: ja.admin ? null : Array.isArray(ja.sekcje) ? ja.sekcje.map(String) : ja.sekcje === null ? null : [] });
+export const ktoZ = (ja: Ja): Kto => ({ email: String(ja.email ?? "").trim().toLowerCase(), admin: ja.admin === true, sekcje: ja.admin ? null : Array.isArray(ja.sekcje) ? ja.sekcje.map(String) : ja.sekcje === null ? null : [], wyl: ja.admin === true ? [] : ja.wyl });
+
+// The catalogue keys that guard a tool or a table (Uprawnienia szczegółowe), next to `dostep`:
+//   ["a.b", "c.d"]  the data belong to these pages — readable while AT LEAST ONE of them is switched on for the
+//                   person (several pages show the same table; switching one of them off does not hide the data
+//                   the others still show);
+//   null            shared data with no page of its own (the list of clients behind every picker, the law, the rates);
+//   undefined / []  not classified = administrators only (fail closed).
+export type Klucze = string[] | null;
+export const WSPOLNE: Klucze = null;
+export function mozeKlucze(k: Kto | null | undefined, kl: Klucze | undefined): boolean {
+  if (!k) return false;
+  if (k.admin === true) return true;
+  if (kl === undefined || !Array.isArray(k.wyl)) return false; // not classified; or a list that could not be read
+  if (kl === null) return true;
+  return Array.isArray(kl) && kl.some((x) => moznaKlucz({ admin: false, wyl: k.wyl }, x));
+}
 export const maSekcje = (k: Kto | null | undefined, s: string) => !!k && (k.admin === true || k.sekcje === null || (Array.isArray(k.sekcje) && k.sekcje.includes(s)));
 
 // A requirement written next to an assistant, a tool or a table:

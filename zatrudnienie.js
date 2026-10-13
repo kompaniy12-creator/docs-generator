@@ -75,11 +75,11 @@
     var docs = r.doc_paths || [];
     html += '<div class="sec">Dokumenty (' + docs.length + ')</div><div class="docs" data-docs></div>';
     html += '<div class="actions">';
-    html += '<button class="btn-gen" data-act="generuj">🧾 Generuj komplet (' + esc(TYP_LABEL[p.u_typ] || 'umowa zlecenie') + ')</button>';
-    if (r.status === 'nowe') html += '<button class="btn-rev" data-act="sprawdzone">✔ Oznacz jako sprawdzone</button>';
-    html += '<button class="btn-send" data-act="wyslij">📤 ' + (r.status === 'wyslane' ? 'Wyślij ponownie' : 'Wyślij klientowi do podpisu') + '</button>';
-    if (r.status === 'wyslane' || r.status === 'sprawdzone') html += '<button class="btn-rev" data-act="zatrudniony">✅ Podpisane — zatrudniony</button>';
-    html += '<button class="btn-del" data-act="delete">Usuń</button>';
+    html += '<button class="btn-gen" data-act="generuj" data-upr="kadry.komplet">🧾 Generuj komplet (' + esc(TYP_LABEL[p.u_typ] || 'umowa zlecenie') + ')</button>';
+    if (r.status === 'nowe') html += '<button class="btn-rev" data-act="sprawdzone" data-upr="kadry.dane.edycja">✔ Oznacz jako sprawdzone</button>';
+    html += '<button class="btn-send" data-act="wyslij" data-upr="kadry.zgloszenia.wyslij">📤 ' + (r.status === 'wyslane' ? 'Wyślij ponownie' : 'Wyślij klientowi do podpisu') + '</button>';
+    if (r.status === 'wyslane' || r.status === 'sprawdzone') html += '<button class="btn-rev" data-act="zatrudniony" data-upr="kadry.dane.edycja">✅ Podpisane — zatrudniony</button>';
+    html += '<button class="btn-del" data-act="delete" data-upr="kadry.zgloszenia.usun">Usuń</button>';
     html += '</div>';
     return html;
   }
@@ -114,6 +114,10 @@
     });
   }
 
+  // Uprawnienia szczegółowe (portal-shell.js: PortalUpr): buttons of a switched-off function carry data-upr and are
+  // hidden by the shell; the page asks before what it does on its own
+  function uprMoze(k) { return !window.PortalUpr || window.PortalUpr.moze(k); }
+  function uprKom(k) { return window.PortalUpr ? window.PortalUpr.komunikat(k) : 'Ta funkcja jest wyłączona dla Twojego konta.'; }
   async function signedLink(path, text) {
     var s = await window.sb.storage.from(BUCKET).createSignedUrl(path, 300);
     var a = document.createElement('a');
@@ -128,6 +132,8 @@
     if (!wrap || wrap.dataset.loaded) return;
     wrap.dataset.loaded = '1';
     wrap.innerHTML = '';
+    // looking at the attached scans is a function of its own
+    if (!uprMoze('kadry.zgloszenia.pliki')) { wrap.textContent = uprKom('kadry.zgloszenia.pliki'); return; }
     var docs = (r.payload && Array.isArray(r.payload.documents)) ? r.payload.documents : null;
     if (docs && docs.length) {
       // group by category label, preserving order
@@ -230,6 +236,9 @@
       window.open('umowa-zlecenie.html?from=zgloszenie', '_blank', 'noopener');
       return;
     }
+    // a switched-off function never reaches the database (it would refuse without saying why)
+    var klucz = act === 'delete' ? 'kadry.zgloszenia.usun' : act === 'wyslij' ? 'kadry.zgloszenia.wyslij' : 'kadry.dane.edycja';
+    if (!uprMoze(klucz)) return toast(uprKom(klucz));
     if (act === 'delete') {
       if (!confirm('Usunąć zgłoszenie ' + (r.worker_name || '') + '?')) return;
       if (r.doc_paths && r.doc_paths.length) {

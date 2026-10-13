@@ -15,6 +15,9 @@
 
   var rows = [], workers = [], tab = 'spr', q = '', open = {}, editing = null, picked = null, me = '';
 
+  // Uprawnienia szczegółowe (portal-shell.js: PortalUpr): buttons of a switched-off function carry data-upr and are
+  // hidden by the shell; the page asks before what it does on its own
+  function uprMoze(k) { return !window.PortalUpr || window.PortalUpr.moze(k); }
   async function token() { var s = await window.sb.auth.getSession(); return s && s.data && s.data.session ? s.data.session.access_token : ''; }
   async function recognise(id) {
     var res = await fetch(FN, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: window.sb.supabaseKey || '', Authorization: 'Bearer ' + await token() }, body: JSON.stringify({ action: 'rozpoznaj', id: id }) });
@@ -51,6 +54,8 @@
       var ins = await window.sb.from(T).insert({ id: id, path: path, nazwa: job.file.name.slice(0, 200), rozmiar: job.file.size, mime: mime, uploaded_by: me, nip: job.nip || null, firma: job.firma || null }).select().single();
       if (ins.error) throw new Error(ins.error.message);
       rows.unshift(ins.data); render();
+      // reading by AI switched off for this account: the scan waits to be described by hand
+      if (!uprMoze('kadry.akta.ai')) { set(uprMoze('kadry.akta.edycja') ? 'dodany — przypisz ręcznie' : 'dodany — czeka na przypisanie', 'p-amber'); return; }
       set('odczytuję…', 'p-navy');
       var out = await recognise(id);
       await refreshRow(id);
@@ -86,9 +91,9 @@
       '<small>' + [r.data_dok && 'z dnia ' + pl(r.data_dok), r.strony && r.strony + ' str.', 'plik: ' + esc(r.nazwa), 'wgrano ' + pl(r.created_at)].filter(Boolean).join(' · ') + '</small>' +
       (inside ? '<small>W środku: ' + inside + '</small>' : '') + (r.uwagi ? '<small style="color:#92400e">Uwaga: ' + esc(r.uwagi) + '</small>' : '') + '</div>' +
       '<div class="acts"><span class="pill ' + st[1] + '">' + st[0] + '</span><button type="button" class="mini" data-a="view">Zobacz</button>' +
-      '<button type="button" class="mini' + (r.status === 'do_sprawdzenia' || r.status === 'blad' ? ' ok' : '') + '" data-a="edit">' + (r.status === 'przypisany' ? 'Zmień' : 'Przypisz') + '</button>' +
-      (r.status === 'blad' || r.status === 'nowy' ? '<button type="button" class="mini" data-a="again">Odczytaj ponownie</button>' : '') +
-      '<button type="button" class="mini del" data-a="del">Usuń</button></div></div>';
+      '<button type="button" class="mini' + (r.status === 'do_sprawdzenia' || r.status === 'blad' ? ' ok' : '') + '" data-a="edit" data-upr="kadry.akta.edycja">' + (r.status === 'przypisany' ? 'Zmień' : 'Przypisz') + '</button>' +
+      (r.status === 'blad' || r.status === 'nowy' ? '<button type="button" class="mini" data-a="again" data-upr="kadry.akta.ai">Odczytaj ponownie</button>' : '') +
+      '<button type="button" class="mini del" data-a="del" data-upr="kadry.akta.usun">Usuń</button></div></div>';
   }
   function render() {
     var spr = rows.filter(function (r) { return r.status !== 'przypisany'; });

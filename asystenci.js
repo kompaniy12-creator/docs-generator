@@ -272,7 +272,7 @@
       if (w.proponowane_zadanie) {
         var z = w.proponowane_zadanie;
         h += '<h3>Proponowane zadanie</h3><div class="res"><p><b>' + esc(z.tytul) + '</b>' + (z.pilne ? ' (pilne)' : '') + (z.termin ? ' — termin ' + esc(z.termin) : '') + (z.opis ? '\n' + esc(z.opis) : '') + '</p></div>' +
-          '<div class="acts"><button class="mini ok" type="button" id="zadGo">Utwórz to zadanie dla mnie</button><span class="sub" id="zadMsg">Zadanie nie istnieje, dopóki tego nie klikniesz.</span></div>';
+          '<div class="acts"><button class="mini ok" type="button" id="zadGo" data-upr="ogolne.zadania.dodaj">Utwórz to zadanie dla mnie</button><span class="sub" id="zadMsg">Zadanie nie istnieje, dopóki tego nie klikniesz.</span></div>';
       }
       if (w.nie_znaleziono && w.nie_znaleziono.length) h += blok('Czego asystent nie znalazł / nie wie', w.nie_znaleziono.map(function (x) { return '– ' + x; }).join('\n'));
       h += '<h3>Źródła</h3>' + (w.zrodla.length ? '<ul class="chk">' + w.zrodla.map(function (x) { return '<li><span class="pill p-navy">' + esc(ZRODLO[x.rodzaj] || x.rodzaj) + '</span><div>' + esc(x.id || '') + (x.opis ? '<small>' + esc(x.opis) + '</small>' : '') + '</div></li>'; }).join('') + '</ul>' : '<p class="hint">Asystent nie wskazał żadnego potwierdzonego źródła — traktuj odpowiedź ostrożnie.</p>');

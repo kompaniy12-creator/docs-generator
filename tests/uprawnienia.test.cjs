@@ -141,12 +141,20 @@ test('status blokady: „blokada na serwerze” tylko tam, gdzie funkcja albo ba
   const st = (k) => U.KLUCZE[k].status;
   assert.equal(st('kadry.akta.ai'), 'serwer');
   assert.equal(st('kadry.kontrola'), 'serwer_czesc');
-  assert.equal(st('klienci.sms.historia'), 'serwer_czesc');
+  assert.equal(st('klienci.sms.historia'), 'serwer');
   assert.equal(st('kadry.rejestr'), 'strona');
-  assert.equal(st('kadry.akta'), 'strona_oczekuje');
-  assert.equal(st('kadry.akta.usun'), 'oczekuje');
-  assert.equal(st('wspolne.krs'), 'oczekuje');
-  assert.equal(st('poczta.kadry.wyslij'), 'oczekuje');
+  assert.equal(st('kadry.akta'), 'serwer');
+  assert.equal(st('kadry.akta.usun'), 'serwer');
+  assert.equal(st('wspolne.krs'), 'serwer');
+  assert.equal(st('poczta.kadry.wyslij'), 'serwer');
+  // all three phases are live: nothing waits any more, and every partial block says why
+  assert.equal(U.FAZA, 3);
+  for (const n of U.LISTA) {
+    assert.ok(!['oczekuje', 'strona_oczekuje'].includes(n.status), n.klucz + ' nadal czeka na blokadę');
+    assert.ok(n.egz.every((x) => x.faza <= U.FAZA), n.klucz);
+    assert.equal(n.status === 'serwer_czesc', n.powod.length > 20, n.klucz + ': częściowa blokada ma opis, pełna — nie');
+  }
+  assert.deepEqual(U.LISTA.filter((n) => n.status === 'serwer_czesc').map((n) => n.klucz), ['kadry.kontrola', 'kadry.zgloszenia', 'klienci.baza', 'klienci.baza.kontakty']);
   assert.equal(st('ogolne.pulpit'), 'admin');
   assert.equal(st('kadry.dane'), 'grupa');
   for (const n of U.LISTA) assert.ok(typeof U.STATUSY[n.status] === 'string', n.klucz);

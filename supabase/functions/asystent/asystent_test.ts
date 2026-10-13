@@ -5,9 +5,9 @@ import { assert, assertEquals, assertFalse, assertStringIncludes } from "jsr:@st
 import type Anthropic from "npm:@anthropic-ai/sdk@0.132.1";
 import { type Baza, obsluz, type Zaleznosci } from "./core.ts";
 import { ASYSTENCI, asystent, mozeAsystent, obliczeniaKontroli, systemDla, walidujWejscie } from "./definicje.ts";
-import { type Any, bramka, brakujacyDzial, type Ja, kosztUsd, type Kto, ktoZ, spelnia, maskuj, maskujGleboko, mikrorachunek, niezaufane, normalizujUstawienia, nowySlad, schematWyniku, sprawdzLimity, sprawdzPliki, typPliku, walidujUstawienia, walidujWynik, wstawMikrorachunki } from "./logic.ts";
+import { type Any, bramka, brakujacyDzial, type Ja, kosztUsd, type Kto, ktoZ, mozeKlucze, spelnia, maskuj, maskujGleboko, mikrorachunek, niezaufane, normalizujUstawienia, nowySlad, schematWyniku, sprawdzLimity, sprawdzPliki, typPliku, walidujUstawienia, walidujWynik, wstawMikrorachunki } from "./logic.ts";
 import { CENY, MAX_ITERACJI, MAX_PLIK, MODEL_GLOWNY, MODEL_SZYBKI } from "./modele.ts";
-import { type Ctx, definicjeDla, MAGAZYN, mozeNarzedzie, NARZEDZIA, narzedzie, ograniczStore, type Store, wykonaj } from "./narzedzia.ts";
+import { type Ctx, definicjeDla, MAGAZYN, MAGAZYN_KLUCZE, mozeNarzedzie, NARZEDZIA, narzedzie, ograniczStore, type Store, wykonaj } from "./narzedzia.ts";
 import { type Model, przebieg, type Zapytanie } from "./silnik.ts";
 
 // ---------------------------------------------------------------- fixtures
@@ -61,7 +61,7 @@ function sklep(wrogi = true): { store: Store; odczyty: string[] } {
   return { store, odczyty };
 }
 // the caller of the older tests: the administrator (sees everything, as before the team mode)
-const KTO_SZEF: Kto = { admin: true, sekcje: null, email: "szef@test.pl" };
+const KTO_SZEF: Kto = { admin: true, sekcje: null, email: "szef@test.pl", wyl: [] };
 const ctxK = (nip = A): Ctx => ({ tryb: "klient", nip, dzis: "2026-10-09", slad: nowySlad(), kto: KTO_SZEF });
 const ctxS = (nip: string | null = null, kto: Kto = KTO_SZEF): Ctx => ({ tryb: "staff", nip, dzis: "2026-10-09", slad: nowySlad(), kto });
 const WSZYSTKIE = NARZEDZIA.map((n) => n.name);
@@ -78,14 +78,14 @@ const ARG_B: Record<string, Any> = {
 
 // ---------------------------------------------------------------- the gate
 const UST = normalizujUstawienia({ testerzy: ["szef@test.pl"] });
-const SZEF: Ja = { email: "szef@test.pl", portal: true, admin: true, sekcje: null };
+const SZEF: Ja = { email: "szef@test.pl", portal: true, admin: true, sekcje: null, wyl: [] };
 
 Deno.test("bramka: tylko administrator z listy testerów", () => {
   assertEquals(bramka(null, UST)?.status, 401);
-  assertEquals(bramka({ email: "x@test.pl", portal: false, admin: false, sekcje: null }, UST)?.kod, "nie_portal");
-  assertEquals(bramka({ email: "szef@test.pl", portal: true, admin: false, sekcje: null }, UST)?.kod, "nie_admin"); // on the list, but not an administrator
-  assertEquals(bramka({ email: "inny@test.pl", portal: true, admin: true, sekcje: null }, UST)?.kod, "nie_tester"); // an administrator, but not on the list
-  assertEquals(bramka({ email: "SZEF@test.pl", portal: true, admin: true, sekcje: null }, UST), null);
+  assertEquals(bramka({ email: "x@test.pl", portal: false, admin: false, sekcje: null, wyl: [] }, UST)?.kod, "nie_portal");
+  assertEquals(bramka({ email: "szef@test.pl", portal: true, admin: false, sekcje: null, wyl: [] }, UST)?.kod, "nie_admin"); // on the list, but not an administrator
+  assertEquals(bramka({ email: "inny@test.pl", portal: true, admin: true, sekcje: null, wyl: [] }, UST)?.kod, "nie_tester"); // an administrator, but not on the list
+  assertEquals(bramka({ email: "SZEF@test.pl", portal: true, admin: true, sekcje: null, wyl: [] }, UST), null);
   assertEquals(bramka(SZEF, normalizujUstawienia({}))?.kod, "nie_tester"); // empty or broken settings open nothing
   assertEquals(bramka(SZEF, normalizujUstawienia({ testerzy: "szef@test.pl" }))?.kod, "nie_tester");
 });
@@ -119,9 +119,9 @@ Deno.test("bramka HTTP: anonim, cron, pracownik, administrator spoza listy — k
   const przypadki: [string, Ja | null, Record<string, string>, number][] = [
     ["anonim", null, {}, 401],
     ["cron z kluczem", null, { "x-cron-key": "jakikolwiek-klucz" }, 401],
-    ["pracownik portalu", { email: "kadry@test.pl", portal: true, admin: false, sekcje: ["kadry"] }, {}, 403],
-    ["administrator spoza listy", { email: "admin2@test.pl", portal: true, admin: true, sekcje: null }, {}, 403],
-    ["użytkownik innej aplikacji", { email: "szef@test.pl", portal: false, admin: true, sekcje: null }, {}, 403],
+    ["pracownik portalu", { email: "kadry@test.pl", portal: true, admin: false, sekcje: ["kadry"], wyl: [] }, {}, 403],
+    ["administrator spoza listy", { email: "admin2@test.pl", portal: true, admin: true, sekcje: null, wyl: [] }, {}, 403],
+    ["użytkownik innej aplikacji", { email: "szef@test.pl", portal: false, admin: true, sekcje: null, wyl: [] }, {}, 403],
   ];
   for (const [nazwa, ja, naglowki, status] of przypadki) {
     for (const action of AKCJE) {
@@ -543,9 +543,9 @@ Deno.test("ustawienia przez HTTP i lista: zapis, wyłączenie asystenta, model z
 
 // ================================================================ TEAM MODE ("zespol"): who runs what, who reads what
 // Four fictional accounts: Kadry only, Księgowość only (section "onboarding"), no section at all, the administrator.
-const J_KADRY: Ja = { email: "kadry@test.pl", portal: true, admin: false, sekcje: ["kadry"] };
-const J_KSIEG: Ja = { email: "ksiegowa@test.pl", portal: true, admin: false, sekcje: ["onboarding"] };
-const J_NIKT: Ja = { email: "nowy@test.pl", portal: true, admin: false, sekcje: [] };
+const J_KADRY: Ja = { email: "kadry@test.pl", portal: true, admin: false, sekcje: ["kadry"], wyl: [] };
+const J_KSIEG: Ja = { email: "ksiegowa@test.pl", portal: true, admin: false, sekcje: ["onboarding"], wyl: [] };
+const J_NIKT: Ja = { email: "nowy@test.pl", portal: true, admin: false, sekcje: [], wyl: [] };
 const OSOBY: [string, Ja][] = [["kadry", J_KADRY], ["ksiegowosc", J_KSIEG], ["bez działów", J_NIKT], ["administrator", SZEF]];
 const ZESPOL = { tryb: "zespol", testerzy: ["szef@test.pl"] };
 const MSG_KS = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
@@ -601,7 +601,7 @@ Deno.test("tryb zespołu — bramka: każdy użytkownik portalu wchodzi; anonim 
 
 Deno.test("wymóg dostępu: jedna z sekcji, wszystkie sekcje, administrator, każdy; brak wymogu = tylko administrator", () => {
   const k = ktoZ(J_KADRY), ks = ktoZ(J_KSIEG), nikt = ktoZ(J_NIKT), szef = ktoZ(SZEF);
-  const bezListy = ktoZ({ email: "stary@test.pl", portal: true, admin: false, sekcje: null }); // no list = every section (as has_portal_section)
+  const bezListy = ktoZ({ email: "stary@test.pl", portal: true, admin: false, sekcje: null, wyl: [] }); // no list = every section (as has_portal_section)
   assertEquals([spelnia(k, { sekcje: ["kadry"] }), spelnia(ks, { sekcje: ["kadry"] }), spelnia(nikt, { sekcje: ["kadry"] }), spelnia(szef, { sekcje: ["kadry"] }), spelnia(bezListy, { sekcje: ["kadry"] })], [true, false, false, true, true]);
   assertEquals([spelnia(k, { sekcje: ["kadry", "onboarding"] }), spelnia(ks, { sekcje: ["kadry", "onboarding"] }), spelnia(nikt, { sekcje: ["kadry", "onboarding"] })], [true, true, false]);
   assertEquals([spelnia(k, { wszystkie: ["legalizacja", "kadry"] }), spelnia(ktoZ({ ...J_KADRY, sekcje: ["kadry", "legalizacja"] }), { wszystkie: ["legalizacja", "kadry"] }), spelnia(ktoZ({ ...J_KADRY, sekcje: ["legalizacja"] }), { wszystkie: ["legalizacja", "kadry"] })], [false, true, false]);
@@ -609,7 +609,7 @@ Deno.test("wymóg dostępu: jedna z sekcji, wszystkie sekcje, administrator, ka�
   // fail closed: nothing written, an empty object, empty lists, a broken account
   for (const w of [undefined, null, {}, { sekcje: [] }, { wszystkie: [] }] as Any[]) { assertFalse(spelnia(k, w)); assertFalse(spelnia(bezListy, w)); assert(spelnia(szef, w)); }
   assertFalse(spelnia(null, { kazdy: true }));
-  assertFalse(spelnia(ktoZ({ email: "x@test.pl", portal: true, admin: false, sekcje: "kadry" as Any }), { sekcje: ["kadry"] })); // a malformed list is no list of sections
+  assertFalse(spelnia(ktoZ({ email: "x@test.pl", portal: true, admin: false, sekcje: "kadry" as Any, wyl: [] }), { sekcje: ["kadry"] })); // a malformed list is no list of sections
   assertFalse(mozeAsystent({}, k));
   assertFalse(mozeNarzedzie({}, k));
   assert(mozeNarzedzie({}, szef));
@@ -922,7 +922,7 @@ Deno.test("uruchom równolegle i usuwanie w toku: drugie jednoczesne uruchomieni
 
 // =============================================================== Uprawnienia szczegółowe (portal_wylaczone)
 Deno.test("uprawnienia: cały moduł i pojedynczy asystent można wyłączyć osobie; brak listy = jak dotąd; administrator bez ograniczeń", async () => {
-  const osoba = (wyl?: Ja["wyl"], o: Partial<Ja> = {}): Ja => ({ ...J_KADRY, ...(wyl === undefined ? {} : { wyl }), ...o });
+  const osoba = (wyl: Ja["wyl"] = [], o: Partial<Ja> = {}): Ja => ({ ...J_KADRY, wyl, ...o });
   const wolaj = async (ja: Ja, body: Any) => { const z = zaleznosci({ ja, ust: ZESPOL }); const r = await obsluz(post(body), z.d); return { status: r.status, b: await r.json(), z }; };
   const ids = (b: Any) => b.asystenci.map((a: Any) => a.id);
   // no list / an empty list: exactly the assistants the sections give
@@ -958,4 +958,103 @@ Deno.test("uprawnienia: cały moduł i pojedynczy asystent można wyłączyć os
   const z = zaleznosci({ ja: osoba(["asystenci"]) });
   const t = await obsluz(post({ action: "lista" }), z.d);
   assertEquals([t.status, (await t.json()).kod !== "wylaczone"], [403, true]);
+});
+
+Deno.test("uprawnienia — narzędzia i magazyn: strona wyłączona osobie zabiera jej dane każdemu asystentowi; skrzynka osobno; części kart znikają bez błędu; zepsuta lista zamyka wszystko", async () => {
+  const WSZ = NARZEDZIA.map((n) => n.name);
+  const uruchom = async (ja: Ja, nazwa: string, arg: Any) => { const s = sklepZespolu(); const r = await wykonaj(nazwa, arg, WSZ, ctxS(null, ktoZ(ja)), s.store); return { ...r, odczyty: s.odczyty }; };
+  const kadry = (wyl: Ja["wyl"]): Ja => ({ ...J_KADRY, wyl }), ksieg = (wyl: Ja["wyl"]): Ja => ({ ...J_KSIEG, wyl });
+  const obie = (wyl: Ja["wyl"]): Ja => ({ ...J_KADRY, sekcje: ["kadry", "onboarding"], wyl });
+  const oferowane = (ja: Ja) => definicjeDla(WSZ, "staff", ktoZ(ja)).map((d) => d.name);
+  // [tool, arguments, who, the keys that take it away, keys that must NOT]
+  const P: [string, Any, (w: Ja["wyl"]) => Ja, string[], string[]][] = [
+    ["zgloszenia_klientow", { nip: null, tylko_otwarte: false }, kadry, ["klienci.zgloszenia", "klienci"], ["klienci.zgloszenia.odpowiedz", "klienci.sms", "poczta"]],
+    ["poczta_lista", { tylko_wymagajace: false }, kadry, ["poczta"], ["poczta.ksiegowosc", "poczta.zadania", "klienci"]],
+    ["poczta_wiadomosc", { id: MSG }, kadry, ["poczta"], ["poczta.kadry.wyslij"]],
+    ["podpisy_pakiety", { nip: null, tylko_otwarte: false }, kadry, ["kadry.podpisy", "kadry"], ["kadry.podpisy.wyslij", "kadry.akta"]],
+    ["akta_inwentarz", { nip: A, worker_id: null }, kadry, ["kadry.akta", "kadry"], ["kadry.akta.usun", "kadry.podpisy"]],
+    ["zadania_przeglad", { osoba: null }, kadry, ["ogolne.zadania", "ogolne"], ["ogolne.zadania.usun"]],
+    ["automatyzacja", { dni: 7 }, kadry, ["kadry.kontrola", "kadry"], ["kadry.kontrola.przypomnienia", "kadry.rejestr"]],
+    ["zamkniecie_miesiaca", { okres: "2026-09", nip: null, opiekun: null }, ksieg, ["ksiegowosc.zamkniecia", "ksiegowosc"], ["ksiegowosc.zamkniecia.edycja", "ksiegowosc.narzedzia"]],
+    ["rachunki_do_wplat", { nip: A }, ksieg, ["ksiegowosc.zamkniecia"], ["ksiegowosc.kalendarz"]],
+    ["braki_onboardingu", { nip: A }, ksieg, ["ksiegowosc.onboarding", "ksiegowosc"], ["ksiegowosc.terminy_klientow"]],
+  ];
+  for (const [n, arg, kto, zamyka, nie] of P) {
+    const wzor = await uruchom(kto([]), n, arg);
+    assertFalse(wzor.blad, n + " bez listy");
+    assert(oferowane(kto([])).includes(n), n);
+    for (const k of nie) { const r = await uruchom(kto([k]), n, arg); assertEquals([r.blad, r.tresc], [false, wzor.tresc], `${n}: ${k} niczego nie zmienia`); }
+    for (const k of zamyka) {
+      const r = await uruchom(kto([k]), n, arg);
+      assert(r.blad, `${n} / ${k}`);
+      assertStringIncludes(r.tresc, "jest wyłączona dla konta osoby"); assertStringIncludes(r.tresc, "brak_dostepu");
+      assertEquals(r.odczyty, [], `${n} / ${k}: nic nie odczytano`);
+      assertFalse(oferowane(kto([k])).includes(n), `${n} / ${k}: narzędzie nie jest nawet oferowane modelowi`);
+    }
+    // an administrator is never restricted (ktoZ drops the list)
+    assertFalse((await uruchom({ ...SZEF, wyl: zamyka }, n, arg)).blad, n + " administrator");
+  }
+  // the Kadry register is ONE table behind eight pages: a single page switched off does not hide it, all of them do
+  let r = await uruchom(kadry(["kadry.zgloszenia", "kadry.kontrola", "kadry.akta", "kadry.podpisy"]), "pracownicy_firmy", { nip: A, tylko_wygasajace_dni: null });
+  assertFalse(r.blad); assertEquals(r.odczyty, ["pracownicy"]);
+  for (const wyl of [["kadry"], ["kadry.zgloszenia", "kadry.rejestr", "kadry.kontrola", "kadry.komplet", "kadry.dokumenty", "kadry.akta", "kadry.podpisy", "kadry.import"]]) {
+    for (const [n, arg] of [["pracownicy_firmy", { nip: A, tylko_wygasajace_dni: null }], ["pracownik_karta", { id: WA }]] as [string, Any][]) {
+      r = await uruchom(kadry(wyl), n, arg);
+      assert(r.blad, n); assertEquals(r.odczyty, []); assertFalse(r.tresc.includes("Alfowska"));
+    }
+  }
+  // a person's card: the signature packages and the personnel file go when those pages are switched off — the rest stays
+  r = await uruchom(kadry([]), "pracownik_karta", { id: WA });
+  assertFalse(r.blad); assert(r.odczyty.includes("pakiety") && r.odczyty.includes("akta")); assertStringIncludes(r.tresc, "pakiety_podpisow"); assertStringIncludes(r.tresc, "\"akta\"");
+  r = await uruchom(kadry(["kadry.akta", "kadry.podpisy"]), "pracownik_karta", { id: WA });
+  assertFalse(r.blad); assertEquals(r.odczyty, ["pracownik"]);
+  assertFalse(r.tresc.includes("pakiety_podpisow") || r.tresc.includes("\"akta\"")); assertStringIncludes(r.tresc, "pakiety podpisów i akta osobowe");
+  r = await uruchom(kadry(["kadry.akta"]), "pracownik_karta", { id: WA });
+  assertFalse(r.odczyty.includes("akta")); assert(r.odczyty.includes("pakiety")); assertStringIncludes(r.tresc, "pakiety_podpisow");
+  // a client's card and the onboarding checklist: register data and the Telegram status belong to "Baza klientów"
+  r = await uruchom(kadry([]), "klient_karta", { nip: A });
+  assert(r.odczyty.includes("rejestr") && r.odczyty.includes("telegram"));
+  for (const wyl of [["klienci.baza"], ["klienci"]]) {
+    r = await uruchom(kadry(wyl), "klient_karta", { nip: A });
+    assertFalse(r.blad); assertFalse(r.odczyty.includes("rejestr") || r.odczyty.includes("telegram"));
+    assertFalse(r.tresc.includes("\"rejestr\"") || r.tresc.includes("\"telegram\"")); assertStringIncludes(r.tresc, "Baza klientów"); assertStringIncludes(r.tresc, "\"znaleziono\":true");
+    r = await uruchom({ ...J_KSIEG, wyl }, "braki_onboardingu", { nip: A });
+    assertFalse(r.blad); assertFalse(r.odczyty.includes("rejestr") || r.odczyty.includes("telegram")); assertStringIncludes(r.tresc, "nie sprawdzono");
+  }
+  r = await uruchom(kadry(["klienci.baza.kontakty"]), "klient_karta", { nip: A });
+  assert(r.odczyty.includes("rejestr"), "sam klucz kontaktów nie zabiera danych rejestrowych");
+  // groups counted from the Kadry register: left out when the register is closed to the person
+  r = await uruchom(kadry(["kadry"]), "grupy_klientow", { pokaz_grupe: null });
+  assertFalse(r.blad); assertFalse(r.odczyty.includes("pracownicy")); assertFalse(r.tresc.includes("z_cudzoziemcami"));
+  // the mail, mailbox by mailbox
+  r = await uruchom(obie([]), "poczta_lista", { tylko_wymagajace: false });
+  assertStringIncludes(r.tresc, "TEMAT-KADRY"); assertStringIncludes(r.tresc, "TEMAT-KSIEGOWOSC");
+  r = await uruchom(obie(["poczta.kadry"]), "poczta_lista", { tylko_wymagajace: false });
+  assertFalse(r.blad); assertFalse(r.tresc.includes("TEMAT-KADRY")); assertStringIncludes(r.tresc, "TEMAT-KSIEGOWOSC");
+  r = await uruchom(obie(["poczta.kadry"]), "poczta_wiadomosc", { id: MSG });
+  assertStringIncludes(r.tresc, "\"znaleziono\":false"); assertFalse(r.tresc.includes("TEMAT-KADRY"));
+  r = await uruchom(obie(["poczta.kadry"]), "poczta_wiadomosc", { id: MSG_KS });
+  assertStringIncludes(r.tresc, "TEMAT-KSIEGOWOSC");
+  r = await uruchom(obie(["poczta.kadry", "poczta.ksiegowosc"]), "poczta_lista", { tylko_wymagajace: false });
+  assertFalse(r.tresc.includes("TEMAT-"));
+  // a list that cannot be read: nothing at all — not even the shared tools; and nothing is offered to the model
+  for (const n of NARZEDZIA) {
+    const x = await uruchom(kadry("blad"), n.name, {});
+    assert(x.blad, n.name); assertEquals(x.odczyty, [], n.name);
+  }
+  assertEquals(oferowane(kadry("blad")), []);
+  // the narrowed store on its own (what `przygotuj` of an assistant gets): method by method
+  const o = ograniczStore(sklepZespolu().store, ktoZ(kadry(["kadry.akta", "klienci.zgloszenia", "poczta"]))) as Any;
+  for (const [m, a] of [["akta", [null]], ["zgloszenia", [null]], ["poczta", []], ["pocztaJedna", [MSG]]] as [string, unknown[]][]) {
+    let komunikat = "";
+    try { await o[m](...a); } catch (e) { komunikat = String((e as Error).message); }
+    assertStringIncludes(komunikat, "jest wyłączona dla konta osoby", m);
+  }
+  assertEquals((await o.pracownicy(null)).length > 0, true);
+  assertEquals((await o.wiedza()).length >= 0, true);
+  // every method and every tool is classified; a method without a classification would be administrators only
+  for (const m of Object.keys(sklep().store)) assert(Object.hasOwn(MAGAZYN_KLUCZE, m), "metoda magazynu bez kluczy: " + m);
+  assertFalse(mozeKlucze(ktoZ(kadry([])), undefined)); assert(mozeKlucze(ktoZ(SZEF), undefined));
+  assertFalse(mozeKlucze(ktoZ(kadry([])), [])); assert(mozeKlucze(ktoZ(kadry([])), null)); assertFalse(mozeKlucze(ktoZ(kadry("blad")), null));
+  assertFalse(mozeNarzedzie({ dostep: { kazdy: true } }, ktoZ(kadry([])))); assert(mozeNarzedzie({ dostep: { kazdy: true }, klucz: null }, ktoZ(kadry([]))));
 });

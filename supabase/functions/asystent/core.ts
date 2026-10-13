@@ -80,7 +80,7 @@ export async function obsluz(req: Request, d: Zaleznosci): Promise<Response> {
   if (odmowa || !ja) return json({ error: odmowa?.error ?? "Brak dostępu.", kod: odmowa?.kod }, odmowa?.status ?? 403);
   // Uprawnienia szczegółowe: the whole module can be switched off for a person, and each assistant on its own
   // (`lista` and `uruchom` below). After the gate — there is no cron and no token path in this function.
-  const upr = { admin: ja.admin === true, wyl: ja.wyl ?? [] };
+  const upr = { admin: ja.admin === true, wyl: ja.wyl };
   if (!mozna(upr, "asystenci")) return json(odmowaUpr("asystenci"), 403);
 
   if (Number(req.headers.get("content-length") ?? "0") > 22 * 1024 * 1024) return json({ error: "Żądanie jest za duże." }, 413);

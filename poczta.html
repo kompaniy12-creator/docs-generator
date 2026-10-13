@@ -170,7 +170,7 @@
       </div>
       <div id="mbRight">
         <div class="box" id="mbList">
-          <div class="acts" style="margin:0 0 10px"><button type="button" class="mini" id="mbToFolders">← Foldery</button><button type="button" class="mini ok" id="mbNewMsg">✏️ Nowa wiadomość</button><strong id="mbTitle"></strong><button type="button" class="mini" id="mbHelp" style="margin-left:auto" aria-label="Skróty klawiszowe">⌨ Skróty</button></div>
+          <div class="acts" style="margin:0 0 10px"><button type="button" class="mini" id="mbToFolders">← Foldery</button><button type="button" class="mini ok" id="mbNewMsg" data-upr-box="wyslij">✏️ Nowa wiadomość</button><strong id="mbTitle"></strong><button type="button" class="mini" id="mbHelp" style="margin-left:auto" aria-label="Skróty klawiszowe">⌨ Skróty</button></div>
           <div class="cm" id="mbKeys" hidden><b>Skróty:</b> c — nowa wiadomość · / — szukaj · ↑ ↓ — po liście · Enter — otwórz · x — zaznacz · w wiadomości: r — odpowiedz · a — odpowiedz wszystkim · f — przekaż · u — przeczytana / nieprzeczytana · s — flaga · e — archiwum · Delete — do Kosza · Esc — wróć · w oknie pisania: Ctrl+Enter — wyślij, Esc — zamknij.</div>
           <div class="mfilters">
             <div><label for="mbQ">Szukaj: temat, nadawca, odbiorca</label><input type="text" id="mbQ" maxlength="100" placeholder="np. nazwa firmy" /></div>
@@ -197,7 +197,7 @@
         <label for="c_dw">DW</label><div class="caddr"><span id="c_dw_chips"></span><input type="text" id="c_dw" autocomplete="off" placeholder="do wiadomości" /></div>
         <label for="c_udw">UDW</label><div class="caddr"><span id="c_udw_chips"></span><input type="text" id="c_udw" autocomplete="off" placeholder="ukryta kopia" /></div>
         <label for="c_temat">Temat</label><input type="text" id="c_temat" maxlength="250" />
-        <label for="c_tpl">Wstaw</label><div class="caddr"><select id="c_tpl" style="width:auto;flex:1;min-width:150px"><option value="">Szablon…</option></select><select id="c_sig" style="width:auto;flex:1;min-width:150px" aria-label="Podpis"><option value="">Podpis…</option></select><button type="button" class="mini" id="c_book">📇 Kontakty</button><button type="button" class="mini" id="c_savetpl">Zapisz treść jako szablon</button></div>
+        <label for="c_tpl">Wstaw</label><div class="caddr"><select id="c_tpl" style="width:auto;flex:1;min-width:150px"><option value="">Szablon…</option></select><select id="c_sig" style="width:auto;flex:1;min-width:150px" aria-label="Podpis"><option value="">Podpis…</option></select><button type="button" class="mini" id="c_book">📇 Kontakty</button><button type="button" class="mini" id="c_savetpl" data-upr="poczta.slowniki">Zapisz treść jako szablon</button></div>
       </div>
       <div id="c_sug" hidden></div>
       <div class="tbar" role="toolbar" aria-label="Formatowanie">
@@ -213,8 +213,8 @@
       <p class="sub" id="c_stopka" style="margin:6px 0 0"></p>
       <div class="acts" style="margin-top:10px"><label class="mini" style="cursor:pointer">📎 Dodaj załączniki<input type="file" id="c_file" multiple hidden /></label><span id="c_atts"></span></div>
       <div class="mchk" style="margin:10px 0 0"><label class="chk" id="c_cytat_row"><input type="checkbox" id="c_cytat" /> dołącz treść oryginalnej wiadomości</label><label class="chk"><input type="checkbox" id="c_potw" /> poproś o potwierdzenie przeczytania</label><label class="chk"><input type="checkbox" id="c_pilna" /> pilna</label></div>
-      <div class="acts" style="margin-top:12px"><button type="button" class="btn" id="c_send">Wyślij</button><button type="button" class="mini" id="c_undo" hidden>Cofnij wysyłkę</button><button type="button" class="mini" id="c_later">🕒 Wyślij później</button><button type="button" class="mini" id="c_draft">Zapisz szkic</button><button type="button" class="mini" id="c_discard">Odrzuć</button><span class="sub" id="c_msg" role="status"></span></div>
-      <div class="acts" id="c_when_row" hidden style="margin-top:8px"><label for="c_when" style="margin:0">Wyślij dnia (czas polski)</label><input type="datetime-local" id="c_when" style="width:auto" /><button type="button" class="mini ok" id="c_plan">Zaplanuj wysyłkę</button><span class="sub">Wiadomość poczeka w folderze Robocze; do tego czasu można ją anulować albo zmienić (zmiana wymaga ponownego zaplanowania).</span></div>
+      <div class="acts" style="margin-top:12px"><button type="button" class="btn" id="c_send" data-upr-cmp="wyslij">Wyślij</button><button type="button" class="mini" id="c_undo" hidden>Cofnij wysyłkę</button><button type="button" class="mini" id="c_later" data-upr-cmp="wyslij">🕒 Wyślij później</button><button type="button" class="mini" id="c_draft" data-upr-cmp="wyslij">Zapisz szkic</button><button type="button" class="mini" id="c_discard">Odrzuć</button><span class="sub" id="c_msg" role="status"></span></div>
+      <div class="acts" id="c_when_row" hidden style="margin-top:8px"><label for="c_when" style="margin:0">Wyślij dnia (czas polski)</label><input type="datetime-local" id="c_when" style="width:auto" /><button type="button" class="mini ok" id="c_plan" data-upr-cmp="wyslij">Zaplanuj wysyłkę</button><span class="sub">Wiadomość poczeka w folderze Robocze; do tego czasu można ją anulować albo zmienić (zmiana wymaga ponownego zaplanowania).</span></div>
       <p class="sub" style="margin:8px 0 0">Wiadomość wychodzi z adresu skrzynki. Można przeciągnąć pliki na to okno albo wkleić obraz do treści. Szkic zapisuje się co 20 s w folderze Robocze — razem z załącznikami — i można go dokończyć na innym urządzeniu. W szablonach pola {klient} i {imie} wypełniają się z adresata.</p>
     </div>
   </div>
@@ -255,6 +255,6 @@
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px"><button type="button" class="btn" id="setSave">Zapisz ustawienia</button><button type="button" class="mini" id="setCheck">Sprawdź połączenie</button><span class="sub" id="setMsg"></span></div>
   </div>
 </main>
-<script src="poczta.js?v=5"></script>
+<script src="poczta.js?v=6"></script>
 </body>
 </html>

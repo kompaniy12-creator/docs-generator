@@ -102,7 +102,7 @@
     <div class="box">
       <div class="toolbar" style="margin-top:0">
         <h2 style="margin:0">Rozsyłki</h2>
-        <span class="acts"><button type="button" class="mini ok" id="nowa">Nowa rozsyłka</button><button type="button" class="mini" id="nowaKoniec">Z szablonu: koniec rozsyłek w grupach</button></span>
+        <span class="acts"><button type="button" class="mini ok" id="nowa" data-upr="klienci.rozsylki.edycja">Nowa rozsyłka</button><button type="button" class="mini" id="nowaKoniec" data-upr="klienci.rozsylki.edycja">Z szablonu: koniec rozsyłek w grupach</button></span>
       </div>
       <div class="tablewrap row"><table id="ltbl"><thead><tr><th>Utworzona</th><th>Tytuł</th><th>Rodzaj</th><th>Kanały</th><th>Status</th><th>Postęp</th><th>Autor</th></tr></thead><tbody><tr><td colspan="7" class="empty">Ładowanie…</td></tr></tbody></table></div>
     </div>
@@ -124,7 +124,7 @@
             <div><label for="eSzablon">Szablon</label><select id="eSzablon"></select></div>
             <div><label for="eData">Data w szablonie „koniec rozsyłek w grupach”</label><input type="date" id="eData" /></div>
           </div>
-          <div class="row acts"><button type="button" class="mini" id="eWstaw">Wstaw szablon</button><button type="button" class="mini" id="eZapiszSzablon">Zapisz treść jako szablon</button><button type="button" class="mini" id="eUsunSzablon">Usuń wybrany szablon</button></div>
+          <div class="row acts"><button type="button" class="mini" id="eWstaw">Wstaw szablon</button><button type="button" class="mini" id="eZapiszSzablon" data-upr="klienci.rozsylki.edycja">Zapisz treść jako szablon</button><button type="button" class="mini" id="eUsunSzablon" data-upr="klienci.rozsylki.edycja">Usuń wybrany szablon</button></div>
 
           <div class="checks row"><label><input type="checkbox" id="eWspolna" /> <span><b>Jedna treść dla wszystkich</b> — bez wersji językowych (używana jest wersja polska).</span></label></div>
           <div class="row two">
@@ -190,7 +190,7 @@
           </div>
           <div class="lista row" id="eKlLista"></div>
           <div class="licznik" id="eWybor"></div>
-          <div class="acts row"><button type="button" class="mini" id="eSegZapisz">Zapisz jako segment</button><button type="button" class="mini" id="eSegUsun">Usuń wybrany segment</button></div>
+          <div class="acts row"><button type="button" class="mini" id="eSegZapisz" data-upr="klienci.rozsylki.edycja">Zapisz jako segment</button><button type="button" class="mini" id="eSegUsun" data-upr="klienci.rozsylki.edycja">Usuń wybrany segment</button></div>
         </div>
 
         <div class="box">
@@ -215,21 +215,21 @@
 
         <div class="box">
           <h2>4. Wysyłka</h2>
-          <div class="acts"><button type="button" class="mini ok big" id="eZapisz">Zapisz szkic</button><button type="button" class="mini big" id="eOdbiorcy">Pokaż odbiorców</button><button type="button" class="mini big" id="eTest" disabled>Wyślij test do mnie</button></div>
+          <div class="acts"><button type="button" class="mini ok big" id="eZapisz" data-upr="klienci.rozsylki.edycja">Zapisz szkic</button><button type="button" class="mini big" id="eOdbiorcy">Pokaż odbiorców</button><button type="button" class="mini big" id="eTest" data-upr="klienci.rozsylki.wyslij" disabled>Wyślij test do mnie</button></div>
           <div class="row two" id="eTestTel" hidden><div><label for="eTel">Numer do testu SMS (tylko administrator; puste = numer z profilu)</label><input type="tel" id="eTel" maxlength="24" autocomplete="off" /></div><div></div></div>
           <div class="wynik" id="eMsg"></div>
           <div class="row two">
             <div><label for="eKiedy">Termin wysyłki (puste = od razu po potwierdzeniu i akceptacji)</label><input type="datetime-local" id="eKiedy" /></div>
             <div class="checks" id="eCiszaBox" hidden><label style="margin-top:22px"><input type="checkbox" id="eCisza" /> <span>wyślij także poza godzinami wysyłki (tylko administrator)</span></label></div>
           </div>
-          <div class="row acts"><button type="button" class="mini ok big" id="eDalej" disabled>Przejdź do potwierdzenia</button><span class="sub" id="eDalejInfo"></span></div>
+          <div class="row acts"><button type="button" class="mini ok big" id="eDalej" data-upr="klienci.rozsylki.wyslij" disabled>Przejdź do potwierdzenia</button><span class="sub" id="eDalejInfo"></span></div>
         </div>
 
         <div class="box" id="ePotw" hidden>
           <h2>Potwierdzenie wysyłki</h2>
           <div id="ePotwTresc"></div>
           <div class="row" id="ePotwTytulBox" hidden><label for="ePotwTytul">Przepisz tytuł rozsyłki, aby potwierdzić</label><input type="text" id="ePotwTytul" autocomplete="off" /></div>
-          <div class="row acts"><button type="button" class="mini red big" id="ePotwTak">Potwierdzam</button><button type="button" class="mini big" id="ePotwNie">Wróć do edycji</button></div>
+          <div class="row acts"><button type="button" class="mini red big" id="ePotwTak" data-upr="klienci.rozsylki.wyslij">Potwierdzam</button><button type="button" class="mini big" id="ePotwNie">Wróć do edycji</button></div>
           <div class="wynik" id="ePotwMsg"></div>
         </div>
       </div>
@@ -276,7 +276,7 @@
         <div><label for="dStatus">Status</label><select id="dStatus"><option value="">wszystkie</option><option value="kolejka">w kolejce</option><option value="wyslano">wysłano</option><option value="blad">błąd</option><option value="pominieto">pominięto</option><option value="niepewny">niepewne</option></select></div>
         <div><label for="dKanal">Kanał</label><select id="dKanal"><option value="">wszystkie</option><option value="bot">bot</option><option value="grupa">grupa</option><option value="sms">SMS</option><option value="mail">e-mail</option><option value="brak">nieosiągalni</option></select></div>
         <div class="acts" style="align-self:end"><button type="button" class="mini" id="dPrev">← Poprzednie</button><button type="button" class="mini" id="dNext">Następne →</button></div>
-        <div class="acts" style="align-self:end"><button type="button" class="mini" id="dOdswiez">Odśwież</button><button type="button" class="mini" id="dCsv">Pobierz CSV</button></div>
+        <div class="acts" style="align-self:end"><button type="button" class="mini" id="dOdswiez">Odśwież</button><button type="button" class="mini" id="dCsv" data-upr="klienci.rozsylki.dziennik">Pobierz CSV</button></div>
       </div>
       <div class="tablewrap row"><table id="dtbl"><thead><tr><th>Klient</th><th>Kanał</th><th>Status</th><th>Uwagi</th><th>Wysłano</th></tr></thead><tbody><tr><td colspan="5" class="empty">Wybierz rozsyłkę z listy.</td></tr></tbody></table></div>
     </div>
@@ -292,7 +292,7 @@
           <div><label for="sQ">Klient — szukaj po nazwie albo NIP</label><input type="search" id="sQ" autocomplete="off" /></div>
           <div><label for="sKl">Klient</label><select id="sKl"></select></div>
         </div>
-        <div class="row acts"><button type="button" class="mini ok" id="sLink" disabled>Pokaż link</button><button type="button" class="mini" id="sRotuj" disabled>Unieważnij i wydaj nowy</button><button type="button" class="mini" id="sMoj">Mój link testowy</button></div>
+        <div class="row acts"><button type="button" class="mini ok" id="sLink" data-upr="klienci.rozsylki.subskrybenci" disabled>Pokaż link</button><button type="button" class="mini" id="sRotuj" data-upr="klienci.rozsylki.subskrybenci" disabled>Unieważnij i wydaj nowy</button><button type="button" class="mini" id="sMoj">Mój link testowy</button></div>
         <div class="wynik" id="sWynik"></div>
       </div>
       <div class="box">
@@ -341,6 +341,6 @@
   </section>
 </main>
 <script src="qr-svg.js?v=1"></script>
-<script src="rozsylka.js?v=1"></script>
+<script src="rozsylka.js?v=2"></script>
 </body>
 </html>

@@ -1,8 +1,17 @@
-// Full clients list (the portal's private copy of the clients sheet) — PORTAL ONLY (returns internal
-// columns: phone, e-mail, Telegram chat id, opiekun, kadrowy, język). Requires a
-// Supabase JWT with app_metadata.portal === true. Used by the registry page.
+// Clients list (the portal's private copy of the clients sheet) — PORTAL ONLY. Requires a Supabase JWT with
+// app_metadata.portal === true and the section Kadry or Księgowość. It feeds the registry page and the firm
+// pickers of rejestr / akta / import / dokumenty / ksiegowosc, so it does NOT depend on the page "Baza klientów"
+// (klienci.baza) being switched on for the person.
+//   -> { clients: [{ nazwa, nip, adres, forma, opodatkowanie, miasto, opiekun, kadrowy,
+//                    telefon, email, kontakt, telegram, jezyk }], kontakty: boolean }
+// Contact data (telefon, email, kontakt, telegram, jezyk) are filled only for a person who has the section
+// Kadry AND the function "Dane kontaktowe klientów" (klienci.baza.kontakty) — the same rule as the `lista`
+// action of klienci-baza. For everybody else the five fields come back empty and `kontakty` is false: an
+// account limited to Księgowość gets what its page needs (name, NIP, form, taxation, address, carers) and
+// nothing more.
 
-import { loadKlienciRows } from "../_shared/klienci.ts";
+import { type KlientRow, loadKlienciRows } from "../_shared/klienci.ts";
+import { mozna, wylaczone, type Wyl } from "../_shared/uprawnienia.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -31,16 +40,21 @@ function json(body: unknown, status: number, origin: string | null) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...cors(origin) } });
 }
 
-async function requirePortal(req: Request) {
+// Uprawnienia szczegółowe: the contact fields of a client and the key that guards them
+const KLUCZ_KONTAKTY = "klienci.baza.kontakty";
+const KONTAKTOWE: (keyof KlientRow)[] = ["telefon", "email", "kontakt", "telegram", "jezyk"];
+type Ja = { admin: boolean; kadry: boolean; ksiegowosc: boolean; wyl: Wyl };
+async function requirePortal(req: Request): Promise<Ja | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!token) return false;
+  if (!token) return null;
   const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: ANON, Authorization: `Bearer ${token}` } });
-  if (!r.ok) return false;
+  if (!r.ok) return null;
   const u = await r.json();
+  const m = u?.app_metadata ?? {};
+  if (m.portal !== true) return null;
   // section access: admins and accounts without a portal_sections list have every section
-  const secs = u?.app_metadata?.portal_sections;
-  const kadry = u?.app_metadata?.portal_admin === true || !Array.isArray(secs) || secs.includes("kadry");
-  return u?.app_metadata?.portal === true && kadry;
+  const admin = m.portal_admin === true, sec = (x: string) => admin || !Array.isArray(m.portal_sections) || m.portal_sections.includes(x);
+  return { admin, kadry: sec("kadry"), ksiegowosc: sec("onboarding"), wyl: wylaczone(m) };
 }
 
 Deno.serve(async (req) => {
@@ -52,10 +66,16 @@ Deno.serve(async (req) => {
 async function obsluz(req: Request, t: Stoper): Promise<Response> {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
-  if (!(await t.m("auth", requirePortal(req)))) return json({ error: "Brak dostępu (portal)." }, 403, origin);
+  const ja = await t.m("auth", requirePortal(req));
+  if (!ja || !(ja.kadry || ja.ksiegowosc)) return json({ error: "Brak dostępu (portal)." }, 403, origin);
+  // a switch-off list that cannot be read closes everything (as in every other function)
+  if (!ja.admin && ja.wyl === "blad") return json({ error: "Uprawnienia tego konta są zapisane nieprawidłowo — zgłoś to administratorowi portalu.", kod: "wylaczone", klucz: "" }, 403, origin);
+  const kontakty = ja.kadry && mozna(ja, KLUCZ_KONTAKTY);
 
   try {
-    return json({ clients: await t.m("klienci", loadKlienciRows()) }, 200, origin);
+    const rows = await t.m("klienci", loadKlienciRows());
+    if (!kontakty) for (const k of rows) for (const p of KONTAKTOWE) k[p] = "";
+    return json({ clients: rows, kontakty }, 200, origin);
   } catch (e) {
     console.error(e);
     return json({ error: "Nie udało się odczytać bazy klientów." }, 502, origin);

@@ -50,7 +50,7 @@
   }
 
   // ---------------- state ----------------
-  var klienci = [], wszyscy = [], okres = zamykany(), me = '', gotowe = false, bladTabeli = '';
+  var klienci = [], wszyscy = [], okres = zamykany(), me = '', gotowe = false, bladTabeli = '', kontaktyWidoczne = true;
   var zam = {};    // what is shown: zam[okres][nip] = row (also optimistic, not yet confirmed)
   var potw = {};   // last state confirmed by the server, to go back to when a save fails
   var wczytane = {}, kolejki = {}, wToku = {}, otwarty = -1;
@@ -117,6 +117,8 @@
   // Saves are queued per client and period, each one re-reads the row first, so two people
   // (or two quick clicks) ticking different steps do not overwrite each other.
   function zapisz(nip, o, zmiana) {
+    // Uprawnienia szczegółowe: "Odhaczanie kroków zamknięcia" switched off = the page is read-only for this account
+    if (window.PortalUpr && !window.PortalUpr.moze('ksiegowosc.zamkniecia.edycja')) { toast(window.PortalUpr.komunikat('ksiegowosc.zamkniecia.edycja')); return Promise.resolve(false); }
     var key = o + '|' + nip;
     // optimistic: show it now
     var teraz = { nip: nip, okres: o, kroki: kopia(kroki(nip, o).k), uwagi: (wiersz(nip, o) || {}).uwagi || null, updated_by: me, updated_at: new Date().toISOString() };
@@ -165,6 +167,7 @@
     var res = await fetch(KL, { headers: { apikey: window.sb.supabaseKey || '', Authorization: 'Bearer ' + await token() } });
     var k = await res.json().catch(function () { return {}; });
     if (!res.ok || !Array.isArray(k.clients)) throw new Error(k.error || ('HTTP ' + res.status));
+    kontaktyWidoczne = k.kontakty !== false;
     var seen = {};
     klienci = k.clients.map(function (c) {
       var o = {};
@@ -354,8 +357,10 @@
       ? '<div class="acct"><code id="dMr">' + esc(mr) + '</code><button type="button" class="mini" id="dCopy">Kopiuj</button><span class="sub" id="dCopyMsg"></span></div>' +
         '<p class="hint" style="margin:6px 0 0">Indywidualny rachunek do wpłat PIT, CIT i VAT, wyliczony z NIP. Przed podaniem klientowi można go potwierdzić w generatorze na podatki.gov.pl.</p>'
       : '<p class="hint" style="margin:0">Brak poprawnego NIP (10 cyfr) w bazie klientów — nie można wyliczyć mikrorachunku.</p>';
-    var pola = [['Nazwa', c.nazwa], ['NIP', c.nip], ['Forma prawna', c.forma], ['Opodatkowanie', c.opodatkowanie], ['Adres', c.adres], ['Miasto', c.miasto], ['Osoba kontaktowa', c.kontakt],
-      ['Telefon', c.telefon], ['E-mail', c.email], ['Opiekun (księgowość)', c.opiekun], ['Kadrowy', c.kadrowy], ['Telegram', c.telegram], ['Język', c.jezyk]];
+    // contact data come only to accounts that may see them (klienci-list: `kontakty`); otherwise one line says so
+    var pola = [['Nazwa', c.nazwa], ['NIP', c.nip], ['Forma prawna', c.forma], ['Opodatkowanie', c.opodatkowanie], ['Adres', c.adres], ['Miasto', c.miasto]]
+      .concat(kontaktyWidoczne ? [['Osoba kontaktowa', c.kontakt], ['Telefon', c.telefon], ['E-mail', c.email]] : [['Dane kontaktowe', 'ukryte dla Twojego konta']])
+      .concat([['Opiekun (księgowość)', c.opiekun], ['Kadrowy', c.kadrowy]]).concat(kontaktyWidoczne ? [['Telegram', c.telegram], ['Język', c.jezyk]] : []);
     $('dData').innerHTML = pola.map(function (p) { return '<dt>' + p[0] + '</dt><dd>' + (p[1] ? esc(p[1]) : '<span class="sub">—</span>') + '</dd>'; }).join('');
     $('dUwMsg').textContent = '';
     rysujSzczegolyStan(true);

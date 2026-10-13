@@ -66,7 +66,12 @@ function json(body: unknown, status: number, origin: string | null) {
 type Osoba = Ja & { moze: boolean; wyl: Wyl };
 // Uprawnienia szczegółowe: the catalogue key of each action (the rest of them need the page's key)
 const BAZA = "klienci.rozsylki";
-const AKCJE: Record<string, string> = Object.fromEntries(["zglos", "test", "wstrzymaj", "wznow", "anuluj", "cofnij"].map((a) => [a, "klienci.rozsylki.wyslij"]));
+const AKCJE: Record<string, string> = Object.fromEntries([
+  ...["zglos", "test", "wstrzymaj", "wznow", "anuluj", "cofnij"].map((a) => [a, "klienci.rozsylki.wyslij"]),
+  ...["zapisz", "szablon_zapisz", "szablon_usun", "segment_zapisz", "segment_usun"].map((a) => [a, "klienci.rozsylki.edycja"]),
+  ...["zaproszenie", "subskrybenci", "subskrybent", "zgoda"].map((a) => [a, "klienci.rozsylki.subskrybenci"]),
+  ...["dziennik", "csv"].map((a) => [a, "klienci.rozsylki.dziennik"]),
+]);
 async function portal(req: Request): Promise<Osoba | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;

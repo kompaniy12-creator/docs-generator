@@ -286,6 +286,7 @@
     var kt = k.kontakt || {};
     h += dl([['Forma prawna', k.forma], ['Opodatkowanie', k.opodatkowanie], ['Adres', [k.adres, k.miasto].filter(Boolean).join(', ')], ['Opiekun księgowy', k.opiekun], ['Kadrowy', k.kadrowy],
       ['Osoba kontaktowa', kt.kontakt], ['Telefon', kt.telefon], ['E-mail', kt.email], ['Język', kt.jezyk]]) || '<p class="hint">Brak danych.</p>';
+    if (ja.kontakty === false) h += '<p class="hint">Dane kontaktowe klientów (telefon, e-mail, osoba kontaktowa) są ukryte dla Twojego konta.</p>';
     // one click to the SMS page with this client chosen (the number is read there from the base)
     var smsLink = /^\d{10}$/.test(k.nip || '') && k.status !== 'zakonczony' ? '<a class="mini" href="sms.html?nip=' + esc(k.nip) + '">SMS</a>' : '';
     if (!(ja.admin && k.dane && k.w_arkuszu) && smsLink) h += '<div class="acts" style="margin-top:8px">' + smsLink + '</div>';

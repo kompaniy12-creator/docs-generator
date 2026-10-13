@@ -5,6 +5,8 @@ import { assert, assertEquals } from "jsr:@std/assert@1";
 import { etykieta, KLUCZE, kluczAkcji, mozna, normalizuj, odmowa, type Upr, wylaczone, znany } from "./uprawnienia.ts";
 import { ASYSTENCI } from "../asystent/definicje.ts";
 import { SKRZYNKI } from "../poczta/logic.ts";
+import { FUNKCJE_SKRZYNKI } from "../poczta/core.ts";
+import { MAGAZYN_KLUCZE, NARZEDZIA } from "../asystent/narzedzia.ts";
 
 // deno-lint-ignore no-explicit-any
 type Any = any;
@@ -90,10 +92,10 @@ Deno.test("katalog: klucze są poprawne, każdy ma rodzica, szablony są znormal
   }
 });
 
-// the keys the functions check — every string literal that looks like a key, in the files of phase 1
+// the keys the functions check — every string literal that looks like a key, in the files that check the list
 const PLIKI = ["terminy/index.ts", "wyslij-komplet/index.ts", "sms/index.ts", "komunikacja/index.ts", "poczta/core.ts", "asystent/core.ts", "akta/index.ts", "translate-docs/index.ts", "vat/index.ts",
-  "wfirma/index.ts", "klienci-baza/index.ts", "klient/portal.ts", "podpisy/core.ts"];
-Deno.test("każdy klucz sprawdzany w funkcjach istnieje w katalogu i jest tam oznaczony jako blokada funkcji w fazie 1", async () => {
+  "wfirma/index.ts", "klienci-baza/index.ts", "klient/portal.ts", "podpisy/core.ts", "firma/index.ts", "zadania/index.ts", "klienci-list/index.ts"];
+Deno.test("każdy klucz sprawdzany w funkcjach istnieje w katalogu i jest tam oznaczony jako blokada funkcji — i odwrotnie", async () => {
   const uzyte = new Set<string>();
   for (const p of PLIKI) {
     const src = await plik("../" + p);
@@ -105,16 +107,49 @@ Deno.test("każdy klucz sprawdzany w funkcjach istnieje w katalogu i jest tam oz
       if (m[1].includes(".") || new RegExp(`(mozna|mozeKlucz|odmowa\\w*)\\([^)]*"${m[1]}"`).test(src)) uzyte.add(m[1]);
     }
   }
-  for (const s of Object.keys(SKRZYNKI)) uzyte.add("poczta." + s);
+  // the mail builds its keys from the mailbox: poczta.<skrzynka> and poczta.<skrzynka>.<funkcja>
+  assertEquals([...FUNKCJE_SKRZYNKI].sort(), ["porzadki", "wyslij", "zalaczniki"]);
+  for (const s of Object.keys(SKRZYNKI)) { uzyte.add("poczta." + s); for (const f of FUNKCJE_SKRZYNKI) uzyte.add("poczta." + s + "." + f); }
   // the assistants a member of staff can be given (the rest are for administrators, who are never restricted)
   for (const a of ASYSTENCI) if (!(a.dostep as Any).admin) uzyte.add("asystenci." + a.id);
-  assert(uzyte.size >= 30, "znaleziono " + uzyte.size);
+  assert(uzyte.size >= 50, "znaleziono " + uzyte.size);
+  const zywaF = (n: Any) => n.egz.some((x: Any) => x.typ === "F" && x.faza <= U.FAZA);
   for (const k of uzyte) {
     assert(znany(k), "brak w katalogu: " + k);
-    assert(U.KLUCZE[k].egz.some((x: Any) => x.typ === "F" && x.faza === 1), "katalog nie oznacza " + k + " jako F1");
+    assert(zywaF(U.KLUCZE[k]), "katalog nie oznacza " + k + " jako blokady funkcji (F)");
   }
-  // and the other way round: what the catalogue calls "F1" is checked by some function
-  for (const n of U.LISTA) if (n.egz.some((x: Any) => x.typ === "F" && x.faza === 1)) assert(uzyte.has(n.klucz), "katalog obiecuje blokadę funkcji, której nikt nie sprawdza: " + n.klucz);
+  // and the other way round: what the catalogue calls a function block is checked by some function
+  for (const n of U.LISTA) if (n.egz.some((x: Any) => x.typ === "F")) assert(uzyte.has(n.klucz), "katalog obiecuje blokadę funkcji, której nikt nie sprawdza: " + n.klucz);
+  // nothing in the catalogue waits for a later phase any more
+  assertEquals(U.FAZA, 3);
+  for (const n of U.LISTA) assert(n.egz.every((x: Any) => x.faza <= U.FAZA) && !["oczekuje", "strona_oczekuje"].includes(n.status), n.klucz);
+});
+
+// what the migration portal_uprawnienia_rls.sql puts into the policies — every key there is a catalogue key marked R,
+// and every key the catalogue marks R is in the migration
+Deno.test("każdy klucz w politykach RLS (migracja fazy 3) jest w katalogu oznaczony jako blokada bazy — i odwrotnie", async () => {
+  const sql = (await plik("../../migrations/portal_uprawnienia_rls.sql")).split("-- ============================== end of the rollback block")[1];
+  assert(sql && sql.includes("begin;") && sql.trimEnd().endsWith("commit;"));
+  const wSql = new Set([...sql.matchAll(/public\.portal_moze\('([a-z0-9_.]+)'\)/g)].map((m) => m[1]));
+  assert(wSql.size >= 20, "znaleziono " + wSql.size);
+  const zR = (n: Any) => n.egz.some((x: Any) => x.typ === "R");
+  for (const k of wSql) { assert(znany(k), "brak w katalogu: " + k); assert(zR(U.KLUCZE[k]), "katalog nie oznacza " + k + " jako blokady bazy (R)"); }
+  for (const n of U.LISTA) if (zR(n)) assert(wSql.has(n.klucz), "katalog obiecuje blokadę bazy, której nie ma w migracji: " + n.klucz);
+  // the rollback file restores the old definitions and never mentions the list
+  const wstecz = (await plik("../../migrations/portal_uprawnienia_rls_rollback.sql")).split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n");
+  assert(!wstecz.includes("portal_moze(") && wstecz.includes("create policy akta_all_kadry") && wstecz.includes("create policy us_all_portal") && wstecz.includes("create policy ksieg_zamkniecia_all"));
+});
+
+// the assistants: every tool and every Store method is classified, with keys of the catalogue
+Deno.test("asystenci: każde narzędzie i każda metoda magazynu ma klucze z katalogu (albo jest tylko dla administratora / wspólna)", () => {
+  const sprawdz = (kl: unknown, co: string) => {
+    assert(kl === null || Array.isArray(kl), co + ": brak klasyfikacji");
+    for (const k of (kl ?? []) as string[]) assert(znany(k), co + ": brak w katalogu " + k);
+  };
+  for (const n of NARZEDZIA) sprawdz(n.klucz, "narzędzie " + n.name);
+  for (const [m, kl] of Object.entries(MAGAZYN_KLUCZE)) sprawdz(kl, "magazyn " + m);
+  // a tool for administrators only has no page keys, and the other way round
+  for (const n of NARZEDZIA) assertEquals(Array.isArray(n.klucz) && n.klucz.length === 0, (n.dostep as Any).admin === true, n.name);
 });
 
 Deno.test("każda strona chroniona przez auth-guard.js ma klucz w katalogu; strona startowa nie ma żadnego", async () => {

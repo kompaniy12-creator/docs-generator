@@ -9,8 +9,13 @@
 // (portal_firmy_cache); fresh=1 re-reads it from the register (paid) when someone
 // asks for it explicitly. The logic lives in ../_shared/firma.ts, which the public
 // client form also uses through klient-by-nip. Sole proprietors are not in KRS -> { found: false }.
+//
+// Uprawnienia szczegółowe: the key "wspolne.krs" (Płatne pobieranie danych z KRS) guards only what costs money —
+// a firm or an extract that is not in our base yet, and every search (?q=). What is already in our base is
+// served to a person with the key switched off exactly as to anybody else.
 
 import { firmaConfigured, getFirma, getOdpis, searchFirmy } from "../_shared/firma.ts";
+import { mozna, odmowa, wylaczone } from "../_shared/uprawnienia.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -36,7 +41,7 @@ async function requirePortal(req: Request) {
   if (m.portal !== true) return false;
   const admin = m.portal_admin === true;
   const sec = (x: string) => admin || !Array.isArray(m.portal_sections) || m.portal_sections.includes(x);
-  return { admin, sec, id: String(u.id ?? "") };
+  return { admin, sec, id: String(u.id ?? ""), wyl: wylaczone(m) };
 }
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const ODPISY_DZIENNIE = 40; // paid KRS extracts fetched per day by the whole office
@@ -62,6 +67,16 @@ async function policz(klucz: string) {
 async function wBazie(filtr: string, tabela = "portal_firmy_cache", kol = "nip"): Promise<boolean> {
   try { const r = await rest(`${tabela}?${filtr}&select=${kol}&limit=1`); return r.ok && (await r.json()).length > 0; } catch (_e) { return false; }
 }
+const KLUCZ_PLATNE = "wspolne.krs";
+// is the firm in our base in a form getFirma() serves without asking the register (the same test as there:
+// the current version of the record, or a remembered "not found") — a FALSE here means the request would be paid
+async function firmaWBazie(filtr: string): Promise<boolean> {
+  try {
+    const r = await rest(`portal_firmy_cache?${filtr}&select=v:data->>v,found:data->>found&limit=1`);
+    const row = r.ok ? (await r.json())[0] : null;
+    return !!row && (String(row.v) === "2" || String(row.found) === "false");
+  } catch (_e) { return false; }
+}
 const LIMIT_OSOBY = "Dzienny limit zapytań do rejestru dla jednej osoby został wykorzystany — spróbuj jutro albo poproś administratora.";
 
 Deno.serve(async (req) => {
@@ -78,9 +93,13 @@ Deno.serve(async (req) => {
   const krs = (url.searchParams.get("krs") ?? "").replace(/\D/g, "");
   const odpis = (url.searchParams.get("odpis") ?? "").replace(/\D/g, "");
   const nip = (url.searchParams.get("nip") ?? "").replace(/\D/g, "");
+  // may this person spend the office's money in the register (the paid paths below ask before they fetch)
+  const platne = mozna(kto, KLUCZ_PLATNE);
+  const wylaczone403 = () => json(odmowa(KLUCZ_PLATNE), 403, origin);
   try {
     //   ?q=name | NIP | KRS | REGON  -> { hits: [{ krs, nip, nazwa, miasto, forma, wykreslona }] }
     if (q) {
+      if (!platne) return wylaczone403(); // a search is always a paid request
       if (q.length < 3) return json({ error: "Wpisz co najmniej 3 znaki." }, 400, origin);
       if (await ile("firma-q:" + kto.id) >= MAX_SZUKAN_OSOBA) return json({ error: LIMIT_OSOBY }, 429, origin);
       await policz("firma-q:" + kto.id);
@@ -92,14 +111,18 @@ Deno.serve(async (req) => {
       if (!kto.sec("biezaca") && !kto.sec("rejestracja")) return json({ error: "Brak dostępu do odpisu KRS." }, 403, origin);
       // an extract already in our base costs nothing: the cap is only for what must be fetched
       const wPamieci = !fresh && await wBazie(`krs=eq.${odpis.padStart(10, "0")}`, "portal_odpisy_cache", "krs");
+      if (!wPamieci && !platne) return wylaczone403();
       if (!wPamieci && await odpisyDzis() >= ODPISY_DZIENNIE) return json({ error: "Dzienny limit odpisów KRS został wykorzystany — spróbuj jutro." }, 429, origin);
       return json(await getOdpis(odpis.padStart(10, "0"), fresh), 200, origin);
     }
     //   ?krs=KRS -> the same firm data as by NIP
     if (!krs && nip.length !== 10) return json({ error: "Nieprawidłowy NIP (10 cyfr)." }, 400, origin);
-    // over the personal cap only what is already in our base is served
-    if (await ile("firma:" + kto.id) >= MAX_FIRM_OSOBA) {
-      const mamy = !fresh && await wBazie(krs ? `data->>krs=eq.${krs.padStart(10, "0")}` : `nip=eq.${nip}`);
+    // with the paid fetch switched off, and over the personal cap, only what is already in our base is served
+    const filtr = krs ? `data->>krs=eq.${krs.padStart(10, "0")}` : `nip=eq.${nip}`;
+    if (!platne) {
+      if (!(await firmaWBazie(filtr))) return wylaczone403();
+    } else if (await ile("firma:" + kto.id) >= MAX_FIRM_OSOBA) {
+      const mamy = !fresh && await wBazie(filtr);
       if (!mamy) return json({ error: LIMIT_OSOBY }, 429, origin);
     }
     const f = krs ? await getFirma("", fresh, krs.padStart(10, "0")) : await getFirma(nip, fresh);

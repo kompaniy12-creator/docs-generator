@@ -29,7 +29,10 @@
     if (!res.ok) throw new Error(out.error || ('Błąd ' + res.status));
     return out;
   }
-  function push(id, event) { call({ action: 'notify', id: id, event: event }).catch(function () {}); }
+  // Uprawnienia szczegółowe: the Telegram push can be switched off for an account — then it is simply not asked for
+  var POWIADOM = 'ogolne.zadania.powiadom';
+  function mozePowiadomic() { return !window.PortalUpr || window.PortalUpr.moze(POWIADOM); }
+  function push(id, event) { if (mozePowiadomic()) call({ action: 'notify', id: id, event: event }).catch(function () {}); }
 
   function duePill(z) {
     if (z.status === 'zrobione') return '<span class="pill p-ok">zrobione ' + pl(z.done_at) + '</span>';
@@ -64,7 +67,7 @@
           (z.link ? '<p><a href="' + esc(z.link) + '">Otwórz w portalu →</a></p>' : '') +
           (z.komentarze || []).map(function (c) { return '<div class="cm"><small>' + esc(who(c.by)) + ' · ' + new Date(c.at).toLocaleString('pl-PL') + '</small><br>' + esc(c.text) + '</div>'; }).join('') +
           '<div class="cmadd"><input type="text" maxlength="1000" placeholder="Komentarz…" data-cm /><button type="button" class="mini" data-cmgo>Dodaj</button>' +
-          (mine && z.zrodlo !== 'system' ? '<button type="button" class="mini del" data-del>Usuń</button>' : '') + '</div></div></div>';
+          (mine && z.zrodlo !== 'system' ? '<button type="button" class="mini del" data-del data-upr="ogolne.zadania.usun">Usuń</button>' : '') + '</div></div></div>';
     }).join('');
   }
 
@@ -85,8 +88,11 @@
     }
     if (e.target.closest('[data-del]')) {
       if (!confirm('Usunąć zadanie „' + z.tytul + '”?')) return;
-      var d = await window.sb.from(T).delete().eq('id', id);
+      if (window.PortalUpr && !window.PortalUpr.moze('ogolne.zadania.usun')) return alert(window.PortalUpr.komunikat('ogolne.zadania.usun'));
+      var d = await window.sb.from(T).delete().eq('id', id).select('id');
       if (d.error) return alert('Błąd: ' + d.error.message);
+      // nothing deleted although nothing failed: the database did not let this account delete the task
+      if (!d.data || !d.data.length) return alert('Zadanie nie zostało usunięte — usunąć może je osoba, która je dodała, albo administrator.');
       rows = rows.filter(function (r) { return r.id !== id; }); render(); badge();
       return;
     }
@@ -106,6 +112,7 @@
   $('add').addEventListener('submit', async function (e) {
     e.preventDefault();
     var title = $('nTitle').value.trim(); if (!title) return;
+    if (window.PortalUpr && !window.PortalUpr.moze('ogolne.zadania.dodaj')) { $('nMsg').textContent = window.PortalUpr.komunikat('ogolne.zadania.dodaj'); return; }
     $('nGo').disabled = true; $('nMsg').textContent = '';
     var ins = await window.sb.from(T).insert({
       created_by: me, assignee: $('nWho').value, tytul: title, opis: $('nDesc').value.trim() || null,
@@ -115,7 +122,7 @@
     if (ins.error) { $('nMsg').textContent = 'Błąd: ' + ins.error.message; return; }
     rows.unshift(ins.data);
     var to = team.filter(function (t) { return t.email === ins.data.assignee; })[0];
-    $('nMsg').textContent = ins.data.assignee === me ? 'Dodano.' : (to && to.telegram ? 'Dodano — powiadomienie wysłane w Telegramie.' : 'Dodano. Ta osoba nie ma jeszcze podpiętego Telegrama — zobaczy zadanie w portalu.');
+    $('nMsg').textContent = ins.data.assignee === me ? 'Dodano.' : !mozePowiadomic() ? 'Dodano. Powiadomienia Telegram są wyłączone dla Twojego konta — ta osoba zobaczy zadanie w portalu.' : (to && to.telegram ? 'Dodano — powiadomienie wysłane w Telegramie.' : 'Dodano. Ta osoba nie ma jeszcze podpiętego Telegrama — zobaczy zadanie w portalu.');
     if (ins.data.assignee !== me) push(ins.data.id, 'new');
     $('nTitle').value = ''; $('nDesc').value = ''; $('nDue').value = ''; $('nUrgent').checked = false;
     tab = ins.data.assignee === me ? 'moje' : 'zlecone'; render(); badge();

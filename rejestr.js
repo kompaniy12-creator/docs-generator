@@ -8,7 +8,7 @@
   var TABLE = 'zatrudnienie_zgloszenia';
 
   // workers = current people; archive = former staff, kept apart (status 'archiwum')
-  var firms = [], workers = [], archive = [], byNip = {}, tab = 'firmy', q = '';
+  var firms = [], workers = [], archive = [], byNip = {}, tab = 'firmy', q = '', kontaktyUkryte = false;
   // employers of registered workers that are not in the client base: shown as well, so that nobody is lost
   var spoza = [];
   function wszystkieFirmy() { return firms.concat(spoza); }
@@ -70,6 +70,7 @@
       var data = await res.json();
       if (!res.ok) throw new Error(data.error || res.status);
       firms = data.clients || [];
+      kontaktyUkryte = data.kontakty === false;
     } catch (e) {
       $('panel-firmy').innerHTML = '<div class="empty">Nie udało się wczytać firm: ' + esc(e.message || e) + '</div>';
     }
@@ -113,8 +114,11 @@
 
   // move a person to the archive of former staff, or back
   async function setStatus(id, status) {
-    var u = await window.sb.from(TABLE).update({ status: status }).eq('id', id);
+    // Uprawnienia szczegółowe: "Zmiana danych pracowników" switched off = the register is read-only for this account
+    if (window.PortalUpr && !window.PortalUpr.moze('kadry.dane.edycja')) { alert(window.PortalUpr.komunikat('kadry.dane.edycja')); return; }
+    var u = await window.sb.from(TABLE).update({ status: status }).eq('id', id).select('id');
     if (u.error) { alert('Błąd: ' + u.error.message); return; }
+    if (!u.data || !u.data.length) { alert('Zmiana nie została zapisana — to konto nie może zmieniać danych pracowników.'); return; }
     workers.concat(archive).forEach(function (w) { if (w.id === id) w.status = status; });
     regroup();
     render();
@@ -241,6 +245,7 @@
             (f.kadrowy ? '<div><b>Kadrowy:</b> ' + esc(f.kadrowy) + '</div>' : '') +
             (f.jezyk ? '<div><b>Język:</b> ' + esc(f.jezyk) + '</div>' : '') +
             (f.telegram ? '<div><b>Telegram:</b> ' + esc(f.telegram) + '</div>' : '') +
+            (kontaktyUkryte && !f.spoza ? '<div><b>Dane kontaktowe:</b> ukryte dla Twojego konta</div>' : '') +
           '</div>' +
           (ws.length
             ? '<ul class="wlist">' + ws.map(function (w) {

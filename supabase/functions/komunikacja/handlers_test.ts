@@ -898,3 +898,40 @@ Deno.test("uprawnienia: brak listy = jak dotąd; wyłączony klucz, przodek i ze
   delete USERS.ogr;
   assertEquals(wyslane().length, 0);
 });
+
+Deno.test("uprawnienia (funkcje strony): szkice/szablony/segmenty, subskrybenci i zgody, dziennik — każda grupa wyłączana osobno; czytanie zostaje", opts, async () => {
+  reset();
+  const U = (wyl: unknown, o: Any = {}) => ({ email: "ogr@example.test", app_metadata: { portal: true, portal_sections: ["kadry"], portal_wylaczone: wyl, ...o } });
+  const ID0 = "00000000-0000-4000-8000-000000000001";
+  const GRUPY: Record<string, string[]> = {
+    "klienci.rozsylki.edycja": ["zapisz", "szablon_zapisz", "szablon_usun", "segment_zapisz", "segment_usun"],
+    "klienci.rozsylki.subskrybenci": ["zaproszenie", "subskrybenci", "subskrybent", "zgoda"],
+    "klienci.rozsylki.dziennik": ["dziennik", "csv"],
+    "klienci.rozsylki.wyslij": ["zglos", "test", "wstrzymaj", "wznow", "anuluj", "cofnij"],
+  };
+  const CZYTANIE = ["status", "lista", "szablony", "segmenty", "klienci"];
+  // without a list no action of any group is refused by the list
+  USERS.ogr = U(undefined);
+  for (const akcje of Object.values(GRUPY)) for (const a of akcje) { const r = await api("ogr", { action: a, id: ID0 }); assert(r.kod !== "wylaczone", a); }
+  for (const [klucz, akcje] of Object.entries(GRUPY)) {
+    USERS.ogr = U([klucz]);
+    const przed = JSON.stringify(T);
+    for (const a of akcje) {
+      const r = await api("ogr", { action: a, id: ID0, klient: NIPY[0], rozsylka: szkic(), nazwa: "Szablon testowy" });
+      assertEquals([r.http, r.kod, r.klucz], [403, "wylaczone", klucz], a);
+    }
+    assertEquals(JSON.stringify(T), przed, klucz + ": nic nie zapisano");
+    // reading and the other groups are untouched
+    for (const a of CZYTANIE) assertEquals((await api("ogr", { action: a })).http, 200, klucz + " / " + a);
+    for (const [inny, ak] of Object.entries(GRUPY)) if (inny !== klucz) for (const a of ak) assert((await api("ogr", { action: a, id: ID0 })).kod !== "wylaczone", klucz + " nie zamyka " + a);
+  }
+  // a person's own invitation link is not the subscribers' register
+  USERS.ogr = U(["klienci.rozsylki.subskrybenci"]);
+  assert((await api("ogr", { action: "zaproszenie_moje" })).kod !== "wylaczone");
+  // an administrator: never restricted
+  USERS.ogr = U(Object.keys(GRUPY), { portal_admin: true });
+  assert((await api("ogr", { action: "dziennik", id: ID0 })).kod !== "wylaczone");
+  assertEquals((await api("ogr", { action: "subskrybenci" })).http, 200);
+  delete USERS.ogr;
+  assertEquals(wyslane().length, 0);
+});

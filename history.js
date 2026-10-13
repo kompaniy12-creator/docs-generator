@@ -61,12 +61,16 @@
   }
 
   async function remove(row) {
+    // Uprawnienia szczegółowe: deleting from the history can be switched off for an account — the database would
+    // then delete nothing without saying why, so the reason is given here
+    if (window.PortalUpr && !window.PortalUpr.moze('wspolne.historia.usun')) throw new Error(window.PortalUpr.komunikat('wspolne.historia.usun'));
     var sb = client();
     if (row.pdf_path) {
       try { await sb.storage.from(BUCKET).remove([row.pdf_path]); } catch (e) {}
     }
-    var res = await sb.from(TABLE).delete().eq('id', row.id);
+    var res = await sb.from(TABLE).delete().eq('id', row.id).select('id');
     if (res.error) throw res.error;
+    if (!res.data || !res.data.length) throw new Error('Dokument nie został usunięty — to konto nie może usuwać dokumentów z historii.');
     return true;
   }
 

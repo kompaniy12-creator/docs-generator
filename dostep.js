@@ -176,6 +176,8 @@
     else {
       if (rodzicOff) { dis = true; uwaga = 'Wyłączone razem z: ' + U.KLUCZE[n.rodzic].nazwa + '.'; }
       if (U.STATUSY[n.status]) pill = '<span class="pill ' + (PILL[n.status] || 'p-grey') + '">' + esc(U.STATUSY[n.status]) + '</span>';
+      // a partial block says what exactly is blocked and what stays reachable
+      if (!uwaga && n.status === 'serwer_czesc' && n.powod) uwaga = n.powod;
     }
     return '<div class="upr-w d' + glebia + (dis ? ' off' : '') + '"><label><input type="checkbox" ' + attr + (checked ? ' checked' : '') + (dis ? ' disabled' : '') +
         (st === 'czesc' && checked && !dis ? ' data-czesc="1"' : '') + ' /><span>' + esc(n.nazwa) + '</span></label>' + pill +
@@ -216,8 +218,8 @@
     el('uprSzablon').innerHTML = '<option value="">— wybierz, aby ustawić —</option>' + U.SZABLONY.map(function (s) { return '<option value="' + esc(s.id) + '">' + esc(s.nazwa) + '</option>'; }).join('');
     el('uprKopia').innerHTML = '<option value="">— wybierz osobę —</option>' + users.filter(function (x) { return !x.admin && x.id !== u.id; })
       .map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.email) + '</option>'; }).join('');
-    el('uprLegenda').textContent = 'Oznaczenia: „blokada na serwerze” — funkcja odmawia tej osobie także poza stronami portalu; „częściowa” — funkcja portalu odmawia, ale część tych danych jest wspólna z innymi stronami albo czeka na blokadę w bazie; ' +
-      '„ukrycie strony” — strona znika z menu i nie otwiera się, bez blokady serwera; „w przygotowaniu” — ustawienie zostanie zapisane, a zacznie blokować po kolejnym etapie prac.';
+    el('uprLegenda').textContent = 'Oznaczenia: „blokada na serwerze” — funkcja odmawia tej osobie także poza stronami portalu; „częściowa” — serwer odmawia, ale część tych danych jest dostępna inną drogą (opis pod pozycją); ' +
+      '„ukrycie strony” — strona znika z menu i nie otwiera się; nie ma osobnej blokady serwera, bo strona nie ma własnych danych albo dzieli je z innymi stronami. Przyciski wyłączonych funkcji znikają też ze stron tej osoby.';
     el('uprBox').hidden = false;
     uprRender();
     el('uprBox').scrollIntoView({ behavior: 'smooth', block: 'start' });

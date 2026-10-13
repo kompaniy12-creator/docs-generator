@@ -17,6 +17,8 @@
 //
 // Telegram texts carry task titles only; system titles name the firm, never the worker.
 
+import { mozna, odmowa, wylaczone, type Wyl } from "../_shared/uprawnienia.ts";
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -61,13 +63,16 @@ function isCron(req: Request) {
   for (let i = 0; i < k.length; i++) diff |= k.charCodeAt(i) ^ CRON_KEY.charCodeAt(i);
   return diff === 0;
 }
-async function portalUser(req: Request): Promise<{ email: string; admin: boolean } | null> {
+// Uprawnienia szczegółowe: the Telegram push about a task can be switched off for a person. The other portal
+// actions have no key of their own: `team` feeds the assignee pickers of several pages (Zadania, Poczta, Zgłoszenia).
+const AKCJE: Record<string, string> = { notify: "ogolne.zadania.powiadom" };
+async function portalUser(req: Request): Promise<{ email: string; admin: boolean; wyl: Wyl } | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
   const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: ANON, Authorization: `Bearer ${token}` } });
   if (!r.ok) return null;
   const u = await r.json();
-  return u?.app_metadata?.portal === true && u.email ? { email: String(u.email).toLowerCase(), admin: u.app_metadata.portal_admin === true } : null;
+  return u?.app_metadata?.portal === true && u.email ? { email: String(u.email).toLowerCase(), admin: u.app_metadata.portal_admin === true, wyl: wylaczone(u.app_metadata) } : null;
 }
 async function portalUsers(): Promise<{ email: string; admin: boolean }[]> {
   const out: { email: string; admin: boolean }[] = [];
@@ -327,6 +332,10 @@ async function obsluz(req: Request, t: Stoper): Promise<Response> {
     const users = () => (konta ??= t.m("konta", portalUsers()));
     const me = await t.m("auth", portalUser(req));
     if (!me) return json({ error: "Brak dostępu (portal)." }, 403, origin);
+    // the per-function switch-off list — after the scheduler's branch above. Only an action with a key of its own
+    // is checked; a list that cannot be read closes every action (as in the other functions).
+    const klucz = typeof body.action === "string" && Object.hasOwn(AKCJE, body.action) ? AKCJE[body.action] : null;
+    if (klucz ? !mozna(me, klucz) : !me.admin && me.wyl === "blad") return json(odmowa(klucz ?? AKCJE.notify), 403, origin);
     if (body.action === "team") users().catch(() => {});
     const { set, zapisane } = await efektywne(users, t);
 

@@ -27,6 +27,13 @@
     if (!res.ok) throw new Error(out.error || ('Błąd ' + res.status));
     return out;
   }
+  // Uprawnienia szczegółowe (portal-shell.js: PortalUpr hides what carries data-upr). The functions of a mailbox have
+  // a key per mailbox — poczta.<skrzynka>.wyslij / .porzadki / .zalaczniki — so the attribute is written with the
+  // mailbox the element works on; the fixed buttons of the page are re-labelled when the mailbox changes.
+  function uprS(f, box) { return ' data-upr="poczta.' + (box || mb.box || skrzynka || 'kadry') + '.' + f + '"'; }
+  function uprStale(atrybut, box) {
+    Array.prototype.forEach.call(document.querySelectorAll('[' + atrybut + ']'), function (el) { el.setAttribute('data-upr', 'poczta.' + box + '.' + el.getAttribute(atrybut)); });
+  }
   function hasTask(r) { var z = r.zadanie_id && zadania[r.zadanie_id]; return z || null; }
   function decyzja(r) { return r.status === 'nowa' && r.wymaga !== false; }
 
@@ -78,8 +85,8 @@
             '<div><label>Termin</label><input type="date" data-f="termin" value="' + esc(p && p.termin ? p.termin : '') + '" /></div>' +
             '<label class="chk" style="padding-bottom:10px"><input type="checkbox" data-f="pilne"' + (r.pilnosc === 'wysoka' ? ' checked' : '') + ' /> pilne</label></div>' +
           '<textarea maxlength="1500" data-f="opis" placeholder="Szczegóły (opcjonalnie)">' + esc(p ? p.opis : '') + '</textarea>' : '') +
-        '<div class="acts">' + (can ? '<button type="button" class="mini ok" data-act="zadanie">Utwórz zadanie</button>' : '') +
-          (can && r.status !== 'bez_dzialania' ? '<button type="button" class="mini" data-act="bez_dzialania">Bez działania</button>' : '') +
+        '<div class="acts">' + (can ? '<button type="button" class="mini ok" data-act="zadanie" data-upr="poczta.zadania">Utwórz zadanie</button>' : '') +
+          (can && r.status !== 'bez_dzialania' ? '<button type="button" class="mini" data-act="bez_dzialania" data-upr="poczta.zadania">Bez działania</button>' : '') +
           (admin || !r.ai ? '<button type="button" class="mini" data-act="ponow">' + (r.ai ? 'Analizuj ponownie' : 'Analizuj') + '</button>' : '') +
           '<span class="sub" data-msg></span></div>' +
         (r.sprawdzil ? '<p class="sub" style="margin-top:8px">Decyzja: ' + esc(who(r.sprawdzil)) + ', ' + esc(when(r.sprawdzono_at)) + '</p>' : '') +
@@ -130,7 +137,7 @@
       var out = await call('poczta', body);
       if (out.error) { msg.textContent = out.error; b.disabled = false; return; }
       // the assignee hears about the new task the same way as about any other
-      if (act === 'zadanie' && out.powiadom) call('zadania', { action: 'notify', id: out.zadanie_id, event: 'new' }).catch(function () {});
+      if (act === 'zadanie' && out.powiadom && (!window.PortalUpr || window.PortalUpr.moze('ogolne.zadania.powiadom'))) call('zadania', { action: 'notify', id: out.zadanie_id, event: 'new' }).catch(function () {});
       open[id] = act === 'ponow';
       await load();
       if (act === 'zadanie' && window.PortalShell && window.PortalShell.refreshTasks) window.PortalShell.refreshTasks();
@@ -167,8 +174,8 @@
       return '<div class="frow' + (f.id === mb.folder ? ' on' : '') + (f.wybieralny ? '' : ' off') + '"' + (f.wybieralny ? ' role="button" tabindex="0" data-f="' + esc(f.id) + '"' : '') + ' style="margin-left:' + (f.typ ? 0 : Math.min(4, f.poziom) * 12) + 'px" title="' + esc(f.sciezka) + (f.portal ? ' — tego folderu używa portal' : '') + '">' +
         '<span>' + esc(name) + (f.portal && f.duplikat ? ' <span class="sub">· portal</span>' : '') + '</span>' + (f.wybieralny ? '<span class="sub">' + (f.nieprzeczytane ? '<b>' + f.nieprzeczytane + '</b> / ' : '') + (f.wiadomosci == null ? '' : f.wiadomosci) + '</span>' : '') + '</div>';
     }).join('') : '<div class="sub">Brak folderów.</div>';
-    var f = curFolder(), acts = '<button type="button" class="mini" data-fa="nowy">＋ Nowy folder</button>';
-    if (f.wlasny) acts += '<button type="button" class="mini" data-fa="nazwa">✎ Zmień nazwę</button><button type="button" class="mini" data-fa="usun">Usuń folder</button>';
+    var f = curFolder(), acts = '<button type="button" class="mini" data-fa="nowy"' + uprS('porzadki') + '>＋ Nowy folder</button>';
+    if (f.wlasny) acts += '<button type="button" class="mini" data-fa="nazwa"' + uprS('porzadki') + '>✎ Zmień nazwę</button><button type="button" class="mini" data-fa="usun"' + uprS('porzadki') + '>Usuń folder</button>';
     if (admin && f.portal && (f.typ === 'trash' || f.typ === 'junk')) acts += '<button type="button" class="mini" data-fa="oproznij">' + (f.typ === 'trash' ? 'Opróżnij kosz' : 'Opróżnij spam') + '</button>';
     $('mbFAct').innerHTML = acts;
   }
@@ -211,6 +218,7 @@
   });
   async function loadFolders(box, keep) {
     mb.box = box || mb.box || skrzynka;
+    uprStale('data-upr-box', mb.box);
     if (!keep) { mb.folders = []; mb.folder = ''; mb.rows = []; mb.msg = null; mb.sel = {}; $('mbTree').innerHTML = '<div class="sub">Ładowanie…</div>'; $('mbRows').innerHTML = ''; $('mbMsg').hidden = true; $('mbList').hidden = false; }
     try {
       var out = await call('poczta', { action: 'foldery', skrzynka: mb.box });
@@ -227,7 +235,7 @@
   function renderBulk() {
     var n = selected().length;
     $('mbBulk').hidden = !n;
-    if (n) $('mbBulk').innerHTML = '<b>Zaznaczone: ' + n + '</b> <button type="button" class="mini" data-b="przeczytane">Przeczytane</button><button type="button" class="mini" data-b="nieprzeczytane">Nieprzeczytane</button><button type="button" class="mini" data-b="flaga">⚑ Flaga</button><button type="button" class="mini" data-b="archiwum">Archiwum</button><button type="button" class="mini" data-b="spam">Spam</button><button type="button" class="mini" data-b="kosz">🗑 Kosz</button><select data-bmove style="width:auto">' + moveOptions() + '</select><select data-bcopy style="width:auto">' + moveOptions('Kopiuj do…') + '</select><button type="button" class="mini" data-b="none">Odznacz</button>';
+    if (n) $('mbBulk').innerHTML = '<b>Zaznaczone: ' + n + '</b> <button type="button" class="mini" data-b="przeczytane">Przeczytane</button><button type="button" class="mini" data-b="nieprzeczytane">Nieprzeczytane</button><button type="button" class="mini" data-b="flaga">⚑ Flaga</button><button type="button" class="mini" data-b="archiwum"' + uprS('porzadki') + '>Archiwum</button><button type="button" class="mini" data-b="spam"' + uprS('porzadki') + '>Spam</button><button type="button" class="mini" data-b="kosz"' + uprS('porzadki') + '>🗑 Kosz</button><select data-bmove style="width:auto"' + uprS('porzadki') + '>' + moveOptions() + '</select><select data-bcopy style="width:auto"' + uprS('porzadki') + '>' + moveOptions('Kopiuj do…') + '</select><button type="button" class="mini" data-b="none">Odznacz</button>';
   }
   // conversations: messages of the loaded page that belong to one thread stand together, under the newest of them
   function groups() {
@@ -389,17 +397,17 @@
     var always = pref('obrazy', []).indexOf(m.od_adres) >= 0, kto = {};
     (m.kto || []).forEach(function (k) { var key = who(k.kto) + '|' + k.akcja; if (!kto[key]) kto[key] = k; });
     el.innerHTML = '<div class="acts" style="margin:0 0 10px"><button type="button" class="mini" data-m="back">← Lista</button>' +
-        (m.szkic ? '<button type="button" class="mini ok" data-m="edit">Edytuj szkic</button>' : '<button type="button" class="mini ok" data-m="reply">↩ Odpowiedz</button><button type="button" class="mini" data-m="replyall">Odpowiedz wszystkim</button><button type="button" class="mini" data-m="forward">Przekaż</button>') +
+        (m.szkic ? '<button type="button" class="mini ok" data-m="edit"' + uprS('wyslij') + '>Edytuj szkic</button>' : '<button type="button" class="mini ok" data-m="reply"' + uprS('wyslij') + '>↩ Odpowiedz</button><button type="button" class="mini" data-m="replyall"' + uprS('wyslij') + '>Odpowiedz wszystkim</button><button type="button" class="mini" data-m="forward"' + uprS('wyslij') + '>Przekaż</button>') +
         '<button type="button" class="mini" data-m="' + (m.przeczytana ? 'unread' : 'read') + '">' + (m.przeczytana ? 'Nieprzeczytana' : 'Przeczytana') + '</button>' +
         '<button type="button" class="mini" data-m="' + (m.oflagowana ? 'unflag' : 'flag') + '">' + (m.oflagowana ? '⚑ Zdejmij flagę' : '⚑ Flaga') + '</button>' +
-        (m.typ_folderu !== 'archive' ? '<button type="button" class="mini" data-m="archive">Archiwum</button>' : '') + (m.typ_folderu !== 'junk' ? '<button type="button" class="mini" data-m="spam">Spam</button>' : '') +
-        (m.typ_folderu !== 'trash' ? '<button type="button" class="mini" data-m="trash">🗑 Kosz</button>' : '') + '<select data-mmove style="width:auto">' + moveOptions() + '</select><select data-mcopy style="width:auto">' + moveOptions('Kopiuj do…') + '</select></div>' +
+        (m.typ_folderu !== 'archive' ? '<button type="button" class="mini" data-m="archive"' + uprS('porzadki') + '>Archiwum</button>' : '') + (m.typ_folderu !== 'junk' ? '<button type="button" class="mini" data-m="spam"' + uprS('porzadki') + '>Spam</button>' : '') +
+        (m.typ_folderu !== 'trash' ? '<button type="button" class="mini" data-m="trash"' + uprS('porzadki') + '>🗑 Kosz</button>' : '') + '<select data-mmove style="width:auto"' + uprS('porzadki') + '>' + moveOptions() + '</select><select data-mcopy style="width:auto"' + uprS('porzadki') + '>' + moveOptions('Kopiuj do…') + '</select></div>' +
       (m.szkic && m.szkic.zaplanowana ? '<div class="warnbox">🕒 Ta wiadomość jest zaplanowana do wysłania ' + esc(when(m.szkic.zaplanowana.kiedy)) + ' (' + esc(who(m.szkic.zaplanowana.kto)) + '). <button type="button" class="mini" data-m="unplan">Anuluj wysyłkę</button></div>' : '') +
       '<div class="mhead"><h2>' + esc(m.temat || '(bez tematu)') + '</h2>' +
-        '<p><b>Od:</b> ' + esc(m.od_nazwa || '') + ' &lt;' + esc(m.od_adres || 'nieznany') + '&gt;' + (m.od_adres && !m.szkic ? ' <a href="#" data-m="addc" class="sub">＋ do kontaktów</a>' : '') + '</p>' +
+        '<p><b>Od:</b> ' + esc(m.od_nazwa || '') + ' &lt;' + esc(m.od_adres || 'nieznany') + '&gt;' + (m.od_adres && !m.szkic ? ' <a href="#" data-m="addc" class="sub" data-upr="poczta.slowniki">＋ do kontaktów</a>' : '') + '</p>' +
         '<p><b>Do:</b> ' + esc((m.do || []).join(', ')) + '</p><p class="sub">' + esc(when(m.data)) + ' · ' + kb(m.rozmiar) + (m.odpowiedziano ? ' · ↩ odpowiedziano' : '') + (m.przekazano ? ' · przekazano' : '') + '</p>' +
         (Object.keys(kto).length ? '<p class="sub">W portalu: ' + Object.keys(kto).map(function (k) { return esc(KTO[kto[k].akcja] || kto[k].akcja) + ' ' + esc(who(kto[k].kto)) + ' (' + esc(when(kto[k].at)) + ')'; }).join(' · ') + '</p>' : '') + '</div>' +
-      (m.zalaczniki.length ? '<div class="atts">' + m.zalaczniki.map(function (z) {
+      (m.zalaczniki.length ? '<div class="atts"' + uprS('zalaczniki') + '>' + m.zalaczniki.map(function (z) {
         return z.za_duzy ? '<span class="pill p-grey" title="Ponad 20 MB — otwórz w programie pocztowym">' + attIco(z.nazwa) + ' ' + esc(z.nazwa) + ' (' + kb(z.rozmiar) + ', za duży)</span>'
           : '<button type="button" class="mini" data-part="' + esc(z.part) + '" data-name="' + esc(z.nazwa) + '" title="Pobierz">' + attIco(z.nazwa) + ' ' + esc(z.nazwa) + ' (' + kb(z.rozmiar) + ')</button>' +
             (/\.(png|jpe?g|gif|webp|pdf)$/i.test(z.nazwa) ? '<button type="button" class="mini" data-prev="' + esc(z.part) + '" data-name="' + esc(z.nazwa) + '" title="Podgląd" aria-label="Podgląd: ' + esc(z.nazwa) + '">👁</button>' : '');
@@ -408,13 +416,13 @@
         (html ? '<button type="button" class="mini" data-m="tall">' + (mb.tall ? 'Zwiń' : 'Rozwiń') + '</button>' : '') +
         (html && m.zdalne && !mb.images ? '<button type="button" class="mini" data-m="img">Pokaż obrazy z internetu (' + m.zdalne + ')</button><button type="button" class="mini" data-m="imgalways">Zawsze od tego nadawcy</button>' : '') +
         (html && m.zdalne && always ? '<button type="button" class="mini" data-m="imgnever">Nie pokazuj automatycznie od tego nadawcy</button>' : '') +
-        '<button type="button" class="mini" data-m="print">🖨 Drukuj</button><button type="button" class="mini" data-m="eml">⬇ Pobierz .eml</button><button type="button" class="mini" data-m="src">Pokaż źródło</button></div>' +
+        '<button type="button" class="mini" data-m="print">🖨 Drukuj</button><button type="button" class="mini" data-m="eml"' + uprS('zalaczniki') + '>⬇ Pobierz .eml</button><button type="button" class="mini" data-m="src"' + uprS('zalaczniki') + '>Pokaż źródło</button></div>' +
       '<div id="mbWatek"></div><div id="mbBody"></div>' +
       (a && a.zadanie && /^(nowe|w_toku)$/.test(a.zadanie.status) ? '<div class="cm" style="margin-top:12px;white-space:normal"><b>Zajmuje się: ' + esc(who(a.zadanie.assignee)) + '</b> <span class="sub">— notatki wewnętrzne (nie są wysyłane, widoczne w zadaniu)</span>' +
           (a.zadanie.notatki || []).map(function (n) { return '<p style="margin:6px 0 0"><small>' + esc(who(n.by)) + ' · ' + esc(when(n.at)) + '</small><br>' + esc(n.text) + '</p>'; }).join('') +
           '<div class="acts"><input type="text" maxlength="1000" placeholder="Notatka wewnętrzna…" data-note style="flex:1;min-width:180px" /><button type="button" class="mini" data-m="note">Dodaj notatkę</button></div></div>' : '') +
       '<div class="acts" style="margin-top:12px">' +
-        (!(a && a.zadanie && /^(nowe|w_toku)$/.test(a.zadanie.status)) && !m.szkic ? '<button type="button" class="mini ok" data-m="take">✋ Zajmuję się tym</button>' : '') +
+        (!(a && a.zadanie && /^(nowe|w_toku)$/.test(a.zadanie.status)) && !m.szkic ? '<button type="button" class="mini ok" data-m="take" data-upr="poczta.zadania">✋ Zajmuję się tym</button>' : '') +
         (a && a.zadanie ? '<a href="zadania.html?w=wszystkie">Zadanie: ' + esc(a.zadanie.tytul) + ' →</a>' : '') +
         (a ? '<button type="button" class="mini" data-m="triage">Pokaż w „Do decyzji”</button>' : '<button type="button" class="mini" data-m="analiza">Utwórz zadanie z tej wiadomości</button>') +
         '<span class="sub" data-mmsg></span></div>';
@@ -703,6 +711,7 @@
     var m = mb.msg, o = m && m.odp ? m.odp : {};
     cmpReturn = document.activeElement;
     cmp = { box: mb.box || skrzynka, do: [], dw: [], udw: [], files: [], orig: [], mode: mode, odp: null, szkic_id: uuid(), szkic_uid: 0, dirty: false, sending: false, klucz: uuid(), sigs: null, tpls: [] };
+    uprStale('data-upr-cmp', cmp.box);
     if (mode === 'reply' || mode === 'replyall') { cmp.do = (o.do || []).slice(); if (mode === 'replyall') cmp.dw = (o.dw || []).slice(); cmp.odp = { folder: mb.folder, uid: m.uid, tryb: 'reply' }; }
     if (mode === 'forward') { cmp.odp = { folder: mb.folder, uid: m.uid, tryb: 'forward' }; cmp.orig = m.zalaczniki.filter(function (z) { return !z.za_duzy; }).map(function (z) { return { part: z.part, nazwa: z.nazwa, on: true }; }); }
     if (mode === 'draft') {
@@ -904,7 +913,7 @@
     var c = cmp; closeCompose();
     if (c.szkic_uid) { try { await call('poczta', { action: 'szkic_usun', skrzynka: c.box, szkic_id: c.szkic_id, uid: c.szkic_uid }); if (mb.loaded) { loadFolders(mb.box, true); if (curFolder().typ === 'drafts') { mb.msg = null; openFolder(mb.folder); } } } catch (e) {} }
   });
-  $('c_from').addEventListener('change', function () { if (cmp) { cmp.box = this.value; loadSigs(cmp, true); } });
+  $('c_from').addEventListener('change', function () { if (cmp) { cmp.box = this.value; uprStale('data-upr-cmp', cmp.box); loadSigs(cmp, true); } });
 
   $('compose').addEventListener('click', function (e) {
     var rm = e.target.closest('[data-rm]'), rf = e.target.closest('[data-rmf]'), cmd = e.target.closest('[data-cmd]');

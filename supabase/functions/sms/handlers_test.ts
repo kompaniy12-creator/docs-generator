@@ -506,3 +506,42 @@ Deno.test("uprawnienia terminy: podgląd = klucz strony Kontrola, wysyłka przyp
   assertEquals(sms().length, 0);
   delete USERS.ogr;
 });
+
+Deno.test("uprawnienia sms: numery klientów w całości tylko dla Kadr z włączonymi „danymi kontaktowymi”; wyłączenie maskuje je wszędzie, a wysyłka po NIP działa dalej", opts, async () => {
+  reset();
+  const pelny = "+48600100200", maska = "+48****** 200";
+  // Kadry without a list, with an empty list and with other keys: full numbers, as today
+  for (const wyl of [undefined, null, [], ["klienci.baza.kontaktyx", "klienci.rozsylki"]]) {
+    USERS.ogr = UPR(wyl);
+    const s = await api("ogr", { action: "status" });
+    assertEquals([s.http, s.ja.kontakty], [200, true], JSON.stringify(wyl));
+    assertEquals((await api("ogr", { action: "klienci" })).klienci[0].telefon, pelny);
+    assertEquals((await api("ogr", { action: "podglad", nip: N1, tresc: "x" })).telefon.numer, pelny);
+  }
+  // the contact key itself, the page "Baza klientów" above it: masked in every answer of the function
+  for (const wyl of [["klienci.baza.kontakty"], ["klienci.baza"]]) {
+    USERS.ogr = UPR(wyl);
+    const s = await api("ogr", { action: "status" });
+    assertEquals([s.http, s.ja.kontakty], [200, false], JSON.stringify(wyl));
+    const k = await api("ogr", { action: "klienci" });
+    assertEquals(k.http, 200);
+    assertEquals(k.klienci[0].telefon, maska);
+    assert(!JSON.stringify(k).includes("600100200") && !JSON.stringify(k).includes("501100200"), "pełny numer na liście klientów");
+    assertEquals((await api("ogr", { action: "podglad", nip: N1, tresc: "x" })).telefon.numer, maska);
+    // sending to a client picked by NIP still works (the number is read on the server) and comes back masked
+    const w = await api("ogr", { action: "wyslij", nip: N1, tresc: "Dzień dobry " + JSON.stringify(wyl), test: true });
+    assertEquals([w.http, w.telefon], [200, maska]);
+    const h = await api("ogr", { action: "historia" });
+    assertEquals(h.http, 200);
+    assert(h.wiersze.length > 0 && h.wiersze.every((x: Any) => !String(x.telefon).includes("600100200")), "pełny numer w historii");
+  }
+  // … unless sending itself is switched off
+  USERS.ogr = UPR(["klienci.baza.kontakty", "klienci.sms.wyslij"]);
+  assertEquals((await api("ogr", { action: "wyslij", nip: N1, tresc: "x" })).kod, "wylaczone");
+  // an administrator is never restricted; Księgowość keeps its mask whatever its list says
+  USERS.ogr = UPR(["klienci"], { portal_admin: true });
+  assertEquals((await api("ogr", { action: "klienci" })).klienci[0].telefon, pelny);
+  USERS.ogr = UPR([], { portal_sections: ["onboarding"] });
+  assertEquals((await api("ogr", { action: "klienci" })).klienci[0].telefon, maska);
+  delete USERS.ogr;
+});

@@ -147,7 +147,7 @@
     <button class="nav-item" data-target="kadry">
       <span class="nav-ico">🧑‍💼</span> Umowy i zatrudnienie
     </button>
-    <a class="nav-item" href="historia.html">
+    <a class="nav-item" href="historia.html?s=kadry" id="navHistoria">
       <span class="nav-ico">🕘</span> Historia dokumentów
     </a>
 
@@ -289,6 +289,14 @@
         navItems.forEach(function (b) { if (b.getAttribute('data-target') === s) b.style.display = 'none'; });
         valid = valid.filter(function (v) { return v !== s; });
       });
+      // "Historia dokumentów": the history of the first module this account has (the page without ?s= lists every
+      // module and is closed to an account limited to one of them)
+      var hist = document.getElementById('navHistoria');
+      if (hist) {
+        var historie = [['kadry', acc.has('kadry')], ['spolka', acc.has('rejestracja') || acc.has('biezaca')], ['legalizacja', acc.has('legalizacja')]]
+          .filter(function (h) { return h[1] && (!acc.mozeStrone || acc.mozeStrone('historia.html?s=' + h[0])); });
+        if (historie.length) hist.setAttribute('href', 'historia.html?s=' + historie[0][0]); else hist.style.display = 'none';
+      }
       // cards that lead to a page of another section this account does not have
       Array.prototype.forEach.call(document.querySelectorAll('.card[data-sec]'), function (c) {
         if (!acc.has(c.getAttribute('data-sec'))) c.style.display = 'none';

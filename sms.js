@@ -55,7 +55,7 @@
   function rysujTaby() {
     var l = [['wyslij', 'Wyślij SMS'], ['historia', 'Historia']];
     if (st && st.ja.admin) l.push(['ustawienia', 'Ustawienia']);
-    $('tabs').innerHTML = l.map(function (x) { return '<button type="button" data-tab="' + x[0] + '"' + (tab === x[0] ? ' class="on"' : '') + '>' + x[1] + '</button>'; }).join('');
+    $('tabs').innerHTML = l.map(function (x) { return '<button type="button" data-tab="' + x[0] + '"' + (x[0] === 'historia' ? ' data-upr="klienci.sms.historia"' : '') + (tab === x[0] ? ' class="on"' : '') + '>' + x[1] + '</button>'; }).join('');
     ['wyslij', 'historia', 'ustawienia'].forEach(function (x) { $('t-' + x).hidden = tab !== x; });
   }
   function rysujTryb() {

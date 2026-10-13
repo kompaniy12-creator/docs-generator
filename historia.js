@@ -87,7 +87,7 @@
           '<button class="btn view">Zobacz</button>' +
           (EDITORS[r.doc_type] && r.payload && r.payload._autosave ? '<button class="btn edit">Edytuj</button>' : '') +
           '<button class="btn dl">Pobierz</button>' +
-          '<button class="btn rm">Usuń</button>' +
+          '<button class="btn rm" data-upr="wspolne.historia.usun">Usuń</button>' +
         '</div>';
       var dlBtn = item.querySelector('.dl');
       var rmBtn = item.querySelector('.rm');

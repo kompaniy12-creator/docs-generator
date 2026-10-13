@@ -27,7 +27,7 @@ export function swiat(o: { ust?: Any; box?: FakeMsg[]; uidvalidity?: number; odp
   let ust: Any = o.ust ?? {}, seq = 0, locked = false;
   const tab: Record<string, Any[]> = {};
   const pasuje = (r: Any, f: Record<string, string>) => Object.entries(f).every(([k, v]) => String(r[k]) === String(v));
-  const w = { tab, rows, tasks, stan, asks: [] as Any[], log: [] as Any[], sent: [] as Any[], podpisy: {} as Record<string, string>, smtp: [] as { s: string; koperta: Any; raw: Uint8Array }[], bg: [] as Promise<unknown>[], now: o.now ?? Date.parse("2026-10-09T09:30:00Z"), servers: [] as FakeServer[], box: o.box ?? [], uidvalidity: o.uidvalidity ?? 7, me: o.me === undefined ? { email: "szef@td.example", admin: true, sekcje: null } as Me : o.me, get ust() { return ust; } };
+  const w = { tab, rows, tasks, stan, asks: [] as Any[], log: [] as Any[], sent: [] as Any[], podpisy: {} as Record<string, string>, smtp: [] as { s: string; koperta: Any; raw: Uint8Array }[], bg: [] as Promise<unknown>[], now: o.now ?? Date.parse("2026-10-09T09:30:00Z"), servers: [] as FakeServer[], box: o.box ?? [], uidvalidity: o.uidvalidity ?? 7, me: o.me === undefined ? { email: "szef@td.example", admin: true, sekcje: null, wyl: [] } as Me : o.me, get ust() { return ust; } };
   const id = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`;
   const store: Store = {
     ustawienia: () => Promise.resolve(ust),
@@ -340,7 +340,7 @@ Deno.test("access: cron actions need the cron key; rows are reachable only by th
   await push(obcy("<s2@x.example>"), "skrzynka=ksiegowosc");
   const [kadryRow, ksRow] = w.rows;
   // an accountant (section 'onboarding' only)
-  w.me = { email: "t.buchok@td.example", admin: false, sekcje: ["onboarding"] };
+  w.me = { email: "t.buchok@td.example", admin: false, sekcje: ["onboarding"], wyl: [] };
   const l = await post({ action: "lista", skrzynka: "kadry" });
   assertEquals([l.body.skrzynka, l.body.skrzynki.map((s: Any) => s.klucz), l.body.wiadomosci.map((r: Any) => r.id)], ["ksiegowosc", ["ksiegowosc"], [ksRow.id]]);
   assert(!("uid" in l.body.wiadomosci[0]) && !("message_id" in l.body.wiadomosci[0]));
@@ -351,17 +351,17 @@ Deno.test("access: cron actions need the cron key; rows are reachable only by th
   assertEquals(w.ust.skrzynki.kadry.tryb, "podglad");
   assertEquals((await post({ action: "ponow", id: ksRow.id })).status, 403); // analysed already: a second paid analysis is the admin's
   // someone with neither section, a signed-out caller, a malformed id
-  w.me = { email: "rejestracja@td.example", admin: false, sekcje: ["rejestracja"] };
+  w.me = { email: "rejestracja@td.example", admin: false, sekcje: ["rejestracja"], wyl: [] };
   assertEquals((await post({ action: "lista" })).status, 403);
   w.me = null;
   assertEquals((await post({ action: "lista" })).status, 403);
-  w.me = { email: "hr@td.example", admin: false, sekcje: ["kadry"] };
+  w.me = { email: "hr@td.example", admin: false, sekcje: ["kadry"], wyl: [] };
   assertEquals((await post({ action: "zadanie", id: "1 or 1=1", tytul: "x", assignee: "hr@td.example" })).status, 400);
   assertEquals(w.tasks.length, 0);
 });
 
 Deno.test("a reviewer creates the task: validated title, assignee from the team, real date; once", async () => {
-  const { post, push, w } = swiat({ ust: PODGLAD, me: { email: "hr@td.example", admin: false, sekcje: ["kadry"] } });
+  const { post, push, w } = swiat({ ust: PODGLAD, me: { email: "hr@td.example", admin: false, sekcje: ["kadry"], wyl: [] } });
   await push(obcy("<z1@x.example>"));
   const id = w.rows[0].id;
   assert(/tytuł/.test((await post({ action: "zadanie", id, tytul: "  ", assignee: "hr@td.example" })).body.error));
@@ -498,7 +498,7 @@ function skrzynkaStub(folders: Record<string, BMsg[]>, extra: Folder[] = []) {
 }
 const txt = (id = "1"): Node => ["TEXT", "PLAIN", ["CHARSET", "utf-8"], null, null, "8BIT", "40", "2", null, null, null];
 const bmsg = (uid: number, o: Partial<BMsg> = {}): BMsg => ({ uid, flagi: [], head: `From: Nadawca ${uid} <n${uid}@firma-alfa.example>\nTo: kadry@td-group.pl\nSubject: Sprawa ${uid}\nDate: Fri, 09 Oct 2026 10:00:00 +0200\nMessage-ID: <b${uid}@firma-alfa.example>`, bs: txt(), parts: { "1": te.encode("Treść " + uid) }, ...o });
-const HR: Me = { email: "hr@td.example", admin: false, sekcje: ["kadry"] };
+const HR: Me = { email: "hr@td.example", admin: false, sekcje: ["kadry"], wyl: [] };
 
 Deno.test("browser: folders with counters; access by section; the mailbox only from the fixed list", async () => {
   const { post, d, w } = swiat({ me: HR });
@@ -513,7 +513,7 @@ Deno.test("browser: folders with counters; access by section; the mailbox only f
     for (const action of ["foldery", "lista_imap", "wiadomosc_imap", "zalacznik_imap", "analizuj_imap"]) assertEquals((await post({ action, skrzynka, folder: "INBOX", uid: 1, part: "1" })).status, 403, action + " " + skrzynka);
   }
   assertEquals((await post({ action: "dziennik" })).status, 403);
-  w.me = { email: "rejestracja@td.example", admin: false, sekcje: ["rejestracja"] };
+  w.me = { email: "rejestracja@td.example", admin: false, sekcje: ["rejestracja"], wyl: [] };
   assertEquals((await post({ action: "foldery", skrzynka: "kadry" })).status, 403);
   w.me = null;
   assertEquals((await post({ action: "foldery", skrzynka: "kadry" })).status, 403);
@@ -590,7 +590,7 @@ Deno.test("browser: opening a message — text, cleaned HTML in a CSP document, 
   const no = await post({ action: "wiadomosc_imap", skrzynka: "kadry", folder: "INBOX", uid: 9 });
   assert(no.body.error && !no.body.tekst && !no.body.srcdoc);
   // the admin reads the log; staff cannot
-  w.me = { email: "szef@td.example", admin: true, sekcje: null };
+  w.me = { email: "szef@td.example", admin: true, sekcje: null, wyl: [] };
   assertEquals((await post({ action: "dziennik" })).body.dziennik.length, 1);
 });
 
@@ -626,7 +626,7 @@ Deno.test("browser: a person's request rate is limited; over the limit nothing t
   for (const action of ["foldery", "lista_imap", "wiadomosc_imap", "zalacznik_imap", "analizuj_imap"]) assertEquals((await post({ action, skrzynka: "kadry", folder: "INBOX", uid: 1, part: "1" })).status, 429, action);
   assertEquals(im.calls.length, n);
   // another person is not affected; a minute later it works again
-  w.me = { email: "szef@td.example", admin: true, sekcje: null };
+  w.me = { email: "szef@td.example", admin: true, sekcje: null, wyl: [] };
   assertEquals((await post({ action: "lista_imap", skrzynka: "kadry", folder: "INBOX" })).status, 200);
   w.me = HR; w.now += 61000;
   assertEquals((await post({ action: "lista_imap", skrzynka: "kadry", folder: "INBOX" })).status, 200);
@@ -694,7 +694,7 @@ Deno.test("send: From is the mailbox, the staff member only sends; Sent copy; lo
   assertEquals([w.smtp.length, w.sent.length], [1, 1]);
   // the send log is the admin's
   assertEquals((await post({ action: "wyslane_log" })).status, 403);
-  w.me = { email: "szef@td.example", admin: true, sekcje: null };
+  w.me = { email: "szef@td.example", admin: true, sekcje: null, wyl: [] };
   assertEquals((await post({ action: "wyslane_log" })).body.wyslane.length, 1);
 });
 
@@ -778,7 +778,7 @@ Deno.test("reply and forward: headers and quote come from the mailbox, the origi
   assertEquals(im.zmiany, ["APPEND INBOX.Sent", "STORE INBOX 7 +\\Answered"]);
   assertEquals([w.sent[0].odp_tryb, /^[0-9a-f]{32}$/.test(w.sent[0].odp_hash)], ["reply", true]);
   // who answered is shown with the message from now on
-  w.me = { email: "szef@td.example", admin: true, sekcje: null };
+  w.me = { email: "szef@td.example", admin: true, sekcje: null, wyl: [] };
   assertEquals((await post({ action: "wiadomosc_imap", skrzynka: "kadry", folder: "INBOX", uid: 7 })).body.kto.map((x: Any) => x.kto + ":" + x.akcja), ["hr@td.example:otwarcie", "szef@td.example:otwarcie", "hr@td.example:odpowiedz"]);
   // forward with the original attachment, to someone new (confirmed), without a quote
   w.me = HR;
@@ -858,7 +858,7 @@ Deno.test("several folders of one kind: the portal writes to the chosen one, els
   const meta0 = im.meta;
   // deno-lint-ignore no-explicit-any
   im.meta = ((set: any, u: boolean, h: boolean) => meta0(set, u, h).then((l) => l.map((x) => ({ ...x, internaldate: x.uid === 2 || x.uid === 3 ? "09-Oct-2026 10:00:00 +0200" : "01-Sep-2026 10:00:00 +0200" })))) as typeof im.meta;
-  w.me = { email: "szef@td.example", admin: true, sekcje: null };
+  w.me = { email: "szef@td.example", admin: true, sekcje: null, wyl: [] };
   const f = await post({ action: "foldery", skrzynka: "kadry", szczegoly: true });
   assertEquals(f.body.uzywane, { sent: "INBOX.Sent Messages", drafts: "INBOX.Drafts", trash: "INBOX.Deleted Messages" });
   assertEquals(f.body.foldery.filter((x: Any) => x.typ === "sent").map((x: Any) => [x.etykieta, x.portal, x.duplikat, !!x.ostatnia]), [["Wysłane (Sent Messages)", true, true, true], ["Wysłane (Sent)", false, true, true], ["Wysłane (SENT)", false, true, false]]);
@@ -910,7 +910,7 @@ Deno.test("conversation, 'zajmuję się tym' and internal notes: one task per me
   const l = await post({ action: "lista_imap", skrzynka: "kadry", folder: "INBOX" });
   assertEquals(l.body.wiadomosci.map((r: Any) => [r.uid, r.przypisany]), [[5, null], [3, null], [1, "hr@td.example"]]);
   assert(!("mid" in l.body.wiadomosci[0]));
-  w.me = { email: "szef@td.example", admin: true, sekcje: null };
+  w.me = { email: "szef@td.example", admin: true, sekcje: null, wyl: [] };
   assert(/zajmuje się już hr/.test((await post({ action: "biore_imap", skrzynka: "kadry", folder: "INBOX", uid: 1 })).body.error));
   assertEquals([w.tasks.length, w.smtp.length, im.zmiany.length], [1, 0, 0]); // nothing was sent, nothing changed in the mailbox
 });
@@ -919,7 +919,7 @@ Deno.test("conversation, 'zajmuję się tym' and internal notes: one task per me
 import { chwilaWarszawa, nazwaFolderu, zapomnijLiczniki } from "./narzedzia.ts";
 import { odpZNaglowka } from "./mime.ts";
 import { mutf7, naMutf7 } from "./imap.ts";
-const SZEF: Me = { email: "szef@td.example", admin: true, sekcje: null };
+const SZEF: Me = { email: "szef@td.example", admin: true, sekcje: null, wyl: [] };
 const PDF_BS: Node = [txt(), ["APPLICATION", "PDF", ["NAME", "umowa.pdf"], null, null, "BASE64", "900", null, ["ATTACHMENT", ["FILENAME", "umowa.pdf"]], null, null], "MIXED"];
 const zmien = (m: BMsg, s: string, na: string): BMsg => ({ ...m, head: m.head.replace(s, na) });
 
@@ -1062,7 +1062,7 @@ Deno.test("'Wyślij później': the draft waits in the mailbox, the cron call se
   const lista = await post({ action: "zaplanowane", skrzynka: "kadry" });
   assertEquals(lista.body.zaplanowane.filter((r: Any) => r.stan === "czeka").map((r: Any) => [r.temat, r.moje]), [["Dokumenty do podpisu", true]]);
   const id = w.tab.poczta_kolejka[2].id;
-  w.me = { email: "rejestracja@td.example", admin: false, sekcje: ["kadry"] };
+  w.me = { email: "rejestracja@td.example", admin: false, sekcje: ["kadry"], wyl: [] };
   assertEquals((await post({ action: "zaplanowane_anuluj", skrzynka: "kadry", id })).status, 403);
   w.me = HR;
   // changing the draft stops the send; so does cancelling; a cancelled or removed draft is never sent
@@ -1088,7 +1088,7 @@ Deno.test("signatures (several, a default per mailbox, role and phone from the s
   assertEquals((await f("podpis_zapisz", { id: a.body.id, nazwa: "Pełny 2", html: "<p>Halina Testowa</p>", domyslna: false })).body.ok, true);
   for (const o of [{ nazwa: "", html: "<p>x</p>" }, { nazwa: "Pusty", html: "<p> </p>" }, { id: "x", nazwa: "a", html: "<p>x</p>" }, { id: KL(999), nazwa: "a", html: "<p>x</p>" }]) { const r = await f("podpis_zapisz", o); assert(r.status >= 400 || r.body.error, JSON.stringify(o)); }
   // somebody else's signature cannot be read, changed or removed
-  w.me = { email: "rejestracja@td.example", admin: false, sekcje: ["kadry"] };
+  w.me = { email: "rejestracja@td.example", admin: false, sekcje: ["kadry"], wyl: [] };
   assertEquals([(await f("podpisy")).body.lista, (await f("podpis_zapisz", { id: a.body.id, nazwa: "Mój", html: "<p>x</p>" })).status, (await f("podpis_usun", { id: b.body.id })).status, w.tab.poczta_sygnatury.length], [[], 404, 404, 2]);
   // templates belong to the mailbox: the colleague sees and edits them; the other section does not
   const t = await f("szablon_zapisz", { nazwa: "Prośba o dokumenty", temat: "Dokumenty — {klient}", html: "<p>Dzień dobry {imie},</p><p>prosimy o dokumenty firmy {klient}.</p><iframe src=x></iframe>" });
@@ -1151,7 +1151,7 @@ Deno.test("uprawnienia: strona Poczta i każda skrzynka osobno; licznik w menu o
   await push(obcy("<u1@x.example>"));
   await push(obcy("<u2@x.example>"), "skrzynka=ksiegowosc");
   const [kadryRow, ksRow] = w.rows;
-  const obie = (wyl?: Me["wyl"], o: Partial<Me> = {}): Me => ({ email: "hr@td.example", admin: false, sekcje: ["kadry", "onboarding"], ...(wyl === undefined ? {} : { wyl }), ...o });
+  const obie = (wyl: Me["wyl"] = [], o: Partial<Me> = {}): Me => ({ email: "hr@td.example", admin: false, sekcje: ["kadry", "onboarding"], wyl, ...o });
   // no list / an empty list: both mailboxes, as today
   for (const me of [obie(), obie([])]) {
     w.me = me;
@@ -1198,4 +1198,64 @@ Deno.test("uprawnienia: strona Poczta i każda skrzynka osobno; licznik w menu o
   assertEquals((await push(obcy("<u3@x.example>"))).status, 200);
   assertEquals((await post({ action: "run", dry: true }, { "x-cron-key": CRONKEY })).status, 200);
   assertEquals((await post({ action: "run" })).status, 403);
+});
+
+Deno.test("uprawnienia (funkcje poczty): wysyłanie, porządki i załączniki na skrzynkę; zadania i słowniki dla strony — każde osobno; harmonogram wysyłki bez ograniczeń", async () => {
+  const { post, push, w } = swiat({ ust: { skrzynki: { kadry: { tryb: "podglad" }, ksiegowosc: { tryb: "podglad" } } } });
+  await push(obcy("<f1@x.example>"));
+  const [row] = w.rows;
+  const obie = (wyl: Me["wyl"] = [], o: Partial<Me> = {}): Me => ({ email: "hr@td.example", admin: false, sekcje: ["kadry", "onboarding"], wyl, ...o });
+  const NA_SKRZYNKE: Record<string, Any[]> = {
+    wyslij: [{ action: "wyslij" }, { action: "szkic_zapisz" }, { action: "zaplanuj" }],
+    porzadki: [{ action: "akcja_imap", co: "kosz", uids: [1], folder: "INBOX" }, { action: "akcja_imap", co: "przenies", uids: [1], folder: "INBOX", cel: "Archiwum" }, { action: "folder_utworz", nazwa: "Testowy" }, { action: "folder_zmien" }, { action: "folder_usun" }],
+    zalaczniki: [{ action: "zalacznik_imap", uid: 1, folder: "INBOX", part: "2" }, { action: "eml_imap", uid: 1, folder: "INBOX" }, { action: "zrodlo_imap", uid: 1, folder: "INBOX" }],
+  };
+  const STRONA: Record<string, Any[]> = {
+    "poczta.zadania": [{ action: "zadanie", id: row.id, tytul: "x", assignee: "hr@td.example" }, { action: "bez_dzialania", id: row.id }, { action: "biore_imap", skrzynka: "kadry", uid: 1, folder: "INBOX" }],
+    "poczta.slowniki": [{ action: "szablon_zapisz", skrzynka: "kadry" }, { action: "szablon_usun", skrzynka: "kadry" }, { action: "podpis_zapisz" }, { action: "podpis_usun" }, { action: "kontakt_zapisz", skrzynka: "kadry" }, { action: "kontakt_usun", skrzynka: "kadry" }],
+  };
+  const wyl = (r: Any) => r.body?.kod === "wylaczone";
+  // no list: nothing here is refused by the list (whatever else the request lacks)
+  w.me = obie();
+  for (const reqs of Object.values(NA_SKRZYNKE)) for (const b of reqs) assert(!wyl(await post({ ...b, skrzynka: "kadry" })), JSON.stringify(b));
+  // one function of ONE mailbox switched off: refused there, before the mailbox is opened or anything is written
+  for (const [f, reqs] of Object.entries(NA_SKRZYNKE)) {
+    w.me = obie(["poczta.kadry." + f]);
+    const serwery = w.servers.length, wyslane = w.sent.length, smtp = w.smtp.length;
+    for (const b of reqs) {
+      const r = await post({ ...b, skrzynka: "kadry" });
+      assertEquals([r.status, r.body.kod, r.body.klucz], [403, "wylaczone", "poczta.kadry." + f], JSON.stringify(b));
+      assert(!wyl(await post({ ...b, skrzynka: "ksiegowosc" })), "druga skrzynka: " + JSON.stringify(b));
+    }
+    assertEquals([w.sent.length, w.smtp.length], [wyslane, smtp], f + ": nic nie wyszło");
+    assert(w.servers.length >= serwery);
+    // the other functions of the same mailbox and reading stay
+    for (const [inna, rr] of Object.entries(NA_SKRZYNKE)) if (inna !== f) for (const b of rr) assert(!wyl(await post({ ...b, skrzynka: "kadry" })), f + " nie zamyka " + b.action);
+    assertEquals((await post({ action: "lista", skrzynka: "kadry" })).status, 200);
+    assert(!wyl(await post({ action: "foldery", skrzynka: "kadry" })));
+    assert(!wyl(await post({ action: "wiadomosc_imap", skrzynka: "kadry", uid: 1, folder: "INBOX" })));
+  }
+  // marking a message read or flagged is not tidying; deleting a draft and cancelling a scheduled send are not sending
+  w.me = obie(["poczta.kadry.porzadki", "poczta.kadry.wyslij"]);
+  for (const co of ["przeczytane", "nieprzeczytane", "flaga", "bez_flagi"]) assert(!wyl(await post({ action: "akcja_imap", skrzynka: "kadry", co, uids: [1], folder: "INBOX" })), co);
+  assert(!wyl(await post({ action: "szkic_usun", skrzynka: "kadry", uid: 1 })));
+  assert(!wyl(await post({ action: "zaplanowane_anuluj", skrzynka: "kadry", id: row.id })));
+  // the page's functions: tasks from messages, the dictionaries (reading them stays — a message is written with them)
+  for (const [klucz, reqs] of Object.entries(STRONA)) {
+    w.me = obie([klucz]);
+    const zadan = w.tasks.length;
+    for (const b of reqs) { const r = await post(b); assertEquals([r.status, r.body.kod, r.body.klucz], [403, "wylaczone", klucz], JSON.stringify(b)); }
+    assertEquals(w.tasks.length, zadan);
+    for (const [inny, rr] of Object.entries(STRONA)) if (inny !== klucz) for (const b of rr) assert(!wyl(await post(b)), klucz + " nie zamyka " + b.action);
+    for (const a of ["szablony", "podpisy", "kontakty", "podpis", "podpowiedzi"]) assert(!wyl(await post({ action: a, skrzynka: "kadry", q: "ab" })), klucz + " / " + a);
+    assertEquals((await post({ action: "lista" })).status, 200);
+  }
+  // an administrator is never restricted
+  w.me = { email: "szef@td.example", admin: true, sekcje: null, wyl: ["poczta.kadry.wyslij", "poczta.zadania", "poczta.slowniki"] };
+  assert(!wyl(await post({ action: "wyslij", skrzynka: "kadry" })));
+  assert(!wyl(await post({ action: "bez_dzialania", id: row.id })));
+  // the queue of "Wyślij później" is run by the scheduler with an explicitly unrestricted identity
+  w.me = obie(["poczta"]);
+  assertEquals((await post({ action: "wyslij_zaplanowane" }, { "x-cron-key": CRONKEY })).status, 200);
+  assertEquals((await post({ action: "wyslij_zaplanowane" })).status, 403);
 });

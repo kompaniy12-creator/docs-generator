@@ -26,8 +26,8 @@ const PAKIETY = [{
 
 // made-up staff of the harness: the token is the whole "session"
 const STAFF: Record<string, Staff> = {
-  "Bearer harness-admin": { email: "admin@biuro.test", admin: true, sekcje: null },
-  "Bearer harness-kadry": { email: "kadrowa@biuro.test", admin: false, sekcje: ["kadry"] },
+  "Bearer harness-admin": { email: "admin@biuro.test", admin: true, sekcje: null, wyl: [] },
+  "Bearer harness-kadry": { email: "kadrowa@biuro.test", admin: false, sekcje: ["kadry"], wyl: [] },
 };
 // stands in for supabase-js + supabase-config.js + auth-guard.js on staff pages: a fake session
 // (?jako=kadry for a member of the HR section) and table reads answered from the in-memory store

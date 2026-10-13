@@ -86,16 +86,16 @@
       var k = d[s[0]];
       if (k.sha256) acts.push('<button type="button" class="mini" data-a="plik" data-k="' + s[0] + '">Plik ' + s[1] + '</button>');
       if (live && k.status === 'wgrany') {
-        acts.push('<button type="button" class="mini ok" data-a="ok" data-s="' + s[0] + '">Zweryfikowano</button>');
-        acts.push('<button type="button" class="mini del" data-a="odrzuc" data-s="' + s[0] + '">Odrzuć</button>');
+        acts.push('<button type="button" class="mini ok" data-a="ok" data-s="' + s[0] + '" data-upr="kadry.podpisy.weryfikacja">Zweryfikowano</button>');
+        acts.push('<button type="button" class="mini del" data-a="odrzuc" data-s="' + s[0] + '" data-upr="kadry.podpisy.weryfikacja">Odrzuć</button>');
       } else if (live && k.status === 'zweryfikowany' && !(s[0] === 'pracodawca' && ['wgrany', 'zweryfikowany'].indexOf(d.pracownik.status) !== -1)) {
-        acts.push('<button type="button" class="mini del" data-a="odrzuc" data-s="' + s[0] + '">Cofnij weryfikację ' + s[1] + '</button>');
+        acts.push('<button type="button" class="mini del" data-a="odrzuc" data-s="' + s[0] + '" data-upr="kadry.podpisy.weryfikacja">Cofnij weryfikację ' + s[1] + '</button>');
       }
     });
     if (live && (['oczekuje', 'odrzucony'].indexOf(d.pracodawca.status) !== -1 || (['oczekuje', 'odrzucony'].indexOf(d.pracownik.status) !== -1 && ['zweryfikowany', 'nie_dotyczy'].indexOf(d.pracodawca.status) !== -1))) {
-      acts.push('<button type="button" class="mini" data-a="wgraj" title="Plik, który biuro otrzymało poza portalem">Wgraj otrzymany plik</button>');
+      acts.push('<button type="button" class="mini" data-a="wgraj" data-upr="kadry.podpisy.weryfikacja" title="Plik, który biuro otrzymało poza portalem">Wgraj otrzymany plik</button>');
     }
-    if (p.status === 'szkic') acts.push('<button type="button" class="mini del" data-a="usun">Usuń</button>');
+    if (p.status === 'szkic') acts.push('<button type="button" class="mini del" data-a="usun" data-upr="kadry.podpisy.wyslij">Usuń</button>');
     var need = d.status.indexOf('weryfikacja') === 0, elektr = need && (d.status === 'weryfikacja_pracodawcy' ? d.pracodawca : d.pracownik).metoda !== 'odreczny';
     return '<div class="doc" data-id="' + esc(d.id) + '"><div class="n"><b>' + esc(d.tytul) + '</b>' +
       '<small>' + esc(d.rodzaj_nazwa) + ' · podpisuje: ' + esc(d.podpisuje_nazwa) + (d.czesc ? ' · akta część ' + esc(d.czesc) : '') + '</small>' +
@@ -105,12 +105,12 @@
   }
   function pakRow(p) {
     var a = [];
-    if (p.status === 'szkic') a.push('<button type="button" class="mini" data-p="dodaj">＋ Dodaj dokument</button>', '<button type="button" class="mini ok" data-p="wydaj">Wydaj pracodawcy</button>');
-    if (['u_pracodawcy', 'u_pracownika', 'weryfikacja', 'gotowy', 'zakonczony'].indexOf(p.status) !== -1) a.push('<button type="button" class="mini" data-p="link">' + (p.link ? 'Nowy link dla pracownika' : 'Kopiuj link dla pracownika') + '</button>');
-    if (p.link) a.push('<button type="button" class="mini" data-p="unlink">Unieważnij link</button>');
-    if (p.status === 'gotowy') a.push('<button type="button" class="mini ok" data-p="zakoncz">Zamknij i przenieś do akt</button>');
+    if (p.status === 'szkic') a.push('<button type="button" class="mini" data-p="dodaj" data-upr="kadry.podpisy.wyslij">＋ Dodaj dokument</button>', '<button type="button" class="mini ok" data-p="wydaj" data-upr="kadry.podpisy.wyslij">Wydaj pracodawcy</button>');
+    if (['u_pracodawcy', 'u_pracownika', 'weryfikacja', 'gotowy', 'zakonczony'].indexOf(p.status) !== -1) a.push('<button type="button" class="mini" data-p="link" data-upr="kadry.podpisy.link">' + (p.link ? 'Nowy link dla pracownika' : 'Kopiuj link dla pracownika') + '</button>');
+    if (p.link) a.push('<button type="button" class="mini" data-p="unlink" data-upr="kadry.podpisy.link">Unieważnij link</button>');
+    if (p.status === 'gotowy') a.push('<button type="button" class="mini ok" data-p="zakoncz" data-upr="kadry.podpisy.weryfikacja">Zamknij i przenieś do akt</button>');
     a.push('<button type="button" class="mini" data-p="log">Dziennik</button>');
-    if (['zakonczony', 'anulowany'].indexOf(p.status) === -1) a.push('<button type="button" class="mini del" data-p="anuluj">Anuluj pakiet</button>');
+    if (['zakonczony', 'anulowany'].indexOf(p.status) === -1) a.push('<button type="button" class="mini del" data-p="anuluj" data-upr="kadry.podpisy.anuluj">Anuluj pakiet</button>');
     var link = p.link ? (p.link.aktywny ? 'link pracownika ważny do ' + pl(p.link.wazny_do) : 'link pracownika wygasł ' + pl(p.link.wazny_do)) : 'bez linku dla pracownika';
     return '<div class="firm' + (open[p.id] ? ' open' : '') + '" data-pak="' + esc(p.id) + '"><div class="fhead"><div><strong>' + esc(p.worker_name) + '</strong> <small>' + esc(p.firma || '—') + ' · NIP ' + esc(p.nip) +
       ' · ' + (p.typ === 'praca' ? 'umowa o pracę' : 'umowa zlecenia') + ' · ' + p.dokumenty.length + ' dok. · ' + pl(p.created_at) + '</small></div>' +

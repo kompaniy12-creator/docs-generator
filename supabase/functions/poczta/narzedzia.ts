@@ -94,7 +94,9 @@ export async function wyslijZaplanowane(d: Deps, ctx: Ctx): Promise<Any> {
         return { nazwa: a.filename || "zalacznik", b64: b64(typeof a.content === "string" ? new TextEncoder().encode(a.content) : new Uint8Array(a.content)), cid: (a.disposition === "inline" || a.related) && /^[A-Za-z0-9._-]{1,60}$/.test(cid) ? cid : undefined };
       });
       // the ordinary send, as the person who scheduled it: the same caps, log, Sent copy; the draft goes when it is out
-      const w = await pisanie(d, { email: String(r.kto), admin: false, sekcje: [SKRZYNKI[s].sekcja] }, ctx, {
+      // (wyl: [] — explicitly unrestricted: the right to send was checked when the person scheduled the message,
+      // and the queue is run by the scheduler, not by a session)
+      const w = await pisanie(d, { email: String(r.kto), admin: false, sekcje: [SKRZYNKI[s].sekcja], wyl: [] }, ctx, {
         action: "wyslij", skrzynka: s, klucz: r.klucz, do: lista(m.to), dw: lista(m.cc), udw: lista(m.bcc), temat: m.subject ?? "", html: m.html ?? "", zalaczniki: zal,
         odp: o.odp ?? undefined, cytat: o.cytat !== false, potwierdzone: true, potwierdzenie: o.potwierdzenie === true, pilna: o.pilna === true, szkic_id: r.szkic_id, szkic_uid: uid,
       });

@@ -13,6 +13,86 @@
   // Uprawnienia szczegółowe (auth-guard.js): pages and functions switched off for this account. For an account
   // without restrictions both answers are always true, so the menu below is what it has always been.
   var mozeStrone = function (href) { return !acc.mozeStrone || acc.mozeStrone(href); };
+  // … and the functions inside a page. Convention: an element that belongs to a function carries
+  // data-upr="klucz" (several keys separated by spaces = all of them are needed). For a restricted account such an
+  // element is hidden (or, with data-upr-tryb="wylacz", greyed out with the reason in its title) — also when the
+  // page renders it later. A page asks PortalUpr.moze('klucz') before a write it does on its own and shows
+  // PortalUpr.komunikat('klucz') in its usual message place. This only tidies the page: the server is what refuses.
+  var ogr = !!acc.ograniczony;
+  var uprMoze = function (k) { return !ogr || !acc.moze || !!acc.moze(k); };
+  var uprKomunikat = function (k) {
+    var n = acc.nazwa ? acc.nazwa(k) : '';
+    return 'Ta funkcja jest wyłączona dla Twojego konta' + (n ? ': ' + n : '') + '. W sprawie dostępu skontaktuj się z administratorem portalu.';
+  };
+  function uprElement(el) {
+    var klucze = String(el.getAttribute('data-upr') || '').split(/\s+/).filter(Boolean), brak = '';
+    for (var i = 0; i < klucze.length && !brak; i++) if (!uprMoze(klucze[i])) brak = klucze[i];
+    var bylo = el.getAttribute('data-upr-off'), wylacz = el.getAttribute('data-upr-tryb') === 'wylacz';
+    if (!brak) {
+      // the element's key changed (a page that switches between mailboxes) and is allowed now: give it back
+      if (bylo === null) return;
+      el.removeAttribute('data-upr-off');
+      if (wylacz) { el.disabled = false; el.removeAttribute('aria-disabled'); el.removeAttribute('title'); } else el.classList.remove('ps-upr-off');
+      return;
+    }
+    if (bylo === brak) return;
+    el.setAttribute('data-upr-off', brak);
+    // hidden by a class of its own, so the page's own `hidden` / `disabled` logic is never fought with
+    if (wylacz) { el.disabled = true; el.setAttribute('aria-disabled', 'true'); el.title = uprKomunikat(brak); } else el.classList.add('ps-upr-off');
+  }
+  function uprZastosuj(root) {
+    if (!ogr) return;
+    root = root && root.querySelectorAll ? root : document;
+    if (root.matches && root.matches('[data-upr]')) uprElement(root);
+    var l = root.querySelectorAll('[data-upr]');
+    for (var i = 0; i < l.length; i++) uprElement(l[i]);
+  }
+  // a refusal of a function ({ kod: "wylaczone" }): the server's own Polish sentence, shown once in a small box in
+  // the corner — whatever the page does with the error. `portal:wylaczone` lets a page put it where it prefers
+  // (event.preventDefault() keeps the box away).
+  var uprOstatni = {};
+  function uprOdmowa(b) {
+    var tekst = String((b && b.error) || uprKomunikat((b && b.klucz) || '')).slice(0, 400), klucz = String((b && b.klucz) || '');
+    var ev = new CustomEvent('portal:wylaczone', { detail: { error: tekst, klucz: klucz }, cancelable: true });
+    if (!document.dispatchEvent(ev)) return;
+    var t = Date.now();
+    if (uprOstatni[klucz] && t - uprOstatni[klucz] < 8000) return;
+    uprOstatni[klucz] = t;
+    var box = document.getElementById('psUprInfo');
+    if (!box) { box = document.createElement('div'); box.id = 'psUprInfo'; box.className = 'status error ps-upr-info'; box.setAttribute('role', 'status'); (document.body || document.documentElement).appendChild(box); }
+    box.textContent = tekst; box.hidden = false;
+    clearTimeout(uprOdmowa.t); uprOdmowa.t = setTimeout(function () { box.hidden = true; }, 9000);
+    box.onclick = function () { box.hidden = true; };
+  }
+  window.PortalUpr = { ograniczony: ogr, moze: uprMoze, komunikat: uprKomunikat, zastosuj: uprZastosuj, odmowa: uprOdmowa };
+  if (ogr) {
+    // an account without restrictions never gets here: no observer, no wrapper, nothing to pay for
+    // what a page renders later (or re-labels) is handled at once, before it is painted: only the added nodes
+    // and the changed element are looked at, never the whole page
+    try {
+      new MutationObserver(function (zmiany) {
+        for (var i = 0; i < zmiany.length; i++) {
+          var z = zmiany[i];
+          if (z.type === 'attributes') { uprElement(z.target); continue; }
+          for (var j = 0; j < z.addedNodes.length; j++) if (z.addedNodes[j].nodeType === 1) uprZastosuj(z.addedNodes[j]);
+        }
+      }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-upr'] });
+    } catch (e) { /* no observer: the scan at mount still runs */ }
+    if (window.fetch) {
+      var uprFetch = window.fetch;
+      window.fetch = function (input) {
+        var p = uprFetch.apply(this, arguments);
+        try {
+          var adres = typeof input === 'string' ? input : (input && input.url) || '';
+          if (adres.indexOf('/functions/v1/') !== -1) p.then(function (res) {
+            if (res.status !== 403) return;
+            res.clone().json().then(function (b) { if (b && b.kod === 'wylaczone') uprOdmowa(b); }).catch(function () {});
+          }).catch(function () {});
+        } catch (e) { /* the request itself is never touched */ }
+        return p;
+      };
+    }
+  }
   var user = window.PortalUser || {};
   var page = window.PortalPage || location.pathname.split('/').pop() || 'index.html';
   var FORM_URL = location.origin + location.pathname.replace(/[^/]*$/, '') + 'formularz-pracownika.html';
@@ -108,6 +188,9 @@
   var css = document.createElement('style');
   css.textContent = [
     ':root{--ps-w:256px;--ps-navy:#1B3F7F;--ps-tint:#EEF3F9}',
+    '.ps-upr-off{display:none!important}',
+    '.ps-upr-info{position:fixed;right:20px;bottom:20px;z-index:1200;max-width:380px;margin:0!important;display:block!important;padding:12px 16px;border-radius:10px;background:#fdecec;border:1px solid #f3c0c0;color:#8a1f1f;font:500 13.5px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;box-shadow:0 12px 32px rgba(15,23,42,.18);cursor:pointer}',
+    '.ps-upr-info[hidden]{display:none!important}',
     'body.ps{padding-left:var(--ps-w);background:#f6f8fb}',
     '#psSide{position:fixed;left:0;top:0;bottom:0;width:var(--ps-w);z-index:900;background:var(--ps-tint);border-right:1px solid #e1e7f0;display:flex;flex-direction:column;padding:18px 14px;overflow-y:auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}',
     // the menu's own scrollbar: thin and see-through, no white track beside the menu
@@ -206,6 +289,7 @@
     ' #psTabs .ps-badge{position:absolute;top:5px;left:calc(50% + 6px);margin:0}',
     ' body.ps main,body.ps.ps-wide main,body.ps .layout>main.content{padding:18px 14px 40px}',
     ' body.ps .toast{bottom:76px}',
+    ' body.ps .ps-upr-info{left:12px;right:12px;bottom:76px;max-width:none}',
     ' body.ps input,body.ps select,body.ps textarea{font-size:16px}', // no zoom-on-focus on iOS
     '}',
   ].join('\n');
@@ -328,6 +412,7 @@
     document.body.appendChild(dim);
     document.body.appendChild(tabs);
     refresh();
+    uprZastosuj(document);
     loadBadge(true);
     loadTasks(true);
     firstMail();

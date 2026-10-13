@@ -60,7 +60,7 @@
   function detal(z) {
     var m = msgs[z.id];
     return '<p>' + esc(z.tresc) + '</p>' +
-      (z.zalaczniki.length ? '<div class="files">' + z.zalaczniki.map(function (a) { return '<button type="button" class="mini" data-file="' + a.n + '">⬇ ' + esc(a.nazwa) + ' (' + rozmiar(a.rozmiar) + ')</button>'; }).join('') + '</div>' : '<p class="sub">Bez załączników.</p>') +
+      (z.zalaczniki.length ? '<div class="files">' + z.zalaczniki.map(function (a) { return '<button type="button" class="mini" data-file="' + a.n + '" data-upr="klienci.zgloszenia.zalaczniki">⬇ ' + esc(a.nazwa) + ' (' + rozmiar(a.rozmiar) + ')</button>'; }).join('') + '</div>' : '<p class="sub">Bez załączników.</p>') +
       '<div class="acts" style="justify-content:flex-start;margin:0 0 12px">' +
         '<a class="mini" href="klienci.html?k=' + encodeURIComponent(z.nip) + '">Klient w Bazie klientów →</a>' +
         (z.worker_id && maSekcje('kadry') ? '<a class="mini" href="rejestr.html?q=' + encodeURIComponent(z.pracownik || '') + '">Pracownik w Rejestrze →</a>' : '') +
@@ -73,7 +73,7 @@
       '<div class="field"><label>Odpowiedź dla klienta (klient zobaczy ją w profilu)</label><textarea data-f="odpowiedz" maxlength="2000" placeholder="Krótka odpowiedź, np. „Dokumenty zaksięgowane, dziękujemy.”">' + esc(z.odpowiedz || '') + '</textarea>' +
         (z.odpowiedz_at ? '<span class="sub">ostatnio zapisana ' + esc(plt(z.odpowiedz_at)) + (z.odpowiedzial ? ' · ' + esc(z.odpowiedzial.split('@')[0]) : '') + '</span>' : '') + '</div>' +
       '<div class="field"><label>Notatka wewnętrzna (klient jej NIE widzi)</label><textarea data-f="notatka" maxlength="4000">' + esc(z.notatka_wewnetrzna || '') + '</textarea></div>' +
-      '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" data-save>Zapisz</button><span class="sub" data-msg>' + (m ? esc(m) : '') + '</span></div>';
+      '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button type="button" class="btn" data-save data-upr="klienci.zgloszenia.odpowiedz">Zapisz</button><span class="sub" data-msg>' + (m ? esc(m) : '') + '</span></div>';
   }
   function render() {
     renderTabs();
@@ -186,7 +186,7 @@
     var autom = zr === 'historia' && ust && ust.historia === 'auto';
     $('docs').innerHTML = (autom ? '<div class="warnbox">Ustawienie „Pokazuj automatycznie” jest włączone: klient widzi najnowszą wersję każdego z tych dokumentów swojej firmy niezależnie od zaznaczeń. Zaznaczenia zaczną działać po przełączeniu na „Tylko zaznaczone”.</div>' : '') +
       (list.length ? list.slice(0, 300).map(function (d) {
-        return '<label class="doc" data-id="' + esc(d.id) + '"><input type="checkbox" data-share' + (shared[d.id] ? ' checked' : '') + (d.nip ? '' : ' disabled') + ' /><div class="ttl"><strong>' + esc(d.tytul) + '</strong><small>' + esc(d.opis) + '</small>' +
+        return '<label class="doc" data-id="' + esc(d.id) + '"><input type="checkbox" data-share data-upr="klienci.zgloszenia.udostepnianie" data-upr-tryb="wylacz"' + (shared[d.id] ? ' checked' : '') + (d.nip ? '' : ' disabled') + ' /><div class="ttl"><strong>' + esc(d.tytul) + '</strong><small>' + esc(d.opis) + '</small>' +
           (d.widzi ? '<small>Zobaczy: ' + esc(d.widzi) + '</small>' : '') + (d.uwaga ? '<small><span class="pill p-amber">' + esc(d.uwaga) + '</span></small>' : '') + '</div>' +
           '<span class="pill ' + (shared[d.id] ? 'p-ok' : 'p-grey') + '">' + (shared[d.id] ? 'udostępniony' : 'nieudostępniony') + '</span></label>';
       }).join('') + (list.length > 300 ? '<p class="sub">Pokazano 300 z ' + list.length + ' — zawęź wyszukiwanie.</p>' : '')

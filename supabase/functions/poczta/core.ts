@@ -115,10 +115,34 @@ export interface ImapZapisLike extends ImapLike {
   usunFolder(f: Folder, list: Folder[]): Promise<void>;
 }
 // wyl: the per-function switch-off list of the account (app_metadata.portal_wylaczone as _shared/uprawnienia.ts reads
-// it); index.ts always sets it — a caller without it (the tests' fakes) is not restricted
-export type Me = { email: string; admin: boolean; sekcje: string[] | null; wyl?: Wyl };
+// it). REQUIRED — a resolver that forgets it does not compile; [] is the explicit "not restricted".
+export type Me = { email: string; admin: boolean; sekcje: string[] | null; wyl: Wyl };
 /** Uprawnienia szczegółowe: may this person use the catalogue key (the page "poczta", a mailbox "poczta.kadry" …)? */
-export function mozeKlucz(me: Me, klucz: string): boolean { return mozna({ admin: me.admin, wyl: me.wyl ?? [] }, klucz); }
+export function mozeKlucz(me: Me, klucz: string): boolean { return mozna({ admin: me.admin, wyl: me.wyl }, klucz); }
+// The functions inside the module (phase 2). Per mailbox — the key is poczta.<skrzynka>.<funkcja>:
+const F_SKRZYNKI: Record<string, string> = {
+  wyslij: "wyslij", szkic_zapisz: "wyslij", zaplanuj: "wyslij",
+  akcja_imap: "porzadki", folder_utworz: "porzadki", folder_zmien: "porzadki", folder_usun: "porzadki",
+  zalacznik_imap: "zalaczniki", eml_imap: "zalaczniki", zrodlo_imap: "zalaczniki",
+};
+// … and for the whole page: tasks made from a message; the shared dictionaries (reading them stays with the page —
+// a template, a signature and the address book are needed to write a message)
+const F_STRONY: Record<string, string> = {
+  zadanie: "poczta.zadania", bez_dzialania: "poczta.zadania", biore_imap: "poczta.zadania",
+  szablon_zapisz: "poczta.slowniki", szablon_usun: "poczta.slowniki", podpis_zapisz: "poczta.slowniki", podpis_usun: "poczta.slowniki", kontakt_zapisz: "poczta.slowniki", kontakt_usun: "poczta.slowniki",
+};
+/** The function names under a mailbox key, e.g. poczta.kadry.wyslij (for the catalogue test). */
+export const FUNKCJE_SKRZYNKI = [...new Set(Object.values(F_SKRZYNKI))];
+const ZNACZNIKI = ["przeczytane", "nieprzeczytane", "flaga", "bez_flagi"]; // marking a message is not tidying the mailbox
+/** The key of the function a portal request asks for, or null when the page / mailbox key is all it needs. */
+export function kluczFunkcji(body: Any): string | null {
+  const a = body?.action;
+  if (typeof a !== "string") return null;
+  if (Object.hasOwn(F_STRONY, a)) return F_STRONY[a];
+  if (!Object.hasOwn(F_SKRZYNKI, a) || !isSkrzynka(body.skrzynka)) return null;
+  if (a === "akcja_imap" && ZNACZNIKI.includes(String(body.co ?? ""))) return null;
+  return "poczta." + body.skrzynka + "." + F_SKRZYNKI[a];
+}
 export type Deps = {
   cronKey: string; webhookKey: string; model: string; modelReady: boolean;
   konta: Record<Skrzynka, boolean>;                      // is the mailbox password configured
@@ -473,6 +497,9 @@ export async function handle(d: Deps, req: Request): Promise<{ status: number; b
     : isSkrzynka(body.skrzynka) && poSekcji.includes(body.skrzynka) && !moje.includes(body.skrzynka) ? "poczta." + body.skrzynka : null;
   // the menu's counter asks on every page: a person without the mail simply has nothing unread
   if (wyl) return body.action === "nieprzeczytane" ? { status: 200, body: { skrzynki: {}, razem: 0 } } : { status: 403, body: odmowa(wyl) };
+  // … then the function inside the mailbox or the page (sending, tidying, attachments, tasks, dictionaries)
+  const funkcja = kluczFunkcji(body);
+  if (funkcja && !mozeKlucz(me, funkcja)) return { status: 403, body: odmowa(funkcja) };
   const ctx = await kontekst(d);
   const teraz = () => new Date(d.now()).toISOString();
 

@@ -58,7 +58,11 @@
       zatw.mapa = (r.data && r.data.value && typeof r.data.value === 'object') ? r.data.value : {};
     } catch (e) { zatw.gotowe = false; zatw.mapa = {}; }
   }
+  // Uprawnienia szczegółowe (portal-shell.js: PortalUpr)
+  function uprMoze(k) { return !window.PortalUpr || window.PortalUpr.moze(k); }
+  function uprKom(k) { return window.PortalUpr ? window.PortalUpr.komunikat(k) : 'Ta funkcja jest wyłączona dla Twojego konta.'; }
   async function zapiszZatwierdzenie(doc, on) {
+    if (!uprMoze('kadry.dokumenty.wzory')) throw new Error(uprKom('kadry.dokumenty.wzory'));
     await wczytajZatwierdzenia(); // świeży stan, żeby nie nadpisać zatwierdzeń innej osoby
     if (!zatw.gotowe) throw new Error('Baza nie przyjmuje jeszcze zatwierdzeń (brak wiersza „kadry_wzory” albo uprawnień).');
     var mapa = Object.assign({}, zatw.mapa);
@@ -258,7 +262,7 @@
     return '<div class="warnbox"><b>Wzór własny biura — wymaga zatwierdzenia przez kadrową przed pierwszym użyciem.</b> ' +
       (st ? 'Treść wzoru zmieniła się po zatwierdzeniu (' + esc(st.by || '—') + ', ' + esc(dzienPL(st.at)) + ') — przeczytaj ją ponownie. ' : '') +
       'Do czasu zatwierdzenia każdy PDF ma w stopce dopisek „wzór do zatwierdzenia”.' +
-      (zatw.gotowe ? '<br><button type="button" class="mini ok" data-a="zatwierdz">Zatwierdź wzór</button><span id="zMsg"></span>'
+      (zatw.gotowe ? '<br><button type="button" class="mini ok" data-a="zatwierdz" data-upr="kadry.dokumenty.wzory">Zatwierdź wzór</button><span id="zMsg"></span>'
         : '<br>Zatwierdzanie w portalu nie jest jeszcze włączone (baza nie przyjmuje zapisu zatwierdzeń) — dopisek zostaje na każdym PDF.') + '</div>';
   }
 
@@ -307,7 +311,7 @@
       h += '<div class="warnbox">Pracownik jest cudzoziemcem: ten dokument trzeba sporządzić także w wersji dla niego zrozumiałej (' + ART5 + ') — dlatego wersja dwujęzyczna jest domyślnie włączona.' +
         (dj.on ? '' : ' <b>Wyłączono ją — dokument tylko po polsku nie spełnia tego wymogu; dołącz tłumaczenie.</b>') + '</div>';
     } else h += '<p class="hint">' + esc(d.uwaga) + (d.poziom === 'wymagany' ? ' Dla cudzoziemca wersja dwujęzyczna jest wymagana (' + ART5 + ').' : '') + '</p>';
-    h += '<label class="chk"><input type="checkbox" id="djOn"' + (dj.on ? ' checked' : '') + ' /><span>Wersja dwujęzyczna — tłumaczenie obok polskiego oryginału<small>Tłumaczenie przygotowuje AI tak jak w komplecie; pierwszy dokument w danym języku trwa dłużej, kolejne korzystają z zapamiętanych fragmentów.</small></span></label>';
+    h += '<label class="chk" data-upr="kadry.tlumaczenie"><input type="checkbox" id="djOn"' + (dj.on ? ' checked' : '') + ' /><span>Wersja dwujęzyczna — tłumaczenie obok polskiego oryginału<small>Tłumaczenie przygotowuje AI tak jak w komplecie; pierwszy dokument w danym języku trwa dłużej, kolejne korzystają z zapamiętanych fragmentów.</small></span></label>';
     if (dj.on) h += '<div class="grid" style="margin-top:10px"><div><label for="djJezyk">Język tłumaczenia</label><input type="text" id="djJezyk" value="' + esc(dj.jezyk) + '" placeholder="' + esc(obywatelstwo() ? 'puste = wg obywatelstwa: ' + obywatelstwo() : 'np. ukraiński, rosyjski') + '" /></div></div>' +
       '<label class="chk"><input type="checkbox" id="djOpis"' + (dj.opisowe ? ' checked' : '') + ' /><span>Tłumacz także pola opisowe (przyczyna, zakres, opis)<small>Imiona, nazwiska, adresy, numery i daty nigdy nie są wysyłane do tłumaczenia. Treść pól opisowych — tak, gdy to pole jest zaznaczone; nie wpisuj w nich danych osób trzecich.</small></span></label>';
     return h;
@@ -339,7 +343,7 @@
         '<button type="button" class="mini go big" data-a="generuj">Generuj PDF</button>' +
         '<button type="button" class="mini big" data-a="przyklad" title="Fikcyjne dane do wypróbowania wzoru">Wypełnij przykładem</button>' +
         '<button type="button" class="mini big" data-a="wyczysc">Wyczyść</button>' +
-        (e.ok ? '<button type="button" class="mini big" data-a="podpis">' + (e.odbior ? '✍️ Przekaż elektronicznie (potwierdzenie odbioru)' : '✍️ Wyślij do podpisu elektronicznego') + '</button>' : '') + '</div>' +
+        (e.ok ? '<button type="button" class="mini big" data-a="podpis" data-upr="kadry.podpisy.wyslij">' + (e.odbior ? '✍️ Przekaż elektronicznie (potwierdzenie odbioru)' : '✍️ Wyślij do podpisu elektronicznego') + '</button>' : '') + '</div>' +
         (e.ok ? '' : '<p class="hint" style="margin:10px 0 0">' + esc(e.powod) + '</p>') + '</div>' +
         '</div><div>' +
         '<div class="box"><h2>Podgląd treści</h2><p class="hint">Tekst zmienia się razem z formularzem. Układ strony (marginesy, podział na strony) zobaczysz w PDF.</p><div class="prev" id="prev"></div></div>' +
@@ -414,7 +418,10 @@
   async function zbudujPdf(postep) {
     var doc = cur.doc, stopka = doZatwierdzenia(doc) ? 'wzór do zatwierdzenia' : '';
     var opts = { PDFLib: window.PDFLib, fontkit: window.fontkit, tytul: doc.nazwa, temat: 'Stan prawny ' + K.stan_prawny, stopka: stopka }, uwaga = '';
-    if (dj.on && doc.dwujezyczny.poziom !== 'nie') {
+    var tlumacz = dj.on && doc.dwujezyczny.poziom !== 'nie';
+    // translation switched off for this account: the document is built in Polish only, and the page says so
+    if (tlumacz && !uprMoze('kadry.tlumaczenie')) { tlumacz = false; uwaga = ' Dokument tylko po polsku — tłumaczenie dokumentów (AI) jest wyłączone dla Twojego konta.'; }
+    if (tlumacz) {
       var target = (dj.jezyk || obywatelstwo() || '').trim();
       if (!target) throw new Error('Podaj język tłumaczenia albo obywatelstwo pracownika.');
       var sz = P.dwujezycznie(K, doc, cur.dane, dj.opisowe);

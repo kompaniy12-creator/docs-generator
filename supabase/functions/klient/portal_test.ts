@@ -11,10 +11,10 @@ const NOW = Date.parse("2026-10-09T10:00:00Z");
 function env() { let t = NOW; const m = memStore(() => t); return { d: { store: m.store, now: () => t }, db: m.db, tick: (ms: number) => { t += ms; } }; }
 const PDF = new TextEncoder().encode("%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF"), PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]), JPG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2]);
 const plik = (nazwa: string, typ: string, bytes: Uint8Array): Plik => ({ nazwa, typ, bytes });
-const admin: Staff = { email: "admin@biuro.test", admin: true, sekcje: null };
-const kadrowa: Staff = { email: "kadrowa@biuro.test", admin: false, sekcje: ["kadry"] };
-const ksiegowa: Staff = { email: "ksiegowa@biuro.test", admin: false, sekcje: ["onboarding"] };
-const bezSekcji: Staff = { email: "nowy@biuro.test", admin: false, sekcje: [] };
+const admin: Staff = { email: "admin@biuro.test", admin: true, sekcje: null, wyl: [] };
+const kadrowa: Staff = { email: "kadrowa@biuro.test", admin: false, sekcje: ["kadry"], wyl: [] };
+const ksiegowa: Staff = { email: "ksiegowa@biuro.test", admin: false, sekcje: ["onboarding"], wyl: [] };
+const bezSekcji: Staff = { email: "nowy@biuro.test", admin: false, sekcje: [], wyl: [] };
 async function A(e: ReturnType<typeof env>, body: Any, k = KONTO_A, pliki: Plik[] = []) { const o = await klientAkcja(e.d, k, body, pliki); assert(o, "akcja nieznana"); return o; }
 
 Deno.test("pomocnicze: język, zakres, mikrorachunek, rozpoznanie pliku", () => {
@@ -430,7 +430,7 @@ Deno.test("biuro: notatka wewnętrzna nigdy nie trafia do klienta; pojedyncze zg
 
 Deno.test("ustawienie „dokumenty z historii”: domyślnie automatycznie; „tylko zaznaczone” — dopiero po zaznaczeniu; tylko administrator zmienia", async () => {
   const e = env();
-  const biezaca: Staff = { email: "biezaca@biuro.test", admin: false, sekcje: ["biezaca", "onboarding"] };
+  const biezaca: Staff = { email: "biezaca@biuro.test", admin: false, sekcje: ["biezaca", "onboarding"], wyl: [] };
   assertEquals((await biuroAkcja(e.d, kadrowa, { action: "biuro_ustawienia" })).body.ustawienia, { historia: "auto" });
   assertEquals((await biuroAkcja(e.d, bezSekcji, { action: "biuro_ustawienia" })).status, 403);
   assertEquals((await biuroAkcja(e.d, kadrowa, { action: "biuro_ustawienia", historia: "zaznaczone" })).status, 403);
@@ -467,7 +467,7 @@ Deno.test("uprawnienia: zgłoszenia klientów — strona i jej funkcje wyłącza
   const zgl = await A(e, { action: "zgloszenie_nowe", nip: NIP_A, kategoria: "kadry", rodzaj: "zmiana_pracownika", worker_id: ID.wA1, temat: "Pytanie testowe", tresc: "Treść przykładowa." });
   assertEquals(zgl.status, 200);
   const id = zgl.body.id;
-  const os = (wyl?: Staff["wyl"], o: Partial<Staff> = {}): Staff => ({ ...kadrowa, ...(wyl === undefined ? {} : { wyl }), ...o });
+  const os = (wyl: Staff["wyl"] = [], o: Partial<Staff> = {}): Staff => ({ ...kadrowa, wyl, ...o });
   const b = (s: Staff, body: Any) => biuroAkcja(e.d, s, body);
   // no list, an empty list: as today
   for (const s of [os(), os([])]) {

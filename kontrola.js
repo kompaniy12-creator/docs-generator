@@ -108,7 +108,7 @@
     text: function (w) { return (w.worker_name || '') + ' ' + ((w.payload || {}).z_nazwa || ''); },
   };
   function todayIso() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
-  function editBtn(w) { return '<button type="button" class="mini" data-edit="' + esc(w.id) + '">✎ terminy</button>'; }
+  function editBtn(w) { return '<button type="button" class="mini" data-edit="' + esc(w.id) + '" data-upr="kadry.dane.edycja">✎ terminy</button>'; }
   function addDays(iso, n) { var d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
 
   // Statutory steps around a new hire, counted from the first day of work:
@@ -139,7 +139,7 @@
     row: function (t) {
       return [esc(t.w.worker_name), esc((t.w.payload || {}).z_nazwa || '—'),
         '<b>' + esc(t.what) + '</b><br><span class="sub">' + esc(t.why) + '</span>', pl(t.date), pill(t.d),
-        t.link ? '<a class="tl" href="zatrudnienie.html">otwórz →</a>' : '<button type="button" class="mini ok" data-done="' + t.k + '" data-id="' + esc(t.w.id) + '">✔ zrobione</button>'];
+        t.link ? '<a class="tl" href="zatrudnienie.html">otwórz →</a>' : '<button type="button" class="mini ok" data-done="' + t.k + '" data-id="' + esc(t.w.id) + '" data-upr="kadry.dane.edycja" data-upr-tryb="wylacz">✔ zrobione</button>'];
     },
     text: function (t) { return (t.w.worker_name || '') + ' ' + ((t.w.payload || {}).z_nazwa || '') + ' ' + t.what; },
   };
@@ -177,12 +177,19 @@
     view = b.getAttribute('data-v'); render();
   });
   // change a few payload fields of one worker without overwriting anything else
+  // (Uprawnienia szczegółowe: with "Zmiana danych pracowników" switched off the account is read-only — the database
+  // would simply change nothing, so the page says it in words instead)
   async function patchWorker(id, fields) {
+    var TYLKO_PODGLAD = 'kadry.dane.edycja';
+    var komunikat = function () { return window.PortalUpr ? window.PortalUpr.komunikat(TYLKO_PODGLAD) : 'Zmiana danych pracowników jest wyłączona dla Twojego konta.'; };
+    if (window.PortalUpr && !window.PortalUpr.moze(TYLKO_PODGLAD)) throw new Error(komunikat());
     var cur = await window.sb.from(TABLE).select('payload').eq('id', id).single();
     if (cur.error) throw new Error(cur.error.message);
     var payload = Object.assign({}, cur.data.payload || {}, fields);
-    var u = await window.sb.from(TABLE).update({ payload: payload }).eq('id', id);
+    var u = await window.sb.from(TABLE).update({ payload: payload }).eq('id', id).select('id');
     if (u.error) throw new Error(u.error.message);
+    // nothing changed although nothing failed: the database did not let this account write
+    if (!u.data || !u.data.length) throw new Error(window.PortalUpr && window.PortalUpr.ograniczony ? komunikat() : 'Zmiana nie została zapisana — odśwież stronę i spróbuj ponownie.');
     rows.forEach(function (w) { if (w.id === id) w.payload = payload; });
   }
   var editing = null;
@@ -262,7 +269,7 @@
     info.firmy.forEach(function (f, i) {
       html += '<div class="remfirm"><div class="remhead"><div><b>' + esc(f.firma || '(bez nazwy)') + '</b> <span class="sub">NIP ' + esc(f.nip || '—') + ' · ' +
         (f.email ? esc(f.email) : '<span class="bad">brak e-maila w bazie klientów</span>') + '</span></div>' +
-        (f.email && f.nip ? '<button type="button" class="mini ok" data-send="' + esc(f.nip) + '">Wyślij teraz</button>' : '') + '</div>' +
+        (f.email && f.nip ? '<button type="button" class="mini ok" data-send="' + esc(f.nip) + '" data-upr="kadry.kontrola.przypomnienia">Wyślij teraz</button>' : '') + '</div>' +
         '<ul>' + f.items.map(function (it) { return '<li>' + esc(it.worker) + ' — ' + esc(it.doc) + ': ' + pl(it.date) + ' ' + pill(it.d) + '</li>'; }).join('') + '</ul>' +
         '<details><summary>Pokaż treść wiadomości</summary><pre>' + esc(f.subject) + '\n\n' + esc(f.text) + '</pre></details></div>';
     });

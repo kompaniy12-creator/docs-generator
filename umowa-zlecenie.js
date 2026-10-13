@@ -153,6 +153,10 @@ const zNip = document.getElementById('z_nip');
 function tplNip() { return zNip.value.replace(/\D/g, ''); }
 function tplTyp() { return uTyp.value === 'praca' ? 'praca' : 'zlecenie'; }
 function tplShow(msg) { tplStatus.textContent = msg; }
+// Uprawnienia szczegółowe (portal-shell.js: PortalUpr): is the function switched on for this account, and the
+// sentence shown when it is not
+function uprMoze(k) { return !window.PortalUpr || window.PortalUpr.moze(k); }
+function uprKom(k) { return window.PortalUpr ? window.PortalUpr.komunikat(k) : 'Ta funkcja jest wyłączona dla Twojego konta.'; }
 // the submit handler awaits .pending, so an auto-generated packet never races the lookup
 function loadUmowaTpl() { umowaTpl.pending = fetchUmowaTpl(); return umowaTpl.pending; }
 async function fetchUmowaTpl() {
@@ -196,6 +200,7 @@ document.getElementById('tplSave').addEventListener('click', async () => {
   const nip = tplNip(), tresc = tplText.value.trim();
   if (nip.length !== 10) return tplShow('Podaj 10-cyfrowy NIP firmy, aby zapisać jej wzór.');
   if (!tresc) return tplShow('Wzór jest pusty.');
+  if (!uprMoze('kadry.komplet.szablony')) return tplShow(uprKom('kadry.komplet.szablony'));
   const u = await window.sb.auth.getUser();
   const r = await window.sb.from('umowa_szablony').upsert({
     nip, typ: tplTyp(), tresc, updated_at: new Date().toISOString(),
@@ -207,6 +212,7 @@ document.getElementById('tplSave').addEventListener('click', async () => {
 document.getElementById('tplDel').addEventListener('click', async () => {
   const nip = tplNip();
   if (nip.length !== 10 || !umowaTpl.custom) return tplShow('Ta firma nie ma zapisanego wzoru.');
+  if (!uprMoze('kadry.komplet.szablony')) return tplShow(uprKom('kadry.komplet.szablony'));
   if (!confirm('Usunąć wzór klienta (NIP ' + nip + ') i wrócić do wzoru standardowego?')) return;
   const r = await window.sb.from('umowa_szablony').delete().eq('nip', nip).eq('typ', tplTyp());
   if (r.error) return tplShow('Błąd: ' + r.error.message);
@@ -1647,6 +1653,11 @@ form.addEventListener('submit', async (e) => {
   try {
     await loadFonts();
     let tr = null, trNote = '';
+    // translation switched off for this account: the set is generated in Polish only, and the page says so
+    if (data.tlumaczenie.on && !uprMoze('kadry.tlumaczenie')) {
+      data.tlumaczenie.on = false;
+      trNote = ' Bez tłumaczenia — tłumaczenie dokumentów (AI) jest wyłączone dla Twojego konta.';
+    }
     if (data.tlumaczenie.on) {
       const target = data.tlumaczenie.jezyk || data.p.obywatelstwo;
       if (!target) throw new Error('Podaj obywatelstwo albo język tłumaczenia.');
@@ -1672,7 +1683,7 @@ form.addEventListener('submit', async (e) => {
     showStatus('Komplet został wygenerowany i pobrany.' + trNote, 'success');
 
     // Save / update the worker profile in the portal directory (non-blocking)
-    if (window.Workers && window.Workers.save) {
+    if (window.Workers && window.Workers.save && uprMoze('kadry.dane.edycja')) {
       try {
         await window.Workers.save({
           nazwisko: data.p.nazwisko, imiona: data.p.imiona, pesel: data.p.pesel,
@@ -1694,15 +1705,27 @@ form.addEventListener('submit', async (e) => {
           pdfBytes: bytes,
         });
         // attach the packet to its submission, so it can be sent to the client for signing
+        let uwaga = '';
         if (zgloszenieId && saved && saved.pdf_path) {
-          const cur = await window.sb.from('zatrudnienie_zgloszenia').select('payload').eq('id', zgloszenieId).single();
-          if (!cur.error && cur.data) {
-            await window.sb.from('zatrudnienie_zgloszenia').update({
-              payload: Object.assign({}, cur.data.payload, { komplet: { path: saved.pdf_path, filename, at: new Date().toISOString() } }),
-            }).eq('id', zgloszenieId);
+          // "Zmiana danych pracowników" switched off = Kadry read-only: the set is generated and kept in the
+          // history, but it cannot be attached to the submission — said in words, never skipped silently
+          let dolaczono = false;
+          if (uprMoze('kadry.dane.edycja')) {
+            const cur = await window.sb.from('zatrudnienie_zgloszenia').select('payload').eq('id', zgloszenieId).single();
+            if (!cur.error && cur.data) {
+              const u = await window.sb.from('zatrudnienie_zgloszenia').update({
+                payload: Object.assign({}, cur.data.payload, { komplet: { path: saved.pdf_path, filename, at: new Date().toISOString() } }),
+              }).eq('id', zgloszenieId).select('id');
+              dolaczono = !u.error && !!u.data && u.data.length > 0;
+            }
+          }
+          if (!dolaczono) {
+            uwaga = window.PortalUpr && window.PortalUpr.ograniczony
+              ? ' Uwaga: kompletu NIE dołączono do zgłoszenia pracownika — zmiana danych pracowników jest wyłączona dla Twojego konta, więc wysyłkę do klienta musi przygotować osoba z pełnym dostępem.'
+              : ' Uwaga: nie udało się dołączyć kompletu do zgłoszenia pracownika — wygeneruj go ponownie ze strony Zgłoszenia pracowników.';
           }
         }
-        showStatus('Komplet wygenerowany, pobrany i zapisany w historii.' + trNote, 'success');
+        showStatus('Komplet wygenerowany, pobrany i zapisany w historii.' + trNote + uwaga, 'success');
       } catch (err) {
         console.warn('History save failed:', err);
         showStatus('Komplet pobrany. (Nie udało się zapisać w historii — sprawdź połączenie.)', 'success');

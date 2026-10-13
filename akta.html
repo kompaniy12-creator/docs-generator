@@ -73,7 +73,7 @@
   <div class="box">
     <h2>Wgraj skany</h2>
     <p class="hint">PDF albo zdjęcia, do 24 MB na plik. Najlepiej jeden plik = dokumenty jednej osoby. Jeżeli skanujesz teczki jednej firmy, wskaż ją — rozpoznawanie będzie pewniejsze.</p>
-    <div class="drop" id="drop"><b>Przeciągnij pliki tutaj</b>albo kliknij, aby wybrać z dysku<input type="file" id="file" accept="application/pdf,image/*" multiple hidden /></div>
+    <div class="drop" id="drop" data-upr="kadry.akta.dodaj"><b>Przeciągnij pliki tutaj</b>albo kliknij, aby wybrać z dysku<input type="file" id="file" accept="application/pdf,image/*" multiple hidden /></div>
     <div class="uprow">
       <div><label for="hintFirm">Firma, której dotyczą skany (opcjonalnie)</label><select id="hintFirm"><option value="">— rozpoznaj automatycznie —</option></select></div>
       <span class="hint" id="upMsg" style="margin:0"></span>
@@ -100,9 +100,9 @@
     </div>
     <label for="edKind">Rodzaj dokumentu</label><input type="text" id="edKind" maxlength="200" />
     <div class="hint" id="edMsg" style="color:#b91c1c;margin-top:8px"></div>
-    <div class="row"><button type="button" id="edCancel">Anuluj</button><button type="button" class="go" id="edSave">Zapisz i zatwierdź</button></div>
+    <div class="row"><button type="button" id="edCancel">Anuluj</button><button type="button" class="go" id="edSave" data-upr="kadry.akta.edycja" data-upr-tryb="wylacz">Zapisz i zatwierdź</button></div>
   </div>
 </div>
-<script src="akta.js?v=2"></script>
+<script src="akta.js?v=3"></script>
 </body>
 </html>

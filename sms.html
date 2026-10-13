@@ -105,8 +105,8 @@
         <div class="licznik" id="licznik"></div>
         <p class="hint warn" id="uwagi" style="margin:8px 0 0"></p>
         <div class="row acts">
-          <button type="button" class="mini ok big" id="wyslij" disabled>Wyślij SMS</button>
-          <button type="button" class="mini big" id="test" disabled>Wyślij test</button>
+          <button type="button" class="mini ok big" id="wyslij" data-upr="klienci.sms.wyslij" disabled>Wyślij SMS</button>
+          <button type="button" class="mini big" id="test" data-upr="klienci.sms.wyslij" disabled>Wyślij test</button>
           <span class="sub">„Wyślij test” używa trybu testowego dostawcy — nic nie zostanie doręczone ani policzone.</span>
         </div>
         <div class="wynik" id="wynik"></div>
@@ -163,6 +163,6 @@
     </div>
   </section>
 </main>
-<script src="sms.js?v=2"></script>
+<script src="sms.js?v=3"></script>
 </body>
 </html>

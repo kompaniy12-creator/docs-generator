@@ -11,11 +11,16 @@
 //     (its RLS policy / the function behind its page). wykonaj() hands a tool only a store narrowed to
 //     the caller (ograniczStore): a tool that forgot a check still cannot read a table of another
 //     department. No requirement written = administrators only;
+//   * SCOPE BY THE SWITCH-OFF LIST (Uprawnienia szczegółowe): next to `dostep` every tool carries `klucz` and
+//     every Store method is classified in MAGAZYN_KLUCZE — the catalogue keys of the pages that show those
+//     data. A page switched off for the person takes its data away from every assistant, "Zapytaj portal"
+//     included; rows of a switched-off mailbox are dropped. Not classified = administrators only;
 //   * arguments are validated here — the model's JSON is untrusted input.
 
 import "./ksieg-terminy.js";
 import { audytKlienta, zakres } from "../klienci-baza/logic.ts";
-import { type Any, brakujacyDzial, digits, dniMiedzy, isDate, jezykKlienta, type Kto, maSekcje, maskujGleboko, maskujMail, okNip, okOkres, okresPlus, okUuid, plusDni, type Slad, spelnia, type Wymog, ZNACZNIK_MIKRO } from "./logic.ts";
+import { type Any, brakujacyDzial, digits, dniMiedzy, isDate, jezykKlienta, type Klucze, type Kto, maSekcje, maskujGleboko, maskujMail, mozeKlucze, okNip, okOkres, okresPlus, okUuid, plusDni, type Slad, spelnia, type Wymog, WSPOLNE, ZNACZNIK_MIKRO } from "./logic.ts";
+import { etykieta } from "../_shared/uprawnienia.ts";
 import { MAX_WYNIK_NARZEDZIA } from "./modele.ts";
 
 const KT = (globalThis as Any).KsiegTerminy as {
@@ -107,8 +112,46 @@ export const MAGAZYN: Record<keyof Store, Wymog> = {
   konta: ADMIN,               // klient_konta — client profile accounts
   aktEli: KAZDY,              // public register of acts
 };
+// Which pages of the catalogue show what a Store method reads (see `Klucze` in logic.ts): the data are readable
+// while at least one of them is switched on for the person. A method missing here is for administrators only.
+// The Kadry register (zatrudnienie_zgloszenia) is one table behind eight Kadry pages.
+const KADRY_DANE = ["kadry.zgloszenia", "kadry.rejestr", "kadry.kontrola", "kadry.komplet", "kadry.dokumenty", "kadry.akta", "kadry.podpisy", "kadry.import"];
+export const MAGAZYN_KLUCZE: Record<keyof Store, Klucze> = {
+  klienci: WSPOLNE,           // names, NIP, form, carers: the pickers of many pages (klienci-list); contact VALUES never leave a tool
+  obsluga: WSPOLNE,           // the view klienci_obsluga — read by rejestr, ksiegowosc and others
+  pracownicy: KADRY_DANE,
+  pracownik: KADRY_DANE,
+  zamkniecia: ["ksiegowosc.zamkniecia"],
+  wiedza: WSPOLNE,            // the office's rules of law — not a person's data
+  prawo: WSPOLNE,
+  zadania: ["ogolne.zadania"],
+  poczta: ["poczta"],         // and per mailbox below: poczta.kadry / poczta.ksiegowosc
+  pocztaJedna: ["poczta"],
+  pakiety: ["kadry.podpisy"],
+  dokumentyPakietow: ["kadry.podpisy"],
+  zgloszenia: ["klienci.zgloszenia"],
+  akta: ["kadry.akta"],
+  umowy: [],                  // administrators only (as `dostep`)
+  rejestr: ["klienci.baza"],  // register data of a client — shown on "Baza klientów"
+  telegram: ["klienci.baza"], // the status of the client's Telegram group — shown on "Baza klientów"
+  sms: [],
+  rozsylki: [],
+  zespol: [],
+  stawki: WSPOLNE,            // public
+  automat: ["kadry.kontrola"],        // the log of scheduled runs and the reminders sent — behind "Kontrola"
+  powiadomienia: ["kadry.kontrola"],
+  konta: [],
+  aktEli: WSPOLNE,            // public register of acts
+};
+const kluczeMetody = (m: string): Klucze | undefined => Object.hasOwn(MAGAZYN_KLUCZE, m) ? (MAGAZYN_KLUCZE as Record<string, Klucze>)[m] : undefined;
+// the refusal the model reads when the data belong to a page switched off for the person
+export const odmowaKlucza = (kl: Klucze | undefined) => new BladNarzedzia(!kl || !kl.length
+  ? "Brak dostępu: te dane są dostępne tylko dla administratora portalu. " + BEZ_OBEJSC
+  : `Brak dostępu: ta część portalu (${kl.slice(0, 3).map((k) => etykieta(k)).join("; ")}) jest wyłączona dla konta osoby, która uruchomiła asystenta. ${BEZ_OBEJSC}`);
+/** May this person read what the Store method `m` returns (section AND switch-off list)? Tools use it to leave a part out instead of failing. */
+export const wolnoMetode = (kto: Kto, m: keyof Store) => spelnia(kto, MAGAZYN[m]) && mozeKlucze(kto, kluczeMetody(m));
 const SKRZYNKA_SEKCJA: Record<string, string> = { kadry: "kadry", ksiegowosc: "onboarding" }; // as SKRZYNKI in the poczta function
-const mozeSkrzynke = (kto: Kto, skrzynka: unknown) => kto.admin === true || (typeof skrzynka === "string" && !!SKRZYNKA_SEKCJA[skrzynka] && maSekcje(kto, SKRZYNKA_SEKCJA[skrzynka]));
+const mozeSkrzynke = (kto: Kto, skrzynka: unknown) => kto.admin === true || (typeof skrzynka === "string" && !!SKRZYNKA_SEKCJA[skrzynka] && maSekcje(kto, SKRZYNKA_SEKCJA[skrzynka]) && mozeKlucze(kto, ["poczta." + skrzynka]));
 // a client's request by its category: kadry -> Kadry, ksiegowosc -> Księgowość, inne -> either of the two
 const mozeZgloszenie = (kto: Kto, kategoria: unknown) => kto.admin === true || (kategoria === "kadry" ? maSekcje(kto, "kadry") : kategoria === "ksiegowosc" ? maSekcje(kto, "onboarding") : kategoria === "inne" ? maSekcje(kto, "kadry") || maSekcje(kto, "onboarding") : false);
 
@@ -120,6 +163,8 @@ export function ograniczStore(s: Store, kto: Kto): Store {
     const w = (MAGAZYN as Record<string, Wymog | undefined>)[m];
     out[m] = async (...a: unknown[]) => {
       if (!spelnia(kto, w)) throw odmowa(kto, w);
+      // the pages that show these data are all switched off for the person (or the method is not classified)
+      if (!mozeKlucze(kto, kluczeMetody(m))) throw odmowaKlucza(kluczeMetody(m));
       const r = await (s[m] as (...x: unknown[]) => Promise<unknown>)(...a);
       if (kto.admin === true) return r;
       if (m === "poczta") return (r as Any[]).filter((x) => mozeSkrzynke(kto, x?.skrzynka));
@@ -226,6 +271,7 @@ export type Narzedzie = {
   name: string; description: string; input_schema: Schemat;
   klient: boolean;      // may be offered in a client conversation (always forced to that client's NIP)
   dostep: Wymog;        // who may call it; a tool without it runs for administrators only
+  klucz: Klucze;        // the catalogue pages whose data it reads (Uprawnienia szczegółowe); [] = administrators only
   run(a: Any, ctx: Ctx, s: Store): Promise<unknown>;
 };
 const sch = (properties: Record<string, unknown> = {}): Schemat => ({ type: "object", additionalProperties: false, properties, required: Object.keys(properties) });
@@ -234,7 +280,7 @@ const NIP_OPC = { type: ["string", "null"], description: "NIP klienta (10 cyfr) 
 
 export const NARZEDZIA: Narzedzie[] = [
   {
-    name: "klienci_szukaj", klient: false, dostep: KAZDY,
+    name: "klienci_szukaj", klient: false, dostep: KAZDY, klucz: WSPOLNE,
     description: "Szuka klientów biura po fragmencie nazwy, NIP, mieście, opiekunie albo kadrowej. Zwraca najwyżej 15 firm: nazwa, NIP, forma, opodatkowanie, opiekunowie, język, zakres obsługi. Bez danych kontaktowych.",
     input_schema: sch({ fraza: { type: "string", description: "fragment nazwy, NIP, miasto albo skrót opiekuna" } }),
     async run(a, ctx, s) {
@@ -246,7 +292,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "klient_karta", klient: true, dostep: KAZDY,
+    name: "klient_karta", klient: true, dostep: KAZDY, klucz: WSPOLNE,
     description: "Karta jednego klienta: dane z bazy klientów (bez kontaktów), zakres obsługi, status obsługi, dane rejestrowe (KRS/REGON, forma, stan), audyt umów z biurem (umowa, powierzenie przetwarzania, pełnomocnictwa), grupa Telegram, konto w profilu klienta.",
     input_schema: sch({ nip: NIP }),
     async run(a, ctx, s) {
@@ -255,7 +301,9 @@ export const NARZEDZIA: Narzedzie[] = [
       const id = idKlienta(k);
       // contracts with the office and the client-profile accounts are administrator data: not even read for anyone else
       const adm = ctx.kto.admin === true;
-      const [obs, rej, um, tg, konta] = await Promise.all([s.obsluga(), s.rejestr(id), adm ? s.umowy(id) : Promise.resolve([] as Any[]), s.telegram(), adm ? s.konta() : Promise.resolve([] as Any[])]);
+      // register data and the Telegram status belong to "Baza klientów": left out when that page is switched off
+      const zBazy = wolnoMetode(ctx.kto, "rejestr") && wolnoMetode(ctx.kto, "telegram");
+      const [obs, rej, um, tg, konta] = await Promise.all([s.obsluga(), zBazy ? s.rejestr(id) : Promise.resolve([] as Any[]), adm ? s.umowy(id) : Promise.resolve([] as Any[]), zBazy ? s.telegram() : Promise.resolve([] as Any[]), adm ? s.konta() : Promise.resolve([] as Any[])]);
       const o = obs.find((x) => x.id === id), r = rej.filter((x) => x.klient === id)[0];
       const umowy = um.filter((u) => u.klient === id && u.status === "przypisany");
       const audyt = audytKlienta(k, rej.filter((x) => x.klient === id), umowy, ctx.dzis);
@@ -272,11 +320,12 @@ export const NARZEDZIA: Narzedzie[] = [
       // a client sees its own card, not the office's internal audit of contracts and chat groups
       if (ctx.tryb === "klient") { delete karta.audyt_umow; delete karta.telegram; delete karta.klient.ma_grupe_telegram; }
       if (!adm) { delete karta.audyt_umow; delete karta.profil_klienta; karta.pominieto = "Audyt umów z biurem i konta profilu klienta są dostępne tylko dla administratora portalu."; }
+      if (!zBazy) { delete karta.rejestr; delete karta.telegram; delete karta.klient.ma_grupe_telegram; karta.pominieto = [karta.pominieto, "Dane rejestrowe i stan grupy Telegram należą do strony „Baza klientów”, która jest wyłączona dla konta osoby uruchamiającej asystenta."].filter(Boolean).join(" "); }
       return karta;
     },
   },
   {
-    name: "pracownicy_firmy", klient: true, dostep: KADRY,
+    name: "pracownicy_firmy", klient: true, dostep: KADRY, klucz: KADRY_DANE,
     description: "Pracownicy i zleceniobiorcy jednej firmy z rejestru Kadr: imię i nazwisko, obywatelstwo, umowa (rodzaj, od–do, stawka), daty ważności dokumentów (karta pobytu, zezwolenie, paszport, badania) z liczbą dni do końca, stan zgłoszeń ZUS / urząd pracy. Bez PESEL, numerów dokumentów, adresów i kont.",
     input_schema: sch({ nip: NIP, tylko_wygasajace_dni: { type: ["integer", "null"], description: "tylko osoby, którym coś kończy się w ciągu tylu dni (null = wszyscy)" } }),
     async run(a, ctx, s) {
@@ -289,7 +338,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "pracownik_karta", klient: true, dostep: KADRY,
+    name: "pracownik_karta", klient: true, dostep: KADRY, klucz: KADRY_DANE,
     description: "Jedna osoba z rejestru Kadr (po id z pracownicy_firmy): to samo co na liście oraz pakiet dokumentów do podpisu i spis akt osobowych (jakie rodzaje i części są w aktach — bez treści).",
     input_schema: sch({ id: { type: "string", description: "id osoby (uuid)" } }),
     async run(a, ctx, s) {
@@ -298,18 +347,21 @@ export const NARZEDZIA: Narzedzie[] = [
       const nip = digits(w?.payload?.z_nip);
       // a client context sees only its own people; staff see the person only together with the firm it belongs to
       if (!w || w.id !== a.id || (ctx.tryb === "klient" && nip !== ctx.nip)) return { znaleziono: false };
-      const [pak, akta] = await Promise.all([okNip(nip) ? s.pakiety(nip) : Promise.resolve([]), okNip(nip) ? s.akta(nip) : Promise.resolve([])]);
+      // signature packages and the personnel file: only when those pages are switched on for the person
+      const zPodpisow = wolnoMetode(ctx.kto, "pakiety"), zAkt = wolnoMetode(ctx.kto, "akta");
+      const [pak, akta] = await Promise.all([okNip(nip) && zPodpisow ? s.pakiety(nip) : Promise.resolve([]), okNip(nip) && zAkt ? s.akta(nip) : Promise.resolve([])]);
       const moje = pak.filter((p) => digits(p.nip) === nip && norm(p.worker_name) === norm(w.worker_name));
       const dok = akta.filter((d) => digits(d.nip) === nip && d.worker_id === w.id && d.status === "przypisany");
       return {
         znaleziono: true, osoba: rzutPracownika(w, ctx.dzis),
-        pakiety_podpisow: moje.slice(0, 5).map((p) => ({ status: p.status, utworzono: String(p.created_at).slice(0, 10), wydano: p.wydano_at ? String(p.wydano_at).slice(0, 10) : null })),
-        akta: ctx.tryb === "klient" ? undefined : { dokumentow: dok.length, czesci: [...new Set(dok.map((d) => d.czesc).filter(Boolean))].sort(), rodzaje: [...new Set(dok.map((d) => t(d.rodzaj, 60)).filter(Boolean))].slice(0, 40) },
+        pakiety_podpisow: !zPodpisow ? undefined : moje.slice(0, 5).map((p) => ({ status: p.status, utworzono: String(p.created_at).slice(0, 10), wydano: p.wydano_at ? String(p.wydano_at).slice(0, 10) : null })),
+        pominieto: zPodpisow && zAkt ? undefined : "Pominięto " + [zPodpisow ? "" : "pakiety podpisów", zAkt ? "" : "akta osobowe"].filter(Boolean).join(" i ") + " — te strony są wyłączone dla konta osoby uruchamiającej asystenta.",
+        akta: ctx.tryb === "klient" || !zAkt ? undefined : { dokumentow: dok.length, czesci: [...new Set(dok.map((d) => d.czesc).filter(Boolean))].sort(), rodzaje: [...new Set(dok.map((d) => t(d.rodzaj, 60)).filter(Boolean))].slice(0, 40) },
       };
     },
   },
   {
-    name: "zamkniecie_miesiaca", klient: true, dostep: KSIEGOWOSC,
+    name: "zamkniecie_miesiaca", klient: true, dostep: KSIEGOWOSC, klucz: ["ksiegowosc.zamkniecia"],
     description: "Stan zamknięcia miesiąca księgowego (kroki: dokumenty od klienta, księgi, wyciągi, płace, JPK, podatki, informacja dla klienta, zamknięcie). Dla jednego klienta albo — dla pracownika biura — lista klientów z obsługą księgową, którym czegoś brakuje, opcjonalnie tylko jednego opiekuna.",
     input_schema: sch({ okres: { type: "string", description: "miesiąc RRRR-MM" }, nip: NIP_OPC, opiekun: { type: ["string", "null"], description: "skrót opiekuna z bazy klientów albo null" } }),
     async run(a, ctx, s) {
@@ -335,7 +387,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "terminy_ustawowe", klient: true, dostep: KAZDY,
+    name: "terminy_ustawowe", klient: true, dostep: KAZDY, klucz: WSPOLNE,
     description: "Ustawowe terminy podatkowe, ZUS i sprawozdawcze klienta w danym miesiącu — wyliczone przez silnik terminów portalu (z przesunięciem z dni wolnych) na podstawie formy prawnej i opodatkowania z bazy klientów. Każdy termin ma podstawę prawną; „do_potwierdzenia” oznacza, że dane klienta nie rozstrzygają, czy obowiązek go dotyczy. NIE zwraca kwot.",
     input_schema: sch({ nip: NIP, rok: { type: "integer" }, miesiac: { type: "integer", description: "1–12" } }),
     async run(a, ctx, s) {
@@ -349,7 +401,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "terminy_ogolne", klient: false, dostep: KAZDY,
+    name: "terminy_ogolne", klient: false, dostep: KAZDY, klucz: WSPOLNE,
     description: "Wszystkie ustawowe terminy podatkowe, ZUS i sprawozdawcze przypadające w najbliższych dniach (kalendarz ogólny, nie dla konkretnego klienta): data, nazwa obowiązku, czego dotyczy, podstawa prawna. Wyliczone przez silnik terminów portalu.",
     input_schema: sch({ dni: { type: "integer", description: "ile dni naprzód (1–45)" } }),
     run(a, ctx) {
@@ -363,7 +415,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "akt_eli", klient: false, dostep: KAZDY,
+    name: "akt_eli", klient: false, dostep: KAZDY, klucz: WSPOLNE,
     description: "Metadane jednego aktu prawnego z urzędowego rejestru ELI (Sejm RP): tytuł, rodzaj, status, data ogłoszenia, data wejścia w życie. Nie zwraca treści aktu.",
     input_schema: sch({ eli: { type: "string", description: "id aktu, np. DU/2026/734" } }),
     async run(a, ctx, s) {
@@ -375,7 +427,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "wiedza_spis", klient: true, dostep: KAZDY,
+    name: "wiedza_spis", klient: true, dostep: KAZDY, klucz: WSPOLNE,
     description: "Spis treści bazy wiedzy biura (zweryfikowane reguły prawne): id, dział i temat każdej reguły. Użyj, żeby wybrać reguły do odczytania przez wiedza_pobierz. Baza jest po polsku.",
     input_schema: sch({ dzial: { type: ["string", "null"], description: "nazwa działu albo null = wszystkie" } }),
     async run(a, _ctx, s) {
@@ -385,7 +437,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "wiedza_pobierz", klient: true, dostep: KAZDY,
+    name: "wiedza_pobierz", klient: true, dostep: KAZDY, klucz: WSPOLNE,
     description: "Pełna treść wybranych reguł bazy wiedzy (najwyżej 8 naraz): treść, podstawa prawna, akt (ELI), data weryfikacji. Tylko to, co tu odczytasz, wolno przytoczyć jako regułę prawną.",
     input_schema: sch({ ids: { type: "array", items: { type: "string" }, description: "id reguł ze spisu" } }),
     async run(a, ctx, s) {
@@ -397,7 +449,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "prawo_zmiany", klient: false, dostep: KAZDY,
+    name: "prawo_zmiany", klient: false, dostep: KAZDY, klucz: WSPOLNE,
     description: "Akty prawne obserwowane przez portal (monitor ELI): tytuł, skrót, data ostatniej zmiany, lista aktów zmieniających, kiedy sprawdzono i czy wykryto zmianę. Nie zawiera treści zmian — tylko to, co zapisał monitor.",
     input_schema: sch({ eli: { type: ["string", "null"], description: "id aktu, np. DU/2025/621, albo null = wszystkie" } }),
     async run(a, ctx, s) {
@@ -411,13 +463,13 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "grupy_klientow", klient: false, dostep: KAZDY,
+    name: "grupy_klientow", klient: false, dostep: KAZDY, klucz: WSPOLNE,
     description: "Grupy klientów policzone z danych portalu: według formy prawnej, opodatkowania i cech z silnika terminów (CIT, ryczałt, skala, liniowy, VAT, księgi), z pracownikami w rejestrze Kadr, z cudzoziemcami, z umowami o pracę / zleceniami. Zwraca liczby i — dla wybranej grupy — nazwy firm.",
     input_schema: sch({ pokaz_grupe: { type: ["string", "null"], description: "klucz grupy, której firmy wypisać (np. „z_cudzoziemcami”), albo null = same liczby" } }),
     async run(a, ctx, s) {
       tylkoStaff(ctx);
       // the groups counted from the Kadry register only for a caller who has Kadry
-      const kadry = maSekcje(ctx.kto, "kadry");
+      const kadry = maSekcje(ctx.kto, "kadry") && wolnoMetode(ctx.kto, "pracownicy");
       const [kl, pr] = await Promise.all([s.klienci(), kadry ? s.pracownicy(null) : Promise.resolve([] as Any[])]);
       const zatr = pr.filter((w) => w.status === "zatrudniony");
       const poNip = new Map<string, Any[]>();
@@ -448,7 +500,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "zadania_przeglad", klient: false, dostep: KAZDY,
+    name: "zadania_przeglad", klient: false, dostep: KAZDY, klucz: ["ogolne.zadania"],
     description: "Zadania w portalu: liczba otwartych i przeterminowanych na osobę oraz lista otwartych zadań (tytuł, termin, pilność, źródło). Administrator widzi zadania całego zespołu; pozostali — wyłącznie własne.",
     input_schema: sch({ osoba: { type: ["string", "null"], description: "e-mail osoby albo null = wszyscy" } }),
     async run(a, ctx, s) {
@@ -461,7 +513,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "poczta_lista", klient: false, dostep: KADRY_LUB_KSIEG,
+    name: "poczta_lista", klient: false, dostep: KADRY_LUB_KSIEG, klucz: ["poczta"],
     description: "Ostatnie wiadomości z rozbioru poczty biura (skrzynki kadry / księgowość — tylko te, do których osoba uruchamiająca ma dostęp w module Poczta): id, data, nadawca (zamaskowany adres), temat, kategoria, pilność, rozpoznany klient, status.",
     input_schema: sch({ tylko_wymagajace: { type: "boolean", description: "tylko wiadomości wymagające działania" } }),
     async run(a, ctx, s) {
@@ -471,7 +523,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "poczta_wiadomosc", klient: false, dostep: KADRY_LUB_KSIEG,
+    name: "poczta_wiadomosc", klient: false, dostep: KADRY_LUB_KSIEG, klucz: ["poczta"],
     description: "Jedna wiadomość z rozbioru poczty: zapisany fragment treści (zamaskowany, do ok. 600 znaków — portal nie przechowuje pełnej treści), streszczenie i ocena z rozbioru, załączniki (nazwy), rozpoznany klient.",
     input_schema: sch({ id: { type: "string", description: "id wiadomości (uuid)" } }),
     async run(a, ctx, s) {
@@ -491,7 +543,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "podpisy_pakiety", klient: true, dostep: KADRY,
+    name: "podpisy_pakiety", klient: true, dostep: KADRY, klucz: ["kadry.podpisy"],
     description: "Pakiety dokumentów do podpisu (moduł Podpisy): firma, osoba, rodzaj umowy, status pakietu, ile dokumentów czeka na pracodawcę / pracownika / weryfikację.",
     input_schema: sch({ nip: NIP_OPC, tylko_otwarte: { type: "boolean" } }),
     async run(a, ctx, s) {
@@ -509,7 +561,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "zgloszenia_klientow", klient: true, dostep: KADRY_LUB_KSIEG,
+    name: "zgloszenia_klientow", klient: true, dostep: KADRY_LUB_KSIEG, klucz: ["klienci.zgloszenia"],
     description: "Zgłoszenia klientów do biura z profilu klienta: kategoria, rodzaj, temat, status, data, czy jest odpowiedź. Bez treści załączników.",
     input_schema: sch({ nip: NIP_OPC, tylko_otwarte: { type: "boolean" } }),
     async run(a, ctx, s) {
@@ -519,7 +571,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "akta_inwentarz", klient: false, dostep: KADRY,
+    name: "akta_inwentarz", klient: false, dostep: KADRY, klucz: ["kadry.akta"],
     description: "Spis akt osobowych w portalu (bez treści dokumentów): dla firmy — ile dokumentów ma każda osoba i w jakich częściach (A–E, Z); dla jednej osoby — rodzaje dokumentów według części.",
     input_schema: sch({ nip: NIP, worker_id: { type: ["string", "null"], description: "id osoby albo null = cała firma" } }),
     async run(a, ctx, s) {
@@ -537,7 +589,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "komunikacja_statystyki", klient: false, dostep: ADMIN,
+    name: "komunikacja_statystyki", klient: false, dostep: ADMIN, klucz: [],
     description: "Statystyki wysyłek z ostatnich dni: SMS (liczba, statusy, ile testowych, cel) i rozsyłki do klientów (liczba, statusy, typy). Bez treści i numerów.",
     input_schema: sch({ dni: { type: "integer", description: "ile dni wstecz (1–90)" } }),
     async run(a, ctx, s) {
@@ -549,7 +601,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "zespol", klient: false, dostep: ADMIN,
+    name: "zespol", klient: false, dostep: ADMIN, klucz: [],
     description: "Zespół biura: imię i nazwisko, skróty używane w bazie klientów, stanowisko, działy, czy osoba jest aktywna i czy jest dziś nieobecna (z zastępcą). Bez telefonów i danych prywatnych.",
     input_schema: sch(),
     async run(_a, ctx, s) {
@@ -558,7 +610,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "stawki_minimalne", klient: true, dostep: KAZDY,
+    name: "stawki_minimalne", klient: true, dostep: KAZDY, klucz: WSPOLNE,
     description: "Minimalne wynagrodzenie za pracę i minimalna stawka godzinowa obowiązujące w podanym dniu — z tabeli stawek portalu (aktualizowanej z rejestru aktów).",
     input_schema: sch({ data: { type: "string", description: "dzień RRRR-MM-DD" } }),
     async run(a, ctx, s) {
@@ -570,7 +622,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "automatyzacja", klient: false, dostep: KADRY,
+    name: "automatyzacja", klient: false, dostep: KADRY, klucz: ["kadry.kontrola"],
     description: "Co portal zrobił automatycznie w ostatnich dniach: przebiegi zadań cyklicznych (nazwa, ile udanych / nieudanych) i wysłane przypomnienia (rodzaj, kanał, status) — same liczby.",
     input_schema: sch({ dni: { type: "integer", description: "ile dni wstecz (1–60)" } }),
     async run(a, ctx, s) {
@@ -585,7 +637,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "przeglad_biura", klient: false, dostep: ADMIN,
+    name: "przeglad_biura", klient: false, dostep: ADMIN, klucz: [],
     description: "Zestawienie dla właściciela policzone z danych portalu: obciążenie osób (klienci na opiekuna / kadrową, zadania otwarte i przeterminowane), klienci z ryzykiem (zaległe zamknięcie poprzedniego miesiąca, wygasające dokumenty pracowników, brak potwierdzonej umowy z biurem, brak grupy Telegram), stan poczty i zgłoszeń klientów.",
     input_schema: sch(),
     async run(_a, ctx, s) {
@@ -628,7 +680,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "przypomnienia_klienta", klient: true, dostep: ADMIN,
+    name: "przypomnienia_klienta", klient: true, dostep: ADMIN, klucz: [],
     description: "Co dotyczy jednego klienta w najbliższych dniach — policzone z danych portalu: terminy ustawowe w ciągu 10 dni (bez kwot), dokumenty i umowy jego pracowników kończące się w ciągu 60 dni, na co czeka biuro (dokumenty księgowe za poprzedni miesiąc, dokumenty do podpisu, zgłoszenia w toku).",
     input_schema: sch({ nip: NIP }),
     async run(a, ctx, s) {
@@ -659,7 +711,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "rachunki_do_wplat", klient: true, dostep: KSIEGOWOSC,
+    name: "rachunki_do_wplat", klient: true, dostep: KSIEGOWOSC, klucz: ["ksiegowosc.zamkniecia"],
     description: "Rachunki do wpłat klienta. Mikrorachunek podatkowy (PIT, CIT, VAT) jest wyliczany przez system z NIP: zwraca ZNACZNIK, który wstaw dosłownie w odpowiedzi — system zamieni go na numer rachunku. Numeru rachunku składkowego ZUS portal nie przechowuje.",
     input_schema: sch({ nip: NIP }),
     async run(a, ctx, s) {
@@ -669,7 +721,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "braki_onboardingu", klient: false, dostep: { sekcje: ["onboarding", "rejestracja"] },
+    name: "braki_onboardingu", klient: false, dostep: { sekcje: ["onboarding", "rejestracja"] }, klucz: ["ksiegowosc.onboarding"],
     description: "Kompletność kartoteki klienta policzona z danych portalu: umowa z biurem, powierzenie przetwarzania, pełnomocnictwa (z audytu umów), grupa Telegram, dane rejestrowe, dane kontaktowe i język w bazie, opiekunowie, konto w profilu klienta, subskrypcja bota. Każda pozycja: jest / brak / uwaga.",
     input_schema: sch({ nip: NIP }),
     async run(a, ctx, s) {
@@ -679,7 +731,8 @@ export const NARZEDZIA: Narzedzie[] = [
       const id = idKlienta(k);
       // the audit of contracts with the office and the client-profile accounts: administrators only (not read otherwise)
       const adm = ctx.kto.admin === true;
-      const [rej, um, tg, konta] = await Promise.all([s.rejestr(id), adm ? s.umowy(id) : Promise.resolve([] as Any[]), s.telegram(), adm ? s.konta() : Promise.resolve([] as Any[])]);
+      const zBazy = wolnoMetode(ctx.kto, "rejestr") && wolnoMetode(ctx.kto, "telegram");
+      const [rej, um, tg, konta] = await Promise.all([zBazy ? s.rejestr(id) : Promise.resolve([] as Any[]), adm ? s.umowy(id) : Promise.resolve([] as Any[]), zBazy ? s.telegram() : Promise.resolve([] as Any[]), adm ? s.konta() : Promise.resolve([] as Any[])]);
       const audyt = audytKlienta(k, rej.filter((x) => x.klient === id), um.filter((u) => u.klient === id && u.status === "przypisany"), ctx.dzis);
       const g = tg.find((x) => x.klient === id), r = rej.filter((x) => x.klient === id)[0], konto = konta.filter((c) => Array.isArray(c.nip) && c.nip.includes(nip));
       const poz = (co: string, stan: "jest" | "brak" | "uwaga", opis = "") => ({ co, stan, opis });
@@ -692,8 +745,10 @@ export const NARZEDZIA: Narzedzie[] = [
           poz("forma prawna i opodatkowanie w bazie", t(k.forma) && t(k.opodatkowanie) ? "jest" : "brak", `forma: ${t(k.forma) || "—"}, opodatkowanie: ${t(k.opodatkowanie) || "—"}`),
           poz("e-mail klienta", t(k.email) ? "jest" : "brak"), poz("telefon klienta", t(k.telefon) ? "jest" : "brak"), poz("osoba kontaktowa", t(k.kontakt) ? "jest" : "brak"),
           poz("język komunikacji", t(k.jezyk) ? "jest" : "brak", t(k.jezyk) ? jezykKlienta(k.jezyk) : "nie ustawiono — domyślnie polski"),
-          poz("grupa Telegram", !t(k.telegram) ? "brak" : g?.status === "ok" ? "jest" : "uwaga", g ? `stan z audytu: ${g.status}` : "brak wyniku audytu grupy"),
-          poz("dane rejestrowe (KRS / GUS)", r?.znaleziono ? "jest" : r ? "uwaga" : "brak", r ? `źródło ${r.zrodlo}, sprawdzono ${String(r.sprawdzono_at ?? r.fetched_at ?? "").slice(0, 10)}${r.stan ? ", stan: " + t(r.stan, 80) : ""}` : "nie pobrano"),
+          ...(zBazy ? [
+            poz("grupa Telegram", !t(k.telegram) ? "brak" : g?.status === "ok" ? "jest" : "uwaga", g ? `stan z audytu: ${g.status}` : "brak wyniku audytu grupy"),
+            poz("dane rejestrowe (KRS / GUS)", r?.znaleziono ? "jest" : r ? "uwaga" : "brak", r ? `źródło ${r.zrodlo}, sprawdzono ${String(r.sprawdzono_at ?? r.fetched_at ?? "").slice(0, 10)}${r.stan ? ", stan: " + t(r.stan, 80) : ""}` : "nie pobrano"),
+          ] : [poz("grupa Telegram i dane rejestrowe", "uwaga", "nie sprawdzono — strona „Baza klientów” jest wyłączona dla konta osoby uruchamiającej asystenta")]),
           ...(adm ? [poz("konto w profilu klienta", konto.some((c) => c.aktywny) ? "jest" : "brak", konto.length ? `kont: ${konto.length}, logowano: ${konto.some((c) => c.last_login) ? "tak" : "nie"}` : "")] : []),
         ],
       };
@@ -720,7 +775,8 @@ function argumenty(n: Narzedzie, raw: unknown): Any {
 }
 
 // May this person call this tool at all? A tool with no requirement written is for administrators only.
-export const mozeNarzedzie = (n: Pick<Narzedzie, "dostep"> | { dostep?: Wymog }, kto: Kto | null | undefined) => spelnia(kto, n?.dostep);
+// And the pages whose data it reads must not all be switched off for the person (no `klucz` written = administrators only).
+export const mozeNarzedzie = (n: { dostep?: Wymog; klucz?: Klucze }, kto: Kto | null | undefined) => spelnia(kto, n?.dostep) && mozeKlucze(kto, n?.klucz);
 
 // One tool call of the model. `dozwolone` is the assistant's own list — a name outside it does not run.
 // Never throws: an error becomes a result the model can read (and the run goes on).
@@ -728,7 +784,7 @@ export async function wykonaj(name: string, raw: unknown, dozwolone: string[], c
   const n = narzedzie(name);
   if (!n || !dozwolone.includes(name) || (ctx.tryb === "klient" && !n.klient)) return { tresc: JSON.stringify({ blad: "Nie ma takiego narzędzia w tej rozmowie." }), blad: true };
   // the caller's scope: refused before the arguments are looked at and before anything is read
-  if (!mozeNarzedzie(n, ctx.kto)) return { tresc: JSON.stringify({ blad: odmowa(ctx.kto, n.dostep).message, brak_dostepu: true }), blad: true };
+  if (!mozeNarzedzie(n, ctx.kto)) return { tresc: JSON.stringify({ blad: (spelnia(ctx.kto, n.dostep) ? odmowaKlucza(n.klucz) : odmowa(ctx.kto, n.dostep)).message, brak_dostepu: true }), blad: true };
   try {
     const wynik = maskujGleboko(await n.run(argumenty(n, raw), ctx, ograniczStore(s, ctx.kto)));
     ctx.slad.narzedzia.add(name);

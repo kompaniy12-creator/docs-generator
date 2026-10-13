@@ -16,7 +16,13 @@
     if (r.error) throw r.error;
     return r.data;
   }
+  // Uprawnienia szczegółowe: with "Zmiana danych pracowników" switched off the directory is read-only — the
+  // database would refuse (or silently change nothing), so the caller gets the reason in words
+  function tylkoPodglad() {
+    if (window.PortalUpr && !window.PortalUpr.moze('kadry.dane.edycja')) throw new Error(window.PortalUpr.komunikat('kadry.dane.edycja'));
+  }
   async function save(rec) {
+    tylkoPodglad();
     var c = sb();
     var u = await c.auth.getUser();
     var uid = (u && u.data && u.data.user) ? u.data.user.id : null;
@@ -43,6 +49,7 @@
     return ins.data;
   }
   async function remove(id) {
+    tylkoPodglad();
     var r = await sb().from(TABLE).delete().eq('id', id);
     if (r.error) throw r.error;
     return true;

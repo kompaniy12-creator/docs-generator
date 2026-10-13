@@ -105,7 +105,7 @@
 
     <fieldset>
       <legend data-typ-text data-zlecenie="Zleceniodawca (pracodawca)" data-praca="Pracodawca">Zleceniodawca (pracodawca)</legend>
-      <button type="button" id="wfBtn" style="display:inline-flex;align-items:center;gap:8px;margin:0 0 14px;padding:11px 16px;background:#fff;border:1.5px solid var(--brand-navy);color:var(--brand-navy);border-radius:8px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer">📥 Wczytaj firmę z wFirma</button>
+      <button type="button" id="wfBtn" data-upr="kadry.komplet.wfirma" style="display:inline-flex;align-items:center;gap:8px;margin:0 0 14px;padding:11px 16px;background:#fff;border:1.5px solid var(--brand-navy);color:var(--brand-navy);border-radius:8px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer">📥 Wczytaj firmę z wFirma</button>
       <div id="wfPick" class="field" style="display:none">
         <label for="wfCompanies">Wybierz firmę z wFirma</label>
         <select id="wfCompanies"><option value="">— wybierz —</option></select>
@@ -230,7 +230,7 @@
           <input id="t_jezyk" name="t_jezyk" type="text" placeholder="np. rosyjski" />
         </div>
       </div>
-      <label class="check"><input type="checkbox" name="t_on" id="t_on" /><span class="ct"><span>Wersja dwujęzyczna — tłumaczenie obok polskiego oryginału</span><small>Tłumaczenie przygotowuje AI na język obywatelstwa. Pierwszy komplet w danym języku trwa do ok. 2 minut, kolejne są natychmiastowe.</small></span></label>
+      <label class="check" data-upr="kadry.tlumaczenie"><input type="checkbox" name="t_on" id="t_on" /><span class="ct"><span>Wersja dwujęzyczna — tłumaczenie obok polskiego oryginału</span><small>Tłumaczenie przygotowuje AI na język obywatelstwa. Pierwszy komplet w danym języku trwa do ok. 2 minut, kolejne są natychmiastowe.</small></span></label>
     </fieldset>
 
     <fieldset>
@@ -324,7 +324,7 @@
         <input id="u_wymiar" name="u_wymiar" type="text" value="pełny etat" />
       </div>
       <p class="hint" id="tplStatus" style="margin:10px 0 8px">Wzór umowy: standardowy TD.</p>
-      <button type="button" id="tplToggle" class="add-btn" style="margin:0">Wzór umowy klienta…</button>
+      <button type="button" id="tplToggle" class="add-btn" style="margin:0" data-upr="kadry.komplet.szablony">Wzór umowy klienta…</button>
       <div id="tplBox" hidden style="margin-top:12px">
         <p class="hint" style="margin:0 0 8px">Wklej lub wczytaj umowę klienta i wstaw pola <code>{{…}}</code> tam, gdzie mają trafić dane. Zapisany wzór jest używany dla tej firmy (NIP) i wybranego rodzaju umowy zamiast wzoru standardowego. Formatowanie: <code># Tytuł</code>, <code>## Nagłówek</code>, <code>1. punkt</code>, <code>[podpisy]</code> (obie strony), <code>[podpis]</code> (sam zleceniobiorca / pracownik).</p>
         <div id="tplFields" style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px">
@@ -337,8 +337,8 @@
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center">
           <button type="button" id="tplStd" class="add-btn" style="margin:0">Wstaw wzór standardowy</button>
           <label class="add-btn" style="margin:0;cursor:pointer">Wczytaj z pliku (DOCX / TXT)<input type="file" id="tplFile" accept=".docx,.txt" hidden /></label>
-          <button type="button" id="tplSave" class="add-btn" style="margin:0">💾 Zapisz wzór tej firmy</button>
-          <button type="button" id="tplDel" class="add-btn" style="margin:0;color:#b91c1c">Usuń wzór firmy</button>
+          <button type="button" id="tplSave" class="add-btn" style="margin:0" data-upr="kadry.komplet.szablony">💾 Zapisz wzór tej firmy</button>
+          <button type="button" id="tplDel" class="add-btn" style="margin:0;color:#b91c1c" data-upr="kadry.komplet.szablony">Usuń wzór firmy</button>
         </div>
       </div>
     </fieldset>
@@ -405,7 +405,7 @@
     </fieldset>
 
     <button type="submit" id="submitBtn">Pobierz komplet (PDF)</button>
-    <button type="button" id="podpisBtn" class="add-btn" style="margin:10px 0 0;width:100%" title="Każdy dokument jako osobny PDF: pracodawca i pracownik podpisują elektronicznie albo odręcznie i odsyłają pliki przez portal">✍️ Wyślij do podpisu elektronicznego</button>
+    <button type="button" id="podpisBtn" class="add-btn" data-upr="kadry.podpisy.wyslij" style="margin:10px 0 0;width:100%" title="Każdy dokument jako osobny PDF: pracodawca i pracownik podpisują elektronicznie albo odręcznie i odsyłają pliki przez portal">✍️ Wyślij do podpisu elektronicznego</button>
     <div id="status" class="status"></div>
   </form>
 
@@ -419,10 +419,10 @@
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <script src="stawki.js?v=2"></script>
 <script src="firma.js"></script>
-<script src="history.js"></script>
-<script src="workers.js"></script>
+<script src="history.js?v=2"></script>
+<script src="workers.js?v=2"></script>
 <script src="wfirma.js"></script>
-<script src="umowa-zlecenie.js?v=2"></script>
+<script src="umowa-zlecenie.js?v=3"></script>
 <script src="komplet-dokumenty.js?v=1"></script>
 <script src="podpisy-wyslij.js?v=2"></script>
 <script>window.AUTOSAVE = { key: 'umowa-zlecenie', form: '#form' };</script>

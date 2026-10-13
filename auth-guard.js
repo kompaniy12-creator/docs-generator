@@ -135,6 +135,9 @@
       mozeStrone: function (href) { return !restricted || !!(U && U.mozeStrone(meta, href)); },
       // the first page of the menu the account may open ('' = none, or not restricted)
       pierwsza: function () { return restricted && U ? U.pierwszaStrona(meta) : ''; },
+      // the name of a function as the administrator sees it ("Kadry › Akta osobowe › Usuwanie dokumentów z akt") —
+      // for the message a page shows next to a switched-off function (portal-shell.js: PortalUpr)
+      nazwa: function (k) { try { return U ? U.etykieta(k) : ''; } catch (e) { return ''; } },
     };
     window.PortalUser = {
       email: session.user && session.user.email,

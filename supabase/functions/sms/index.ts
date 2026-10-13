@@ -55,6 +55,10 @@ type Ja = { email: string; admin: boolean; kadry: boolean; moze: boolean; token:
 // Uprawnienia szczegółowe: the catalogue key of each action (the rest of them need the page's key)
 const BAZA = "klienci.sms";
 const AKCJE: Record<string, string> = { wyslij: "klienci.sms.wyslij", historia: "klienci.sms.historia" };
+// clients' phone numbers in full: the section Kadry and the function "Dane kontaktowe klientów" — everybody else
+// gets them masked (sending to a client picked by NIP still works: the number is read on the server)
+const KLUCZ_KONTAKTY = "klienci.baza.kontakty";
+const kontakty = (ja: Ja) => ja.kadry && mozna(ja, KLUCZ_KONTAKTY);
 async function portal(req: Request): Promise<Ja | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
@@ -145,7 +149,7 @@ Deno.serve(zCzasem(async (req) => {
       const ust = await ustawieniaSms(), skonf = smsSkonfigurowane();
       const out: Any = {
         skonfigurowane: skonf, brak: skonf ? [] : ["SMSAPI_TOKEN"], tryb: ust.wlaczone && skonf ? "rzeczywisty" : "test",
-        ja: { email: ja.email, admin: ja.admin, numer_reczny: ja.admin, kontakty: ja.kadry },
+        ja: { email: ja.email, admin: ja.admin, numer_reczny: ja.admin, kontakty: kontakty(ja) },
         ustawienia: { wlaczone: ust.wlaczone, nadawca: ust.nadawca, limit_dzienny: ust.limit_dzienny, limit_na_numer_dziennie: ust.limit_na_numer_dziennie, godziny: ust.godziny, automaty: ust.automaty, normalizuj: ust.normalizuj, zagranica: ust.zagranica, raporty: ust.raporty },
         dzis: await dzis(ust), w_godzinach: wGodzinach(new Date(), ust.godziny), szablony: SZABLONY,
         limity: { czesci: ja.admin ? MAX_CZESCI_ADMIN : MAX_CZESCI, znaki: MAX_TRESC },
@@ -167,7 +171,7 @@ Deno.serve(zCzasem(async (req) => {
         if (k.nip.length !== 10 || seen.has(k.nip)) continue;
         seen.add(k.nip);
         const n = pierwszyNumer(k.telefon, ust.zagranica);
-        out.push({ nip: k.nip, nazwa: k.nazwa, telefon: n.ok ? (ja.kadry ? n.e164 : maska(n.e164)) : null, brak: n.ok ? null : (k.telefon.trim() ? n.error : "Brak numeru telefonu w bazie klientów."), zakonczony: koniec.has(k.nip) });
+        out.push({ nip: k.nip, nazwa: k.nazwa, telefon: n.ok ? (kontakty(ja) ? n.e164 : maska(n.e164)) : null, brak: n.ok ? null : (k.telefon.trim() ? n.error : "Brak numeru telefonu w bazie klientów."), zakonczony: koniec.has(k.nip) });
       }
       return json({ klienci: out }, 200, origin);
     }
@@ -182,7 +186,7 @@ Deno.serve(zCzasem(async (req) => {
         const nip = String(body.nip).replace(/\D/g, "");
         const k = nip.length === 10 ? (await loadKlienciRows()).find((x) => x.nip === nip) : null;
         if (!k) tel = { ok: false, error: "Nie ma takiego klienta w bazie klientów." };
-        else { const n = pierwszyNumer(k.telefon, ust.zagranica); tel = n.ok ? { ok: true, numer: ja.kadry ? n.e164 : maska(n.e164), kraj: n.kraj, odbiorca: k.nazwa } : n; }
+        else { const n = pierwszyNumer(k.telefon, ust.zagranica); tel = n.ok ? { ok: true, numer: kontakty(ja) ? n.e164 : maska(n.e164), kraj: n.kraj, odbiorca: k.nazwa } : n; }
       } else if (body.telefon) {
         if (!ja.admin) tel = { ok: false, error: "Na dowolny numer może wysłać tylko administrator — wybierz klienta z bazy." };
         else { const n = numer(body.telefon, ust.zagranica); tel = n.ok ? { ok: true, numer: n.e164, kraj: n.kraj } : n; }
@@ -206,7 +210,7 @@ Deno.serve(zCzasem(async (req) => {
         cel: body.test === true && !body.cel ? "test" : body.cel, ref: body.ref, kto: ja.email, admin: ja.admin, test: body.test === true, mimoCiszy: body.mimo_ciszy === true,
       });
       // the number goes back only to those who may see clients' contact data
-      if (w.telefon && !ja.kadry) w.telefon = maska(w.telefon);
+      if (w.telefon && !kontakty(ja)) w.telefon = maska(w.telefon);
       return json(w, 200, origin);
     }
 
@@ -218,7 +222,8 @@ Deno.serve(zCzasem(async (req) => {
       if (isDate(body.od)) f.push("created_at=gte." + enc(poczatekDnia(new Date(body.od + "T12:00:00Z"))));
       if (isDate(body.do)) f.push("created_at=lt." + enc(poczatekDnia(new Date(Date.parse(body.do + "T12:00:00Z") + 86400000))));
       const q = String(body.q ?? "").trim().slice(0, 60).replace(/[^\p{L}\p{N} .@+\-]/gu, "");
-      if (q) { const w = enc("*" + q + "*"); f.push(`or=(odbiorca_nazwa.ilike.${w},odbiorca_nip.ilike.${w},telefon.ilike.${w},kto.ilike.${w})`); }
+      // a person who gets the numbers masked does not search by them either (the hits would give the digits away)
+      if (q) { const w = enc("*" + q + "*"); f.push(`or=(odbiorca_nazwa.ilike.${w},odbiorca_nip.ilike.${w},${kontakty(ja) ? `telefon.ilike.${w},` : ""}kto.ilike.${w})`); }
       const strona = Math.max(0, Math.min(2000, Math.floor(Number(body.strona) || 0)));
       const kol = "id,created_at,kto,odbiorca_nip,odbiorca_nazwa,telefon,tresc,czesci,kodowanie,nadawca,cel,ref,status,test,provider_status,provider_blad,koszt,dostarczono_at";
       const r = await fetch(`${SUPABASE_URL}/rest/v1/sms_wiadomosci?select=${kol}&order=created_at.desc${f.length ? "&" + f.join("&") : ""}`, {
@@ -227,7 +232,7 @@ Deno.serve(zCzasem(async (req) => {
       if (!r.ok) return json({ error: "Nie udało się wczytać historii." }, 502, origin);
       const rows: Any[] = await r.json();
       const wiersze = rows.slice(0, STRONA);
-      if (!ja.kadry) for (const x of wiersze) x.telefon = maska(String(x.telefon ?? ""));
+      if (!kontakty(ja)) for (const x of wiersze) x.telefon = maska(String(x.telefon ?? ""));
       return json({ wiersze, strona, dalej: rows.length > STRONA, dzien: dzienPL(new Date()) }, 200, origin);
     }
 

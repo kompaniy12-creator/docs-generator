@@ -233,6 +233,8 @@
     return all;
   }
   async function importPeople(list, nip, nazwa, all, onStep, byName) {
+    // Uprawnienia szczegółowe: the import writes people into the register — not for a read-only account
+    if (window.PortalUpr && !window.PortalUpr.moze('kadry.dane.edycja')) throw new Error(window.PortalUpr.komunikat('kadry.dane.edycja'));
     var existing = {}, names = {};
     all.forEach(function (r) {
       var p = r.payload || {};
