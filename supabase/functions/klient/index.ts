@@ -29,6 +29,7 @@
 import nodemailer from "npm:nodemailer@6.9.14";
 import { BIURO_AKCJE, biuroAkcja, klientAkcja, MAX_BODY, MAX_PLIKOW, okSciezka, type Plik, type Staff } from "./portal.ts";
 import { store } from "./store.ts";
+import { wylaczone } from "../_shared/uprawnienia.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -175,7 +176,7 @@ async function staff(req: Request): Promise<Staff | null> {
   const u = await r.json();
   const m = u?.app_metadata ?? {};
   if (m.portal !== true || !u.email) return null;
-  return { email: String(u.email).toLowerCase(), admin: m.portal_admin === true, sekcje: Array.isArray(m.portal_sections) ? m.portal_sections.map(String) : null };
+  return { email: String(u.email).toLowerCase(), admin: m.portal_admin === true, sekcje: Array.isArray(m.portal_sections) ? m.portal_sections.map(String) : null, wyl: wylaczone(m) };
 }
 const deps = { store, now: () => Date.now() };
 // the body of an upload is cut off at the cap while it is being read, whatever Content-Length said

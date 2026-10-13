@@ -13,6 +13,7 @@
 
 import nodemailer from "npm:nodemailer@6.9.14";
 import { loadKlienci, okMail } from "../_shared/klienci.ts";
+import { kluczAkcji, mozna, odmowa, wylaczone, type Wyl } from "../_shared/uprawnienia.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -39,7 +40,10 @@ function cors(origin: string | null) {
 function json(body: unknown, status: number, origin: string | null) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...cors(origin) } });
 }
-async function portalUser(req: Request): Promise<{ email: string } | null> {
+// Uprawnienia szczegółowe: the catalogue key of each action (the rest of them need the page's key)
+const BAZA = "kadry.zgloszenia";
+const AKCJE: Record<string, string> = { send: "kadry.zgloszenia.wyslij" };
+async function portalUser(req: Request): Promise<{ email: string; admin: boolean; wyl: Wyl } | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
   const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: ANON, Authorization: `Bearer ${token}` } });
@@ -47,7 +51,7 @@ async function portalUser(req: Request): Promise<{ email: string } | null> {
   const u = await r.json();
   const secs = u?.app_metadata?.portal_sections;
   const kadry = u?.app_metadata?.portal_admin === true || !Array.isArray(secs) || secs.includes("kadry");
-  return u?.app_metadata?.portal === true && kadry ? { email: u.email ?? "" } : null;
+  return u?.app_metadata?.portal === true && kadry ? { email: u.email ?? "", admin: u.app_metadata.portal_admin === true, wyl: wylaczone(u.app_metadata) } : null;
 }
 function db(path: string, init: RequestInit = {}) {
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -86,6 +90,9 @@ Deno.serve(async (req) => {
 
   let body: { action?: string; id?: string; email?: string; mail?: boolean; telegram?: boolean };
   try { body = await req.json(); } catch { return json({ error: "Nieprawidłowy JSON." }, 400, origin); }
+  // the per-function switch-off list, after the section check above
+  const klucz = kluczAkcji(AKCJE, body?.action, BAZA);
+  if (!mozna(me, klucz)) return json(odmowa(klucz), 403, origin);
   // Checks the mailbox login without sending anything.
   if (body.action === "test_mail") {
     if (!SMTP_PASS) return json({ ok: false, error: "Brak hasła (SMTP_PASS)." }, 200, origin);

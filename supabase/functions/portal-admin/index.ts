@@ -11,11 +11,16 @@
 //      { action: "password", id, password }
 //      { action: "admin", id, on }
 //      { action: "sections", id, sections }    array of section keys, or null = all
+//      { action: "uprawnienia", id, wylaczone, sections?, szablon? }   the per-function switch-off list (catalogue keys
+//                                               of /uprawnienia.js); never for an administrator or for oneself
+//      { action: "historia_dostepu" }           the last 200 changes of access
 // Zespół (staff profiles, table portal_pracownicy — written only here):
 //      { action: "team" }                       portal users + profiles + short names used in the clients base
 //      { action: "profile_save", profile, nowy? }   create (nowy: true) or update a profile
 //      { action: "profile_delete", email }      removes the profile only, never the account
 //      { action: "profile_history", email }     last changes of the profile and of the access
+
+import { normalizuj, wylaczone } from "../_shared/uprawnienia.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -158,6 +163,8 @@ const isPortal = (u: AuthUser) => u.app_metadata?.portal === true;
 const view = (u: AuthUser) => ({
   id: u.id, email: u.email ?? "", admin: u.app_metadata?.portal_admin === true,
   sections: cleanSections(u.app_metadata?.portal_sections),
+  // the switch-off list as stored; a claim that is not a list denies everything and is shown as broken
+  ...((w) => ({ wylaczone: Array.isArray(w) ? w : [], wylaczone_blad: w === "blad" }))(wylaczone(u.app_metadata)),
   created_at: u.created_at ?? null, last_sign_in_at: u.last_sign_in_at ?? null,
 });
 
@@ -179,7 +186,7 @@ Deno.serve(zCzasem(async (req) => {
   if (!me || me.app_metadata?.portal_admin !== true) return json({ error: "Brak uprawnień administratora." }, 403, origin);
 
   // deno-lint-ignore no-explicit-any
-  let body: { action?: string; email?: string; password?: string; id?: string; on?: boolean; sections?: unknown; profile?: any; nowy?: boolean };
+  let body: { action?: string; email?: string; password?: string; id?: string; on?: boolean; sections?: unknown; profile?: any; nowy?: boolean; wylaczone?: unknown; szablon?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -259,6 +266,11 @@ Deno.serve(zCzasem(async (req) => {
       return json({ ok: true }, 200, origin);
     }
 
+    if (body.action === "historia_dostepu") {
+      const r = await db("portal_pracownicy_historia?op=eq.dostep&select=at,email,kto,zmiany&order=id.desc&limit=200");
+      return json({ historia: r.ok ? await r.json() : [] }, 200, origin);
+    }
+
     if (body.action === "add") {
       const email = (body.email ?? "").trim().toLowerCase();
       const password = body.password ?? "";
@@ -304,6 +316,32 @@ Deno.serve(zCzasem(async (req) => {
       const r = await admin(`users/${target.id}`, { method: "PUT", body: JSON.stringify({ app_metadata: { portal_sections: cleanSections(body.sections) } }) });
       if (r.ok) { await logAccess(target.email ?? "", kto, { sekcje: cleanSections(body.sections) }); if (target.id !== me.id) await endSessions(target.id); }
       return r.ok ? json({ ok: true }, 200, origin) : json({ error: "Nie udało się zmienić sekcji." }, 502, origin);
+    }
+    if (body.action === "uprawnienia") {
+      // the list only takes away, and only from a member of staff: an administrator is never restricted,
+      // and nobody narrows the account they are signed in with
+      if (target.id === me.id) return json({ error: "Nie można ograniczyć własnego konta." }, 400, origin);
+      if (target.app_metadata?.portal_admin === true) return json({ error: "Administrator nie ma ograniczeń — najpierw odbierz mu uprawnienia administratora." }, 400, origin);
+      const n = normalizuj(body.wylaczone);
+      if (!n.ok) return json({ error: n.blad }, 400, origin);
+      const bylo = wylaczone(target.app_metadata), stare = Array.isArray(bylo) ? bylo : [];
+      const dodano = n.lista.filter((k) => !stare.includes(k)), usunieto = stare.filter((k) => !n.lista.includes(k));
+      // only the keys that change are sent: the auth server merges them into app_metadata, everything else stays
+      const meta: Record<string, unknown> = { portal_wylaczone: n.lista.length ? n.lista : null };
+      const zSekcjami = body.sections !== undefined;
+      const sekcje = cleanSections(body.sections), sekcjeBylo = cleanSections(target.app_metadata?.portal_sections);
+      const sekcjeZmiana = zSekcjami && JSON.stringify(sekcje) !== JSON.stringify(sekcjeBylo);
+      if (sekcjeZmiana) meta.portal_sections = sekcje;
+      if (!dodano.length && !usunieto.length && !sekcjeZmiana && bylo !== "blad") return json({ ok: true, bez_zmian: true, wylaczone: n.lista }, 200, origin);
+      const r = await admin(`users/${target.id}`, { method: "PUT", body: JSON.stringify({ app_metadata: meta }) });
+      if (!r.ok) return json({ error: "Nie udało się zapisać uprawnień." }, 502, origin);
+      const szablon = typeof body.szablon === "string" && /^[a-z0-9_]{1,40}$/.test(body.szablon) ? body.szablon : null;
+      await logAccess(target.email ?? "", kto, {
+        wylaczone_dodano: dodano, wylaczone_usunieto: usunieto,
+        ...(sekcjeZmiana ? { sekcje } : {}), ...(szablon ? { szablon } : {}), ...(bylo === "blad" ? { naprawiono_liste: true } : {}),
+      });
+      await endSessions(target.id);
+      return json({ ok: true, wylaczone: n.lista }, 200, origin);
     }
     if (body.action === "admin") {
       if (target.id === me.id) return json({ error: "Nie można zmienić własnych uprawnień administratora." }, 400, origin);

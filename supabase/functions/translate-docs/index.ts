@@ -5,6 +5,8 @@
 // Output: { language, script, fallback, translations: [..] } (same order as input).
 // The generator caches results in the browser, so each string is translated once.
 
+import { mozna, odmowa, wylaczone, type Upr } from "../_shared/uprawnienia.ts";
+
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 const MODEL = "claude-opus-4-8";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -27,16 +29,18 @@ function json(body: unknown, status: number, origin: string | null) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...cors(origin) } });
 }
 
-async function requirePortal(req: Request) {
+const KLUCZ = "kadry.tlumaczenie"; // Uprawnienia szczegółowe
+// the caller's switch-off list when they are a portal user with the Kadry section, otherwise null
+async function requirePortal(req: Request): Promise<Upr | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!token) return false;
+  if (!token) return null;
   const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: ANON, Authorization: `Bearer ${token}` } });
-  if (!r.ok) return false;
+  if (!r.ok) return null;
   const u = await r.json();
   // section access: admins and accounts without a portal_sections list have every section
   const secs = u?.app_metadata?.portal_sections;
   const kadry = u?.app_metadata?.portal_admin === true || !Array.isArray(secs) || secs.includes("kadry");
-  return u?.app_metadata?.portal === true && kadry;
+  return u?.app_metadata?.portal === true && kadry ? { admin: u.app_metadata.portal_admin === true, wyl: wylaczone(u.app_metadata) } : null;
 }
 
 const SCHEMA = {
@@ -82,7 +86,9 @@ Deno.serve(async (req) => {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
-  if (!(await requirePortal(req))) return json({ error: "Brak dostępu (portal)." }, 403, origin);
+  const ja = await requirePortal(req);
+  if (!ja) return json({ error: "Brak dostępu (portal)." }, 403, origin);
+  if (!mozna(ja, KLUCZ)) return json(odmowa(KLUCZ), 403, origin);
   if (!ANTHROPIC_KEY) return json({ error: "Brak konfiguracji ANTHROPIC_API_KEY." }, 500, origin);
 
   let payload: { target?: string; strings?: unknown };

@@ -42,6 +42,7 @@ import {
   PROG_TYTUL, rozwiaz, smsInfo, sprawdzUst, staleRowne, STRATEGIE, szablonKoniecGrup, tekst, trybBota, type Ust, wariantMail, wariantSms, wstaw, wybierz,
 } from "./logic.ts";
 import { wGodzinach } from "../sms/logic.ts";
+import { kluczAkcji, mozna, odmowa, wylaczone, type Wyl } from "../_shared/uprawnienia.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -62,7 +63,10 @@ function cors(origin: string | null) {
 function json(body: unknown, status: number, origin: string | null) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...cors(origin) } });
 }
-type Osoba = Ja & { moze: boolean };
+type Osoba = Ja & { moze: boolean; wyl: Wyl };
+// Uprawnienia szczegółowe: the catalogue key of each action (the rest of them need the page's key)
+const BAZA = "klienci.rozsylki";
+const AKCJE: Record<string, string> = Object.fromEntries(["zglos", "test", "wstrzymaj", "wznow", "anuluj", "cofnij"].map((a) => [a, "klienci.rozsylki.wyslij"]));
 async function portal(req: Request): Promise<Osoba | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
@@ -72,7 +76,7 @@ async function portal(req: Request): Promise<Osoba | null> {
   const m = u?.app_metadata ?? {};
   if (m.portal !== true || !u.email) return null;
   const admin = m.portal_admin === true, wszystko = admin || !Array.isArray(m.portal_sections);
-  return { email: String(u.email).toLowerCase(), admin, moze: wszystko || m.portal_sections.includes("kadry") || m.portal_sections.includes("onboarding") };
+  return { email: String(u.email).toLowerCase(), admin, moze: wszystko || m.portal_sections.includes("kadry") || m.portal_sections.includes("onboarding"), wyl: wylaczone(m) };
 }
 // administrators other than this person (for the four-eyes rule)
 async function inniAdmini(email: string): Promise<number> {
@@ -174,6 +178,9 @@ Deno.serve(zCzasem(async (req) => {
   const ja = await portal(req);
   if (!ja) return json({ error: "Brak dostępu (portal)." }, 403, origin);
   if (!ja.moze) return json({ error: "Rozsyłki są dostępne dla sekcji Kadry i Księgowość." }, 403, origin);
+  // the per-function switch-off list — after the scheduler's branch and the section check above
+  const klucz = kluczAkcji(AKCJE, action, BAZA);
+  if (!mozna(ja, klucz)) return json(odmowa(klucz), 403, origin);
   const tylkoAdmin = () => json({ error: "Tę czynność może wykonać tylko administrator portalu." }, 403, origin);
   const blad = (error: string, s = 400) => json({ error }, s, origin);
   const teraz = zal.teraz();

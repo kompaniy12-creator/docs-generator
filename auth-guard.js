@@ -73,6 +73,25 @@
     return m.portal_sections.indexOf(section) !== -1;
   }
 
+  // Uprawnienia szczegółowe: an administrator can also switch single pages and functions off for a person
+  // (app_metadata.portal_wylaczone, a deny list of catalogue keys — see uprawnienia.js). Accounts without that
+  // claim, and administrators, are not restricted and go through exactly as before: the catalogue is not even
+  // fetched for them. For a restricted account the catalogue decides which pages open; if it cannot be loaded
+  // nothing but the start page opens (fail closed). The real barrier is the server (edge functions).
+  function isRestricted(user) {
+    var m = (user && user.app_metadata) || {};
+    return m.portal_admin !== true && m.portal_wylaczone !== undefined && m.portal_wylaczone !== null;
+  }
+  function loadCatalogue(cb) {
+    if (window.Uprawnienia) { cb(window.Uprawnienia); return; }
+    var done = false, fin = function () { if (done) return; done = true; cb(window.Uprawnienia || null); };
+    var c = document.createElement('script');
+    c.src = 'uprawnienia.js?t=' + stamp;
+    c.onload = fin; c.onerror = fin;
+    setTimeout(fin, 8000);
+    document.head.appendChild(c);
+  }
+
   if (!window.sb) {
     // Config failed to load — fail closed.
     gotoLogin();
@@ -92,7 +111,31 @@
       location.replace('index.html?brak=1');
       return;
     }
-    window.PortalAccess = { has: function (s) { return hasSection(session.user, s); } };
+    if (!isRestricted(session.user)) { enter(session, false, null); return; }
+    loadCatalogue(function (U) {
+      // the start page is never denied; every other page needs its key (and, without the catalogue, stays closed)
+      var wolno = false;
+      try { wolno = page === 'index.html' || !!(U && U.mozeStrone(session.user.app_metadata, page + location.search)); } catch (e) { U = null; wolno = page === 'index.html'; }
+      if (!wolno) { location.replace('index.html?brak=1'); return; }
+      try { enter(session, true, U); } catch (e) { gotoLogin(); }
+    });
+  }).catch(function () {
+    gotoLogin();
+  });
+
+  function enter(session, restricted, U) {
+    var meta = (session.user && session.user.app_metadata) || {};
+    window.PortalAccess = {
+      has: function (s) { return hasSection(session.user, s); },
+      // moze(key): is this function switched on for the account; mozeStrone(href): may the account open the page
+      // (its sections included). An unrestricted account gets true for both — pages keep their own section checks.
+      ograniczony: restricted,
+      blad: restricted && !U, // the catalogue could not be loaded: everything stays hidden
+      moze: function (k) { return !restricted || !!(U && U.mozna(meta, k)); },
+      mozeStrone: function (href) { return !restricted || !!(U && U.mozeStrone(meta, href)); },
+      // the first page of the menu the account may open ('' = none, or not restricted)
+      pierwsza: function () { return restricted && U ? U.pierwszaStrona(meta) : ''; },
+    };
     window.PortalUser = {
       email: session.user && session.user.email,
       admin: !!(session.user && session.user.app_metadata && session.user.app_metadata.portal_admin === true),
@@ -117,9 +160,7 @@
     theme.onload = theme.onerror = function () { document.head.appendChild(shell); };
     document.head.appendChild(theme);
     setTimeout(function () { show(!document.getElementById('psSide')); }, 2500);
-  }).catch(function () {
-    gotoLogin();
-  });
+  }
 
   // Redirect to login if the user signs out in another tab.
   window.sb.auth.onAuthStateChange(function (event, session) {

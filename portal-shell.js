@@ -10,6 +10,9 @@
   // themes live in portal-theme.js (auth-guard loads it first; this is the fallback)
   if (!window.PortalTheme) { var th = document.createElement('script'); th.src = 'portal-theme.js'; document.head.appendChild(th); }
   var acc = window.PortalAccess || { has: function () { return true; } };
+  // Uprawnienia szczegółowe (auth-guard.js): pages and functions switched off for this account. For an account
+  // without restrictions both answers are always true, so the menu below is what it has always been.
+  var mozeStrone = function (href) { return !acc.mozeStrone || acc.mozeStrone(href); };
   var user = window.PortalUser || {};
   var page = window.PortalPage || location.pathname.split('/').pop() || 'index.html';
   var FORM_URL = location.origin + location.pathname.replace(/[^/]*$/, '') + 'formularz-pracownika.html';
@@ -49,8 +52,8 @@
       { href: 'klienci.html', ico: '🗃️', text: 'Baza klientów', short: 'Klienci', wide: true },
       { href: 'zgloszenia-klientow.html', ico: '📨', text: 'Zgłoszenia klientów', short: 'Zgłoszenia', wide: true, secAny: ['kadry', 'onboarding'] },
       { href: 'umowy.html', ico: '📑', text: 'Umowy z klientami — generator', short: 'Umowy', admin: true, wide: true },
-      { href: 'sms.html', ico: '💬', text: 'SMS do klientów', short: 'SMS', wide: true },
-      { href: 'rozsylka.html', ico: '📣', text: 'Rozsyłki do klientów', short: 'Rozsyłki', wide: true },
+      { href: 'sms.html', ico: '💬', text: 'SMS do klientów', short: 'SMS', wide: true, secAny: ['kadry', 'onboarding'] },
+      { href: 'rozsylka.html', ico: '📣', text: 'Rozsyłki do klientów', short: 'Rozsyłki', wide: true, secAny: ['kadry', 'onboarding'] },
     ] },
     { label: 'Ogólne', ico: '⚙️', mobile: true, items: [
       { href: 'pulpit.html', ico: '📊', text: 'Pulpit', short: 'Pulpit', admin: true, wide: true },
@@ -64,9 +67,15 @@
   NAV[1].items[0].pages = ['rejestracja.html'];
 
   // someone limited to Kadry has nothing on the start page's default panel — open their inbox
+  // (a restricted account: the first page it may open — never a page the guard would send straight back here;
+  // and when the guard has just sent it back, it stays to read why)
   if (page === 'index.html' && !location.hash && acc.has('kadry') && !acc.has('rejestracja')) {
-    location.replace('kontrola.html');
-    return;
+    var start = mozeStrone('kontrola.html') ? 'kontrola.html' : acc.pierwsza ? acc.pierwsza() : '';
+    if (acc.ograniczony && /[?&]brak=/.test(location.search)) start = '';
+    if (start && start.split(/[?#]/)[0] !== 'index.html') {
+      location.replace(start);
+      return;
+    }
   }
 
   var items = [];
@@ -75,7 +84,9 @@
       var sec = it.sec || g.sec;
       // secAny: a page for more than one module — any of the sections is enough
       if (it.secAny && !it.secAny.some(function (x) { return acc.has(x); })) return false;
-      return (!sec || acc.has(sec)) && (!it.admin || user.admin);
+      if (!((!sec || acc.has(sec)) && (!it.admin || user.admin))) return false;
+      // switched off for this account: the page itself, or — for an entry of the start page — every page under it
+      return it.pages ? it.pages.some(mozeStrone) : mozeStrone(it.href);
     });
     g.items.forEach(function (it) { items.push(it); });
   });
@@ -283,16 +294,17 @@
     '<nav>' +
       (user.admin ? '<a class="ps-top" href="pulpit.html" data-top="pulpit.html">' + ico('📊') + ' Pulpit</a>' : '') +
       '<a class="ps-top" href="' + CRM_URL + '" target="_blank" rel="noopener" title="CRM — leady, sprawy, klienci (otwiera się w nowej karcie)">' + ico('📇') + ' CRM ↗</a>' +
-      '<a class="ps-top" href="zadania.html" data-top="zadania.html">' + ico('✅') + ' Zadania<span class="ps-badge" data-tbadge hidden></span></a>' +
-      (acc.has('kadry') || acc.has('onboarding') ? '<a class="ps-top" href="poczta.html" data-top="poczta.html">' + ico('✉️') + ' Poczta<span class="ps-badge" data-pbadge hidden></span></a>' : '') +
-      (acc.has('kadry') ? '<a class="ps-top" href="zatrudnienie.html" data-top="zatrudnienie.html" title="Nowe zgłoszenia pracowników">' + ico('📥') + '<span class="ps-badge" data-badge hidden></span></a>' : '') +
+      (mozeStrone('zadania.html') ? '<a class="ps-top" href="zadania.html" data-top="zadania.html">' + ico('✅') + ' Zadania<span class="ps-badge" data-tbadge hidden></span></a>' : '') +
+      ((acc.has('kadry') || acc.has('onboarding')) && mozeStrone('poczta.html') ? '<a class="ps-top" href="poczta.html" data-top="poczta.html">' + ico('✉️') + ' Poczta<span class="ps-badge" data-pbadge hidden></span></a>' : '') +
+      (acc.has('kadry') && mozeStrone('zatrudnienie.html') ? '<a class="ps-top" href="zatrudnienie.html" data-top="zatrudnienie.html" title="Nowe zgłoszenia pracowników">' + ico('📥') + '<span class="ps-badge" data-badge hidden></span></a>' : '') +
       (user.admin ? '<a class="ps-top" href="dostep.html" data-top="dostep.html">' + ico('🔑') + ' Dostęp do portalu</a>' : '') +
       '<button type="button" class="ps-top" data-pt-open title="Wygląd — motywy, tło i kolory">' + ico('🎨') + '</button>' +
       '<div class="ps-menu"><button type="button" class="ps-top" id="psGear" aria-haspopup="true" aria-expanded="false" title="Ustawienia">' + ico('⚙️') + ' Ustawienia</button>' +
         '<div class="ps-drop" id="psDrop" hidden>' +
-          '<a href="asystenci.html">' + ico('🤖') + ' Asystenci AI</a>' +
+          (mozeStrone('asystenci.html') ? '<a href="asystenci.html">' + ico('🤖') + ' Asystenci AI</a>' : '') +
           (user.admin ? '<a href="zespol.html">' + ico('👥') + ' Zespół — profile i odpowiedzialność</a><a href="dostep.html">' + ico('🔑') + ' Użytkownicy i dostęp do modułów</a><a href="zadania.html#settings">' + ico('🔔') + ' Powiadomienia Telegram i eskalacje</a>' : '') +
-          (acc.has('kadry') ? '<a href="kontrola.html#rem">' + ico('✉️') + ' Przypomnienia dla klientów</a><a href="wiedza.html">' + ico('⚖️') + ' Baza wiedzy — przepisy</a>' : '') +
+          (acc.has('kadry') && mozeStrone('kontrola.html') ? '<a href="kontrola.html#rem">' + ico('✉️') + ' Przypomnienia dla klientów</a>' : '') +
+          (acc.has('kadry') && mozeStrone('wiedza.html') ? '<a href="wiedza.html">' + ico('⚖️') + ' Baza wiedzy — przepisy</a>' : '') +
           '<a href="#" data-pt-open>' + ico('🎨') + ' Wygląd — motywy, tło i kolory</a>' +
           '<a href="rodo.html" target="_blank" rel="noopener">' + ico('🛡️') + ' Informacja RODO</a>' +
         '</div></div>' +
@@ -444,7 +456,7 @@
 
   // number of new submissions waiting for the HR team
   function loadBadge(cached) {
-    if (!acc.has('kadry') || !window.sb) return;
+    if (!acc.has('kadry') || !window.sb || !mozeStrone('zatrudnienie.html')) return;
     var c = cached === true ? cntGet('b') : null;
     if (c !== null) show('data-badge', c);
     window.sb.from('zatrudnienie_zgloszenia').select('id', { count: 'exact', head: true }).eq('status', 'nowe').then(function (r) {
@@ -455,7 +467,7 @@
   }
   // my open tasks
   function loadTasks(cached) {
-    if (!window.sb || !user.email) return;
+    if (!window.sb || !user.email || !mozeStrone('zadania.html')) return;
     var c = cached === true ? cntGet('t') : null;
     if (c !== null) show('data-tbadge', c);
     window.sb.from('portal_zadania').select('id', { count: 'exact', head: true }).eq('assignee', String(user.email).toLowerCase()).in('status', ['nowe', 'w_toku']).then(function (r) {
@@ -464,9 +476,11 @@
       show('data-tbadge', n);
     });
   }
-  // unread mail in the office mailboxes the user may see (the function keeps a one-minute cache)
+  // unread mail in the office mailboxes the user may see (the function keeps a one-minute cache);
+  // without the mail (no section, or switched off for the account) the server is never asked and no timer runs
+  var mailOn = (acc.has('kadry') || acc.has('onboarding')) && mozeStrone('poczta.html');
   function loadMail(cached) {
-    if (!(acc.has('kadry') || acc.has('onboarding')) || !window.sb) return;
+    if (!mailOn || !window.sb) return;
     var c = cached === true ? cntGet('p') : null;
     if (c !== null) return show('data-pbadge', c);
     window.sb.auth.getSession().then(function (r) {
@@ -484,11 +498,12 @@
   function firstMail() {
     var first = function () { loadMail(true); };
     var idle = function () { if (window.requestIdleCallback) window.requestIdleCallback(first, { timeout: 2500 }); else setTimeout(first, 600); };
+    if (!mailOn) return;
     if (cntGet('p') !== null) first();
     else if (document.readyState === 'complete') idle();
     else window.addEventListener('load', idle, { once: true });
   }
-  setInterval(loadMail, 180000);
+  if (mailOn) setInterval(loadMail, 180000);
   window.PortalShell = { refreshBadge: function () { loadBadge(); }, refreshTasks: function () { loadTasks(); }, refreshMail: function () { loadMail(); } };
 
   if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);

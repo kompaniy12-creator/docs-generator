@@ -42,6 +42,7 @@ import { Imap } from "./imap.ts";
 import { ImapZapis } from "./imapw.ts";
 import { type Deps, handle, type Me, type Row, type Store } from "./core.ts";
 import { normNazwa, type Skrzynka, SKRZYNKI, wiersze } from "./logic.ts";
+import { wylaczone } from "../_shared/uprawnienia.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -261,7 +262,7 @@ async function portalUser(req: Request): Promise<Me | null> {
   const u = await r.json();
   const m = u?.app_metadata ?? {};
   if (m.portal !== true || !u.email) return null;
-  return { email: String(u.email).toLowerCase(), admin: m.portal_admin === true, sekcje: Array.isArray(m.portal_sections) ? m.portal_sections.map(String) : null };
+  return { email: String(u.email).toLowerCase(), admin: m.portal_admin === true, sekcje: Array.isArray(m.portal_sections) ? m.portal_sections.map(String) : null, wyl: wylaczone(m) };
 }
 async function portalUsers(): Promise<string[]> {
   const out: string[] = [];

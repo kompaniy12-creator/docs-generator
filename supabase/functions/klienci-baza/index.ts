@@ -46,6 +46,7 @@ import {
   MF_DZIENNIE, MF_DZIENNIE_POJEDYNCZE, MF_KLUCZ, pewnyKlient, planOdswiezenia, roznice, type Wyciag, walidujKlienta, wyciagJdg, wyciagKrs, zakres, zJdg, zmianyKlienta,
 } from "./logic.ts";
 import { Limit, type Metoda, METODY, pogorszenie, powtorzoneCzaty, PROBLEM, sprawdzCzat, type Status, trescZadania, tytulPasuje, type Wynik, wymaganeBoty } from "./telegram.ts";
+import { mozna, odmowa, wylaczone, type Wyl } from "../_shared/uprawnienia.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -112,7 +113,10 @@ async function all(path: string): Promise<Any[]> {
   }
   return out;
 }
-type Ja = { email: string; admin: boolean; kadry: boolean };
+type Ja = { email: string; admin: boolean; kadry: boolean; wyl: Wyl };
+// Uprawnienia szczegółowe (phase 1): the list of clients and the contact details in it
+const KLUCZ_LISTA = "klienci.baza", KLUCZ_KONTAKTY = "klienci.baza.kontakty";
+const kontakty = (ja: Ja) => ja.kadry && mozna(ja, KLUCZ_KONTAKTY);
 async function portal(req: Request): Promise<Ja | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
@@ -122,7 +126,7 @@ async function portal(req: Request): Promise<Ja | null> {
   const m = u?.app_metadata ?? {};
   if (m.portal !== true || !u.email) return null;
   const admin = m.portal_admin === true;
-  return { email: String(u.email), admin, kadry: admin || !Array.isArray(m.portal_sections) || m.portal_sections.includes("kadry") };
+  return { email: String(u.email), admin, kadry: admin || !Array.isArray(m.portal_sections) || m.portal_sections.includes("kadry"), wyl: wylaczone(m) };
 }
 const enc = encodeURIComponent;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -569,7 +573,7 @@ async function lista(ja: Ja, t?: Stoper) {
       odpis: r?.krs && odpis.has(String(r.krs).padStart(10, "0")) ? odpis.get(String(r.krs).padStart(10, "0")) : null,
     };
     const d = dane.get(k.id) ?? {};
-    if (ja.kadry) o.kontakt = { telefon: d.telefon ?? "", email: d.email ?? "", kontakt: d.kontakt ?? "", jezyk: d.jezyk ?? "", telegram: d.telegram ?? "" };
+    if (kontakty(ja)) o.kontakt = { telefon: d.telefon ?? "", email: d.email ?? "", kontakt: d.kontakt ?? "", jezyk: d.jezyk ?? "", telegram: d.telegram ?? "" };
     // Telegram: everybody sees the status; the group's title, id and bots — administrators only
     if (k.status !== "zakonczony") {
       const chat = String(d.telegram ?? "").trim(), w = tgBy.get(k.id);
@@ -603,7 +607,7 @@ async function lista(ja: Ja, t?: Stoper) {
       telegram: { skonfigurowany: !!botId(), bot_id: botId(), boty: wymaganeBoty(ust.boty), widziane: [...widziane.values()].sort((a, b) => b.grup - a.grup).slice(0, 30), przebieg: ust.przebieg ?? null },
     };
   }
-  return { ja: { email: ja.email, admin: ja.admin, kontakty: ja.kadry }, klienci: out, umowy: ja.admin ? umowy : undefined, admin, cena: CENA_REJESTR_IO, dni: DNI_DOMYSLNIE, sync: s };
+  return { ja: { email: ja.email, admin: ja.admin, kontakty: kontakty(ja) }, klienci: out, umowy: ja.admin ? umowy : undefined, admin, cena: CENA_REJESTR_IO, dni: DNI_DOMYSLNIE, sync: s };
 }
 
 Deno.serve(async (req) => {
@@ -631,7 +635,10 @@ async function obsluz(req: Request, t: Stoper): Promise<Response> {
   const tylkoAdmin = () => json({ error: "Tę czynność może wykonać tylko administrator portalu." }, 403, origin);
 
   try {
-    if (action === "lista") return json(await lista(ja, t), 200, origin);
+    if (action === "lista") {
+      if (!mozna(ja, KLUCZ_LISTA)) return json(odmowa(KLUCZ_LISTA), 403, origin);
+      return json(await lista(ja, t), 200, origin);
+    }
     if (action === "sync") { if (!ja.admin) return tylkoAdmin(); const { proba: _p, ...w } = await sync(true); return json(w, 200, origin); }
 
     if (action === "rejestr") {

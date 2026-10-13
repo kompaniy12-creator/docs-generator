@@ -854,3 +854,47 @@ Deno.test("sekrety: żaden token ani hasło nie pojawia się w odpowiedziach, dz
   // every Telegram call went to the stand-in and used only the allowed methods
   assertEquals([...new Set(tgm.wywolania.map((w) => w.metoda))].every((m) => ["getMe", "getWebhookInfo", "sendMessage", "answerCallbackQuery", "setWebhook", "deleteWebhook"].includes(m)), true);
 });
+
+// =============================================================== Uprawnienia szczegółowe (portal_wylaczone)
+Deno.test("uprawnienia: brak listy = jak dotąd; wyłączony klucz, przodek i zepsuta lista -> 403 z kodem; administrator bez ograniczeń; harmonogram bez zmian", opts, async () => {
+  reset();
+  const U = (wyl: unknown, o: Any = {}) => ({ email: "ogr@example.test", app_metadata: { portal: true, portal_sections: ["kadry"], portal_wylaczone: wyl, ...o } });
+  // no claim and an empty list: exactly what a Kadry account gets today
+  USERS.ogr = U(undefined);
+  assertEquals((await api("ogr", { action: "status" })).http, 200);
+  USERS.ogr = U([]);
+  assertEquals((await api("ogr", { action: "status" })).http, 200);
+  USERS.ogr = U(null);
+  assertEquals((await api("ogr", { action: "lista" })).http, 200);
+  // the sending actions switched off: reading still works, sending is refused before anything is looked up
+  USERS.ogr = U(["klienci.rozsylki.wyslij"]);
+  assertEquals((await api("ogr", { action: "status" })).http, 200);
+  for (const a of ["zglos", "test", "wstrzymaj", "wznow", "anuluj", "cofnij"]) {
+    const r = await api("ogr", { action: a, id: "00000000-0000-4000-8000-000000000001" });
+    assertEquals([r.http, r.kod, r.klucz], [403, "wylaczone", "klienci.rozsylki.wyslij"], a);
+    assert(/wyłączona dla Twojego konta/.test(r.error));
+  }
+  // the page's key (an ancestor of every action) and the module above it
+  for (const wyl of [["klienci.rozsylki"], ["klienci"]]) {
+    USERS.ogr = U(wyl);
+    for (const a of ["status", "lista", "zglos", "szablony", "nie_ma"]) { const r = await api("ogr", { action: a }); assertEquals([r.http, r.kod], [403, "wylaczone"], a + " " + wyl); }
+  }
+  // a look-alike key is not an ancestor; a key of another page changes nothing here
+  USERS.ogr = U(["klienci.rozsyl", "klienci.sms", "poczta"]);
+  assertEquals((await api("ogr", { action: "status" })).http, 200);
+  // a claim that is not a list: everything refused
+  for (const zle of ["klienci.sms", {}, 5, true]) { USERS.ogr = U(zle); const r = await api("ogr", { action: "status" }); assertEquals([r.http, r.kod], [403, "wylaczone"], String(zle)); }
+  // an administrator is never restricted, whatever the claim holds
+  USERS.ogr = U(["klienci"], { portal_admin: true });
+  assertEquals((await api("ogr", { action: "status" })).http, 200);
+  USERS.ogr = U("zepsute", { portal_admin: true });
+  assertEquals((await api("ogr", { action: "bot_status" })).http, 200);
+  // the section check still comes first, and the scheduler's key is untouched by any list
+  USERS.ogr = U(["klienci.rozsylki"], { portal_sections: ["rejestracja"] });
+  const s = await api("ogr", { action: "status" });
+  assertEquals([s.http, s.kod], [403, undefined]);
+  assertEquals((await api("ogr", { action: "kolejka" }, { "x-cron-key": SEKRETY[4] })).http, 200);
+  assertEquals((await api("nikt", { action: "kolejka" }, { "x-cron-key": SEKRETY[4] })).http, 200);
+  delete USERS.ogr;
+  assertEquals(wyslane().length, 0);
+});

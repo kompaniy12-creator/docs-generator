@@ -14,6 +14,8 @@
 // One reading at a time per document (a conditional update takes the lock) and at most
 // MAX_ODCZYT_DZIEN readings a day per user (table klienci_limity) -> 429 kod "limit".
 
+import { mozna, odmowa, wylaczone, type Wyl } from "../_shared/uprawnienia.ts";
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -37,7 +39,8 @@ function json(body: unknown, status: number, origin: string | null) {
 function db(path: string, init: RequestInit = {}) {
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, { ...init, headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, "Content-Type": "application/json", ...(init.headers ?? {}) } });
 }
-async function portalKadry(req: Request): Promise<string | null> {
+const KLUCZ = "kadry.akta.ai"; // Uprawnienia szczegółowe
+async function portalKadry(req: Request): Promise<{ email: string; admin: boolean; wyl: Wyl } | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
   const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: ANON, Authorization: `Bearer ${token}` } });
@@ -45,7 +48,7 @@ async function portalKadry(req: Request): Promise<string | null> {
   const u = await r.json();
   const m = u?.app_metadata ?? {};
   const kadry = m.portal_admin === true || !Array.isArray(m.portal_sections) || m.portal_sections.includes("kadry");
-  return m.portal === true && kadry ? String(u.email ?? "") : null;
+  return m.portal === true && kadry ? { email: String(u.email ?? ""), admin: m.portal_admin === true, wyl: wylaczone(m) } : null;
 }
 
 const SCHEMA = {
@@ -135,8 +138,11 @@ Deno.serve(async (req) => {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
-  const me = await portalKadry(req);
-  if (!me) return json({ error: "Brak dostępu (portal, sekcja Kadry)." }, 403, origin);
+  const ja = await portalKadry(req);
+  if (!ja) return json({ error: "Brak dostępu (portal, sekcja Kadry)." }, 403, origin);
+  // the per-function switch-off list: this function has one action, reading a scan with the model
+  if (!mozna(ja, KLUCZ)) return json(odmowa(KLUCZ), 403, origin);
+  const me = ja.email;
   if (!ANTHROPIC_KEY) return json({ error: "Brak konfiguracji odczytu dokumentów." }, 500, origin);
   let body: Any;
   try { body = await req.json(); } catch { return json({ error: "Nieprawidłowy JSON." }, 400, origin); }

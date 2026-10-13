@@ -1144,3 +1144,58 @@ Deno.test("message tools: a message fetched ahead is logged as such and its real
   assertEquals((await post({ action: "nieprzeczytane" })).status, 403);
   zapomnijLiczniki();
 });
+
+// =============================================================== Uprawnienia szczegółowe (portal_wylaczone)
+Deno.test("uprawnienia: strona Poczta i każda skrzynka osobno; licznik w menu odpowiada zerem; odbiór poczty i harmonogram bez zmian", async () => {
+  const { post, push, w } = swiat({ ust: { skrzynki: { kadry: { tryb: "podglad" }, ksiegowosc: { tryb: "podglad" } } } });
+  await push(obcy("<u1@x.example>"));
+  await push(obcy("<u2@x.example>"), "skrzynka=ksiegowosc");
+  const [kadryRow, ksRow] = w.rows;
+  const obie = (wyl?: Me["wyl"], o: Partial<Me> = {}): Me => ({ email: "hr@td.example", admin: false, sekcje: ["kadry", "onboarding"], ...(wyl === undefined ? {} : { wyl }), ...o });
+  // no list / an empty list: both mailboxes, as today
+  for (const me of [obie(), obie([])]) {
+    w.me = me;
+    const l = await post({ action: "lista" });
+    assertEquals([l.status, l.body.skrzynki.map((s: Any) => s.klucz)], [200, ["kadry", "ksiegowosc"]]);
+    assertEquals((await post({ action: "nieprzeczytane" })).status, 200);
+  }
+  // one mailbox switched off: it is not listed, its rows are not reachable, a request that names it is refused
+  w.me = obie(["poczta.kadry"]);
+  const l = await post({ action: "lista" });
+  assertEquals([l.status, l.body.skrzynka, l.body.skrzynki.map((s: Any) => s.klucz), l.body.wiadomosci.map((r: Any) => r.id)], [200, "ksiegowosc", ["ksiegowosc"], [ksRow.id]]);
+  assertEquals((await post({ action: "bez_dzialania", id: kadryRow.id })).status, 404);
+  for (const action of ["lista", "foldery", "lista_imap", "wyslij", "akcja_imap", "szukaj_wszedzie"]) {
+    const r = await post({ action, skrzynka: "kadry", folder: "INBOX" });
+    assertEquals([r.status, r.body.kod, r.body.klucz], [403, "wylaczone", "poczta.kadry"], action);
+  }
+  const n = await post({ action: "nieprzeczytane" });
+  assertEquals([n.status, Object.keys(n.body.skrzynki)], [200, ["ksiegowosc"]]);
+  assertEquals((await post({ action: "foldery", skrzynka: "ksiegowosc" })).status, 200);
+  // the only mailbox of a person switched off, the page, the module's ancestor rule, a broken claim
+  const zamkniete: Me[] = [obie(["poczta.kadry"], { sekcje: ["kadry"] }), obie(["poczta.kadry", "poczta.ksiegowosc"]), obie(["poczta"]), obie("blad")];
+  for (const me of zamkniete) {
+    w.me = me;
+    const przed = w.servers.length;
+    for (const action of ["lista", "status", "foldery", "wyslij", "zadanie", "pobierz"]) {
+      const r = await post({ action, skrzynka: "kadry", id: kadryRow.id });
+      assertEquals([r.status, r.body.kod], [403, "wylaczone"], action + " " + JSON.stringify(me.wyl));
+    }
+    // the counter of the menu: no error, simply nothing unread — and the mailbox is not even opened
+    const z = await post({ action: "nieprzeczytane" });
+    assertEquals([z.status, z.body], [200, { skrzynki: {}, razem: 0 }]);
+    assertEquals(w.servers.length, przed);
+  }
+  // an administrator is never restricted
+  w.me = { email: "szef@td.example", admin: true, sekcje: null, wyl: ["poczta"] };
+  assertEquals((await post({ action: "lista", skrzynka: "kadry" })).status, 200);
+  w.me = { email: "szef@td.example", admin: true, sekcje: null, wyl: "blad" };
+  assertEquals((await post({ action: "status" })).status, 200);
+  // the section check stays first (no `kod`), and the forwarder / the scheduler never pass through the list
+  w.me = { email: "rejestracja@td.example", admin: false, sekcje: ["rejestracja"], wyl: ["poczta"] };
+  const s = await post({ action: "lista" });
+  assertEquals([s.status, s.body.kod], [403, undefined]);
+  w.me = obie(["poczta"]);
+  assertEquals((await push(obcy("<u3@x.example>"))).status, 200);
+  assertEquals((await post({ action: "run", dry: true }, { "x-cron-key": CRONKEY })).status, 200);
+  assertEquals((await post({ action: "run" })).status, 403);
+});

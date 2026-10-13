@@ -164,6 +164,8 @@
 
   <main class="content">
     <div id="brakInfo" class="status" style="margin:0 0 20px;max-width:640px">To konto nie ma dostępu do wybranej strony. W sprawie dostępu skontaktuj się z administratorem portalu.</div>
+    <div id="uprInfo" class="status" style="margin:0 0 20px;max-width:640px">Nie udało się wczytać uprawnień tego konta, dlatego strony portalu są chwilowo ukryte. Odśwież stronę; jeśli to nie pomoże, skontaktuj się z administratorem portalu.</div>
+    <div id="pustoInfo" class="status" style="margin:0 0 20px;max-width:640px">Dla tego konta nie ma tu żadnej dostępnej strony. W sprawie dostępu skontaktuj się z administratorem portalu.</div>
     <!-- Rejestracja -->
     <section class="panel" id="panel-rejestracja" data-panel="rejestracja">
       <div class="content-head">
@@ -291,9 +293,32 @@
       Array.prototype.forEach.call(document.querySelectorAll('.card[data-sec]'), function (c) {
         if (!acc.has(c.getAttribute('data-sec'))) c.style.display = 'none';
       });
+      // Uprawnienia szczegółowe: pages switched off for this account (auth-guard.js) — their cards go, and a
+      // panel left without a single card goes with them. An account without restrictions skips this block.
+      if (acc.ograniczony) {
+        Array.prototype.forEach.call(document.querySelectorAll('a.card[href]'), function (c) {
+          if (!acc.mozeStrone(c.getAttribute('href'))) c.style.display = 'none';
+        });
+        panels.forEach(function (p) {
+          var s = p.getAttribute('data-panel');
+          var any = Array.prototype.some.call(p.querySelectorAll('a.card[href]'), function (c) { return c.style.display !== 'none'; });
+          if (any || valid.indexOf(s) === -1) return;
+          navItems.forEach(function (b) { if (b.getAttribute('data-target') === s) b.style.display = 'none'; });
+          valid = valid.filter(function (v) { return v !== s; });
+        });
+        if (acc.blad) document.getElementById('uprInfo').className = 'status error';
+      }
       if (valid.indexOf(DEFAULT) === -1) DEFAULT = valid[0];
       // nothing on this page for this account (e.g. only Księgowość) — go to the tasks
-      if (!valid.length) { location.replace('zadania.html'); return; }
+      if (!valid.length) {
+        if (!acc.ograniczony) { location.replace('zadania.html'); return; }
+        // a restricted account: the tasks only when it may open them, otherwise the first page it may open; and it
+        // stays here when the guard has just sent it back (index.html?brak=1) or when there is no such page —
+        // this page is never denied, so there is no way to loop
+        var cel = /[?&]brak=/.test(location.search) ? '' : acc.mozeStrone('zadania.html') ? 'zadania.html' : acc.pierwsza();
+        if (cel && cel.split(/[?#]/)[0] !== 'index.html') { location.replace(cel); return; }
+        if (!acc.blad && !/[?&]brak=/.test(location.search)) document.getElementById('pustoInfo').className = 'status error';
+      }
       // a "Dokumenty" / "Kadry" label with nothing left under it
       Array.prototype.forEach.call(document.querySelectorAll('.nav-label'), function (l) {
         var n = l.nextElementSibling, any = false;

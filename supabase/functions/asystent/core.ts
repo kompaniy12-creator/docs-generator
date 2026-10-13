@@ -15,6 +15,7 @@ import { type Any, bramka, digits, type Dzis, dzisWarszawa, type Ja, type Jezyk,
 import { CENY, DOSTAWCA, GRANICE, MAX_ITERACJI, MAX_PLIK, MODELE, PRZERWANY_PO_MS } from "./modele.ts";
 import { BladNarzedzia, type Ctx, ograniczStore, type Store } from "./narzedzia.ts";
 import { type Model, przebieg, tlumaczRu } from "./silnik.ts";
+import { mozna, odmowa as odmowaUpr } from "../_shared/uprawnienia.ts";
 
 export const KLUCZ_USTAWIEN = "asystenci";
 export const BUCKET = "asystenci-pliki";
@@ -77,6 +78,10 @@ export async function obsluz(req: Request, d: Zaleznosci): Promise<Response> {
   try { ust = normalizujUstawienia(await d.baza.ustawienia()); } catch { return json({ error: "Ustawienia asystentów są niedostępne." }, 503); }
   const odmowa = bramka(ja, ust);
   if (odmowa || !ja) return json({ error: odmowa?.error ?? "Brak dostępu.", kod: odmowa?.kod }, odmowa?.status ?? 403);
+  // Uprawnienia szczegółowe: the whole module can be switched off for a person, and each assistant on its own
+  // (`lista` and `uruchom` below). After the gate — there is no cron and no token path in this function.
+  const upr = { admin: ja.admin === true, wyl: ja.wyl ?? [] };
+  if (!mozna(upr, "asystenci")) return json(odmowaUpr("asystenci"), 403);
 
   if (Number(req.headers.get("content-length") ?? "0") > 22 * 1024 * 1024) return json({ error: "Żądanie jest za duże." }, 413);
   let b: Any;
@@ -103,7 +108,7 @@ export async function obsluz(req: Request, d: Zaleznosci): Promise<Response> {
           w_toku: rows.filter((r) => r.kto === kto && wToku(r, teraz)).map((r) => r.id),
         };
         // only the assistants this person may run; anyone but an administrator gets no tool lists, models or settings
-        const moje = ASYSTENCI.filter((a) => mozeAsystent(a, kim));
+        const moje = ASYSTENCI.filter((a) => mozeAsystent(a, kim) && mozna(upr, "asystenci." + a.id));
         if (!adm) {
           return json({ ...wspolne, dzis: { moje: dz.moje }, asystenci: moje.map((a) => { const p = publiczne(a); return { id: p.id, nr: p.nr, nazwa: p.nazwa, odbiorca: p.odbiorca, opis: p.opis, czyta: p.czyta, pola: p.pola, ksztalt: p.ksztalt, stan: p.stan, stan_powod: p.stan_powod, wlaczony: !ust.wylaczone.includes(a.id) }; }) });
         }
@@ -130,6 +135,7 @@ export async function obsluz(req: Request, d: Zaleznosci): Promise<Response> {
         const a = asystent(b.asystent);
         if (!a) return json({ error: "Nie ma takiego asystenta." }, 404);
         if (!mozeAsystent(a, kim)) return json({ error: "Ten asystent nie jest dostępny dla Twojego konta (wymaga innego działu portalu).", kod: "brak_dostepu" }, 403);
+        if (!mozna(upr, "asystenci." + a.id)) return json(odmowaUpr("asystenci." + a.id), 403);
         if (ust.wylaczone.includes(a.id)) return json({ error: "Ten asystent jest wyłączony w ustawieniach.", kod: "wylaczony" }, 409);
         if (!d.modelGotowy) return json({ error: "Brak konfiguracji dostępu do modelu (ANTHROPIC_API_KEY)." }, 503);
         const pl = sprawdzPliki(b.pliki);

@@ -16,7 +16,7 @@
 // attachments are checked by content; the same "klucz" is never sent twice; every send is logged (append-only).
 // Mailbox changes go through the controlled write path (imapw.ts) and each is logged in poczta_dostep.
 
-import { type Ctx, type Deps, type Me } from "./core.ts";
+import { type Ctx, type Deps, type Me, mozeKlucz } from "./core.ts";
 import { DARMOWE, isSkrzynka, parseMail, plData, poczatekDnia, sha256hex, SKRZYNKI, type Skrzynka } from "./logic.ts";
 import { type Folder, type Meta, nieWybieralny, withTimeout } from "./imap.ts";
 import { folderPortalu, type Typ } from "./foldery.ts";
@@ -29,7 +29,8 @@ type Any = any;
 type Out = { status: number; body: Any };
 export const AKCJE_W = ["wyslij", "szkic_zapisz", "szkic_usun", "akcja_imap", "podpowiedzi", "podpis", "wyslane_log"];
 const DOMENA = "td-group.pl", UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, BUDZET_MS = 100000;
-const moze = (me: Me, s: Skrzynka) => me.admin || me.sekcje === null || me.sekcje.includes(SKRZYNKI[s].sekcja);
+// the section of the mailbox, and the mailbox not switched off for this person (Uprawnienia szczegółowe)
+const moze = (me: Me, s: Skrzynka) => (me.admin || me.sekcje === null || me.sekcje.includes(SKRZYNKI[s].sekcja)) && mozeKlucz(me, "poczta." + s);
 const naglowek = (m: Meta) => { const k = Object.keys(m.sekcje).find((x) => x.startsWith("BODY[HEADER")); return k ? m.sekcje[k] : new Uint8Array(0); };
 const blad = (e: unknown) => String((e as Error)?.message ?? e).replace(/[^\x20-\x7e -ɏ]/g, " ").slice(0, 200);
 // what the mail server said, in words a person can act on

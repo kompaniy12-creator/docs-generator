@@ -13,6 +13,7 @@ import { AKCJE, przegladarka, typFolderu } from "./skrzynka.ts";
 import { AKCJE_W, pisanie } from "./wysylka.ts";
 import { AKCJE_N, narzedzia, wyslijZaplanowane } from "./narzedzia.ts";
 import type { Flaga } from "./imapw.ts";
+import { mozna, odmowa, type Wyl } from "../_shared/uprawnienia.ts";
 
 // deno-lint-ignore no-explicit-any
 type Any = any;
@@ -113,7 +114,11 @@ export interface ImapZapisLike extends ImapLike {
   zmienNazwe(f: Folder, nowy: string, list: Folder[]): Promise<void>;
   usunFolder(f: Folder, list: Folder[]): Promise<void>;
 }
-export type Me = { email: string; admin: boolean; sekcje: string[] | null };
+// wyl: the per-function switch-off list of the account (app_metadata.portal_wylaczone as _shared/uprawnienia.ts reads
+// it); index.ts always sets it — a caller without it (the tests' fakes) is not restricted
+export type Me = { email: string; admin: boolean; sekcje: string[] | null; wyl?: Wyl };
+/** Uprawnienia szczegółowe: may this person use the catalogue key (the page "poczta", a mailbox "poczta.kadry" …)? */
+export function mozeKlucz(me: Me, klucz: string): boolean { return mozna({ admin: me.admin, wyl: me.wyl ?? [] }, klucz); }
 export type Deps = {
   cronKey: string; webhookKey: string; model: string; modelReady: boolean;
   konta: Record<Skrzynka, boolean>;                      // is the mailbox password configured
@@ -429,7 +434,8 @@ async function diag(d: Deps): Promise<Any> {
 
 // ---------------------------------------------------------------- portal actions
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const moze = (me: Me, s: Skrzynka) => me.admin || me.sekcje === null || me.sekcje.includes(SKRZYNKI[s].sekcja);
+const mozeSekcja = (me: Me, s: Skrzynka) => me.admin || me.sekcje === null || me.sekcje.includes(SKRZYNKI[s].sekcja);
+const moze = (me: Me, s: Skrzynka) => mozeSekcja(me, s) && mozeKlucz(me, "poczta." + s);
 const widok = (r: Row) => { const { uidvalidity: _a, uid: _b, odwolania: _c, watek: _d, message_id: _e, analiza_start: _f, ...x } = r; return x; };
 
 export async function handle(d: Deps, req: Request): Promise<{ status: number; body: Any; raw?: { bytes: Uint8Array; headers: Record<string, string> } }> {
@@ -458,8 +464,15 @@ export async function handle(d: Deps, req: Request): Promise<{ status: number; b
     return { status: 200, body: { ok: true, autotest: await autotest(d) } };
   }
   if (!me) return { status: 403, body: { error: "Brak dostępu (portal)." } };
-  const moje = (Object.keys(SKRZYNKI) as Skrzynka[]).filter((s) => moze(me, s));
-  if (!moje.length) return { status: 403, body: { error: "Brak dostępu (sekcja Kadry albo Księgowość)." } };
+  const poSekcji = (Object.keys(SKRZYNKI) as Skrzynka[]).filter((s) => mozeSekcja(me, s));
+  if (!poSekcji.length) return { status: 403, body: { error: "Brak dostępu (sekcja Kadry albo Księgowość)." } };
+  // Uprawnienia szczegółowe — after the forwarder's and the scheduler's branches and the section check above:
+  // the page's key, then the key of the mailbox (of the one the request names, or of all of them).
+  const moje = poSekcji.filter((s) => moze(me, s));
+  const wyl = !mozeKlucz(me, "poczta") ? "poczta" : !moje.length ? "poczta." + poSekcji[0]
+    : isSkrzynka(body.skrzynka) && poSekcji.includes(body.skrzynka) && !moje.includes(body.skrzynka) ? "poczta." + body.skrzynka : null;
+  // the menu's counter asks on every page: a person without the mail simply has nothing unread
+  if (wyl) return body.action === "nieprzeczytane" ? { status: 200, body: { skrzynki: {}, razem: 0 } } : { status: 403, body: odmowa(wyl) };
   const ctx = await kontekst(d);
   const teraz = () => new Date(d.now()).toISOString();
 

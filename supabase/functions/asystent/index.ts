@@ -29,6 +29,7 @@ import type { Any, Ja } from "./logic.ts";
 import { FALLBACK_BETA, FALLBACK_DLA, MAX_TOKENOW_ODPOWIEDZI, TIMEOUT_WYWOLANIA_MS } from "./modele.ts";
 import type { Store } from "./narzedzia.ts";
 import { BladModelu, type Model } from "./silnik.ts";
+import { wylaczone } from "../_shared/uprawnienia.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -64,7 +65,7 @@ async function ja(req: Request): Promise<Ja | null> {
   const m = u?.app_metadata ?? {};
   if (!u?.email) return null;
   // sections as the rest of the portal reads them: no list = every section (has_portal_section() in the database)
-  return { email: String(u.email), portal: m.portal === true, admin: m.portal_admin === true, sekcje: Array.isArray(m.portal_sections) ? m.portal_sections.map(String) : null };
+  return { email: String(u.email), portal: m.portal === true, admin: m.portal_admin === true, sekcje: Array.isArray(m.portal_sections) ? m.portal_sections.map(String) : null, wyl: wylaczone(m) };
 }
 
 // ---------------------------------------------------------------- what the tools read (GET only)

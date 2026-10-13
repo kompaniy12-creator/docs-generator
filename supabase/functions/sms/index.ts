@@ -26,6 +26,7 @@
 import { loadKlienciRows } from "../_shared/klienci.ts";
 import { analiza, czytajUst, dzienPL, maska, nadawcaOk, MAX_CZESCI, MAX_CZESCI_ADMIN, MAX_TRESC, numer, pierwszyNumer, poczatekDnia, przygotuj, sprawdzUst, statusDoreczenia, SZABLONY, wGodzinach } from "./logic.ts";
 import { smsapi, smsSkonfigurowane, ustawieniaSms, wyslijSms } from "./wyslij.ts";
+import { kluczAkcji, mozna, odmowa, wylaczone, type Wyl } from "../_shared/uprawnienia.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -50,7 +51,10 @@ function json(body: unknown, status: number, origin: string | null) {
 function db(path: string, init: RequestInit = {}) {
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, { ...init, headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, "Content-Type": "application/json", ...(init.headers ?? {}) } });
 }
-type Ja = { email: string; admin: boolean; kadry: boolean; moze: boolean; token: string };
+type Ja = { email: string; admin: boolean; kadry: boolean; moze: boolean; token: string; wyl: Wyl };
+// Uprawnienia szczegółowe: the catalogue key of each action (the rest of them need the page's key)
+const BAZA = "klienci.sms";
+const AKCJE: Record<string, string> = { wyslij: "klienci.sms.wyslij", historia: "klienci.sms.historia" };
 async function portal(req: Request): Promise<Ja | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
@@ -61,7 +65,7 @@ async function portal(req: Request): Promise<Ja | null> {
   if (m.portal !== true || !u.email) return null;
   const admin = m.portal_admin === true, wszystko = admin || !Array.isArray(m.portal_sections);
   const kadry = wszystko || m.portal_sections.includes("kadry");
-  return { email: String(u.email).toLowerCase(), admin, kadry, moze: kadry || m.portal_sections.includes("onboarding"), token };
+  return { email: String(u.email).toLowerCase(), admin, kadry, moze: kadry || m.portal_sections.includes("onboarding"), token, wyl: wylaczone(m) };
 }
 const enc = encodeURIComponent;
 const isDate = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -132,6 +136,9 @@ Deno.serve(zCzasem(async (req) => {
   try { body = await req.json(); } catch { return json({ error: "Nieprawidłowy JSON." }, 400, origin); }
   const action = String(body?.action ?? "");
   const tylkoAdmin = () => json({ error: "Tę czynność może wykonać tylko administrator portalu." }, 403, origin);
+  // the per-function switch-off list — after the delivery reports (no session) and the section check above
+  const klucz = kluczAkcji(AKCJE, action, BAZA);
+  if (!mozna(ja, klucz)) return json(odmowa(klucz), 403, origin);
 
   try {
     if (action === "status") {

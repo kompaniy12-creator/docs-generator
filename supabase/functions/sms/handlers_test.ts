@@ -434,3 +434,75 @@ Deno.test("the token never appears in an answer, a log line or the database", ()
   assert(!JSON.stringify(T).includes(SEKRET));
 });
 globalThis.addEventListener("unload", () => { globalThis.fetch = prawdziwyFetch; });
+
+// =============================================================== Uprawnienia szczegółowe (portal_wylaczone)
+const UPR = (wyl: unknown, o: Any = {}) => ({ email: "ogr@example.test", app_metadata: { portal: true, portal_sections: ["kadry"], portal_wylaczone: wyl, ...o } });
+async function terminy(kto: string, body: Any): Promise<Any> {
+  const r = await terminyH(new Request("http://f.test/terminy", { method: "POST", headers: { Authorization: "Bearer " + kto, "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+  const t = await r.text(); wyjscia.push(t);
+  return { http: r.status, ...JSON.parse(t) };
+}
+Deno.test("uprawnienia sms: brak listy = jak dotąd; wysyłka i historia wyłączane osobno; strona, moduł i zepsuta lista zamykają wszystko; administrator bez ograniczeń; raport doręczenia bez zmian", opts, async () => {
+  reset();
+  for (const wyl of [undefined, null, []]) {
+    USERS.ogr = UPR(wyl);
+    assertEquals((await api("ogr", { action: "status" })).http, 200);
+    assertEquals((await api("ogr", { action: "podglad", nip: N1, tresc: "Dzień dobry" })).http, 200);
+    assertEquals((await api("ogr", { action: "historia" })).http, 200);
+  }
+  USERS.ogr = UPR(["klienci.sms.wyslij"]);
+  const w = await api("ogr", { action: "wyslij", nip: N1, tresc: "Dzień dobry" });
+  assertEquals([w.http, w.kod, w.klucz], [403, "wylaczone", "klienci.sms.wyslij"]);
+  assertEquals((await api("ogr", { action: "status" })).http, 200);
+  assertEquals((await api("ogr", { action: "historia" })).http, 200);
+  USERS.ogr = UPR(["klienci.sms.historia"]);
+  const h = await api("ogr", { action: "historia" });
+  assertEquals([h.http, h.kod, h.klucz], [403, "wylaczone", "klienci.sms.historia"]);
+  assertEquals((await api("ogr", { action: "podglad", nip: N1, tresc: "Dzień dobry" })).http, 200);
+  for (const wyl of [["klienci.sms"], ["klienci"], "zepsute", 7]) {
+    USERS.ogr = UPR(wyl);
+    for (const a of ["status", "klienci", "podglad", "wyslij", "historia", "ustawienia"]) { const r = await api("ogr", { action: a, nip: N1, tresc: "x" }); assertEquals([r.http, r.kod], [403, "wylaczone"], a + " " + JSON.stringify(wyl)); }
+  }
+  USERS.ogr = UPR(["klienci.smsy", "klienci.rozsylki"]);
+  assertEquals((await api("ogr", { action: "status" })).http, 200);
+  USERS.ogr = UPR(["klienci"], { portal_admin: true });
+  assertEquals((await api("ogr", { action: "status" })).http, 200);
+  assertEquals((await api("ogr", { action: "historia" })).http, 200);
+  // the section check stays first; nothing was sent in this whole test
+  USERS.ogr = UPR(["klienci.sms"], { portal_sections: ["rejestracja"] });
+  const s = await api("ogr", { action: "status" });
+  assertEquals([s.http, s.kod], [403, undefined]);
+  assertEquals(sms().length, 0);
+  // a delivery report carries no session and is answered as before
+  assertEquals((await smsH(new Request("http://f.test/sms?MsgId=nieznany&status=404&idx=x", { method: "GET" }))).status, 200);
+  delete USERS.ogr;
+});
+
+Deno.test("uprawnienia terminy: podgląd = klucz strony Kontrola, wysyłka przypomnień osobno; harmonogram (x-cron-key) nie przechodzi przez listę", opts, async () => {
+  sceneria(WL);
+  const wzor = await terminy("kadry", { action: "preview" });
+  assertEquals(wzor.http, 200);
+  for (const wyl of [undefined, null, []]) {
+    USERS.ogr = UPR(wyl);
+    const p = await terminy("ogr", { action: "preview" });
+    assertEquals(p.http, 200);
+    assertEquals(JSON.stringify(p.firmy), JSON.stringify(wzor.firmy));
+  }
+  USERS.ogr = UPR(["kadry.kontrola.przypomnienia"]);
+  assertEquals((await terminy("ogr", { action: "preview" })).http, 200);
+  const sf = await terminy("ogr", { action: "send_firm", nip: N1 });
+  assertEquals([sf.http, sf.kod, sf.klucz], [403, "wylaczone", "kadry.kontrola.przypomnienia"]);
+  for (const wyl of [["kadry.kontrola"], ["kadry"], "zepsute"]) {
+    USERS.ogr = UPR(wyl);
+    for (const a of ["preview", "send_firm", "settings"]) { const r = await terminy("ogr", { action: a, nip: N1 }); assertEquals([r.http, r.kod], [403, "wylaczone"], a + " " + JSON.stringify(wyl)); }
+  }
+  USERS.ogr = UPR(["kadry"], { portal_admin: true });
+  assertEquals((await terminy("ogr", { action: "preview" })).http, 200);
+  // a session of a restricted person never opens the scheduler's actions, and the scheduler's key needs no session
+  USERS.ogr = UPR(["kadry"]);
+  assertEquals((await terminy("ogr", { action: "run", dry: true })).http, 403);
+  assertEquals((await cron({ action: "sms" }, "zly-klucz")).http, 403);
+  assertEquals((await cron({ action: "sms", dry: true })).http, 200);
+  assertEquals(sms().length, 0);
+  delete USERS.ogr;
+});

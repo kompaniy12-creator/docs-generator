@@ -21,6 +21,7 @@ import nodemailer from "npm:nodemailer@6.9.14";
 import { type Klient, loadKlienci } from "../_shared/klienci.ts";
 import { inicjaly, wypelnij } from "../sms/logic.ts";
 import { smsSkonfigurowane, ustawieniaSms, wyslijSms } from "../sms/wyslij.ts";
+import { kluczAkcji, mozna, odmowa, wylaczone, type Wyl } from "../_shared/uprawnienia.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -86,7 +87,7 @@ function db(path: string, init: RequestInit = {}) {
     headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, "Content-Type": "application/json", ...(init.headers ?? {}) },
   });
 }
-async function portalUser(req: Request): Promise<{ email: string; admin: boolean } | null> {
+async function portalUser(req: Request): Promise<{ email: string; admin: boolean; wyl: Wyl } | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
   const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: ANON, Authorization: `Bearer ${token}` } });
@@ -94,8 +95,11 @@ async function portalUser(req: Request): Promise<{ email: string; admin: boolean
   const u = await r.json();
   const m = u?.app_metadata ?? {};
   const kadry = m.portal_admin === true || !Array.isArray(m.portal_sections) || m.portal_sections.includes("kadry");
-  return m.portal === true && kadry ? { email: u.email ?? "", admin: m.portal_admin === true } : null;
+  return m.portal === true && kadry ? { email: u.email ?? "", admin: m.portal_admin === true, wyl: wylaczone(m) } : null;
 }
+// Uprawnienia szczegółowe: the catalogue key of each portal action (the rest of them need the page's key)
+const BAZA = "kadry.kontrola";
+const AKCJE: Record<string, string> = { send_firm: "kadry.kontrola.przypomnienia" };
 function isCron(req: Request) {
   const k = req.headers.get("x-cron-key") ?? "";
   if (!CRON_KEY || k.length !== CRON_KEY.length) return false;
@@ -502,6 +506,9 @@ async function obsluz(req: Request, t: Stoper): Promise<Response> {
     ]);
     const me = await t.m("auth", portalUser(req));
     if (!me) return json({ error: "Brak dostępu (portal, sekcja Kadry)." }, 403, origin);
+    // the per-function switch-off list — only here, after the scheduler's branch and the section check
+    const klucz = kluczAkcji(AKCJE, body.action, BAZA);
+    if (!mozna(me, klucz)) return json(odmowa(klucz), 403, origin);
 
     if (body.action === "settings") {
       if (!me.admin) return json({ error: "Tylko administrator może zmienić to ustawienie." }, 403, origin);

@@ -776,3 +776,42 @@ Deno.test("telegram_cron: klucz crona, jedno zadanie przy pogorszeniu, bez powt�
   assertEquals(a.status, "ok"); assert(a.blad.includes("brak połączenia")); assert(!JSON.stringify(T).includes("TESTOWY"));
   assert(calls.tg.every((m) => ["getChat", "getChatMember", "getChatMemberCount", "getChatAdministrators"].includes(m)));
 });
+
+// =============================================================== Uprawnienia szczegółowe (portal_wylaczone)
+Deno.test("uprawnienia: lista klientów i dane kontaktowe można wyłączyć; brak listy = jak dotąd; administrator bez ograniczeń; cron bez zmian", async () => {
+  reset();
+  const U = (wyl: unknown, o: Any = {}) => ({ email: "ogr@example.test", app_metadata: { portal: true, portal_sections: ["kadry"], portal_wylaczone: wyl, ...o } });
+  const wzor = (await call("kadry", { action: "lista" })).b;
+  assertEquals(wzor.ja.kontakty, true);
+  // no claim, null and an empty list: the same answer a Kadry account gets today (apart from the e-mail)
+  for (const wyl of [undefined, null, []]) {
+    USERS.ogr = U(wyl);
+    const r = await call("ogr", { action: "lista" });
+    assertEquals(r.status, 200);
+    assertEquals(JSON.stringify({ ...r.b, ja: null, sync: null }), JSON.stringify({ ...wzor, ja: null, sync: null }));
+    assertEquals(r.b.ja, { email: "ogr@example.test", admin: false, kontakty: true });
+  }
+  // contact details switched off: the list comes, without a single phone or e-mail
+  USERS.ogr = U(["klienci.baza.kontakty"]);
+  const bez = await call("ogr", { action: "lista" });
+  assertEquals([bez.status, bez.b.ja.kontakty, bez.b.klienci.length], [200, false, wzor.klienci.length]);
+  assert(bez.b.klienci.every((k: Any) => k.kontakt === undefined));
+  assert(!JSON.stringify(bez.b).includes("+48 600"));
+  // the list itself, by its key, by the module, by a broken claim
+  for (const wyl of [["klienci.baza"], ["klienci"], "zepsute", { a: 1 }]) {
+    USERS.ogr = U(wyl);
+    const r = await call("ogr", { action: "lista" });
+    assertEquals([r.status, r.b.kod, r.b.klucz], [403, "wylaczone", "klienci.baza"], JSON.stringify(wyl));
+  }
+  // another page's key changes nothing
+  USERS.ogr = U(["klienci.sms", "kadry.kontrola"]);
+  assertEquals((await call("ogr", { action: "lista" })).b.ja.kontakty, true);
+  // an administrator is not restricted
+  USERS.ogr = U(["klienci"], { portal_admin: true });
+  const a = await call("ogr", { action: "lista" });
+  assertEquals([a.status, a.b.ja.kontakty, a.b.ja.admin], [200, true, true]);
+  // the scheduler's key does not pass through the list at all
+  delete USERS.ogr;
+  assertEquals((await call(null, { action: "lista" }, "POST", "klucz-crona-testowy")).status, 400);
+  assertEquals((await call(null, { action: "lista" })).status, 403);
+});

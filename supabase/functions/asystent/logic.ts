@@ -60,7 +60,9 @@ export function normalizujUstawienia(raw: Any): Ustawienia {
 
 // sekcje: the portal sections of the account (app_metadata.portal_sections); null = no list = every
 // section, exactly as has_portal_section() in the database and the page guard treat it.
-export type Ja = { email: string; portal: boolean; admin: boolean; sekcje: string[] | null };
+// wyl: the per-function switch-off list of the account (app_metadata.portal_wylaczone as _shared/uprawnienia.ts reads it);
+// index.ts always sets it — a caller without it (the tests' fakes) is not restricted
+export type Ja = { email: string; portal: boolean; admin: boolean; sekcje: string[] | null; wyl?: string[] | "blad" };
 export type Odmowa = { status: number; error: string; kod: string };
 
 // TEST MODE: a portal administrator who is on the testers list — nobody else, for every action.

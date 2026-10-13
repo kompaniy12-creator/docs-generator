@@ -919,3 +919,43 @@ Deno.test("uruchom równolegle i usuwanie w toku: drugie jednoczesne uruchomieni
   await Promise.all(zz.tlo);
   assertEquals(przed, [zz.rows[0].id + "/1.pdf"]);
 });
+
+// =============================================================== Uprawnienia szczegółowe (portal_wylaczone)
+Deno.test("uprawnienia: cały moduł i pojedynczy asystent można wyłączyć osobie; brak listy = jak dotąd; administrator bez ograniczeń", async () => {
+  const osoba = (wyl?: Ja["wyl"], o: Partial<Ja> = {}): Ja => ({ ...J_KADRY, ...(wyl === undefined ? {} : { wyl }), ...o });
+  const wolaj = async (ja: Ja, body: Any) => { const z = zaleznosci({ ja, ust: ZESPOL }); const r = await obsluz(post(body), z.d); return { status: r.status, b: await r.json(), z }; };
+  const ids = (b: Any) => b.asystenci.map((a: Any) => a.id);
+  // no list / an empty list: exactly the assistants the sections give
+  for (const ja of [osoba(), osoba([])]) {
+    const l = await wolaj(ja, { action: "lista" });
+    assertEquals([l.status, ids(l.b)], [200, MOJE["kadry"]]);
+  }
+  // one assistant switched off: gone from the list, refused on `uruchom` before the model or any data is touched
+  const bez = osoba(["asystenci.zapytaj_portal"]);
+  const l = await wolaj(bez, { action: "lista" });
+  assertEquals(ids(l.b), MOJE["kadry"].filter((x) => x !== "zapytaj_portal"));
+  const u = await wolaj(bez, { action: "uruchom", asystent: "zapytaj_portal", wejscie: { tekst: "ilu mamy klientów?" } });
+  assertEquals([u.status, u.b.kod, u.b.klucz], [403, "wylaczone", "asystenci.zapytaj_portal"]);
+  assertEquals([u.z.wywolania.length, u.z.odczyty.length], [0, 0]);
+  // another assistant of the same person is still accepted
+  const inny = await wolaj(bez, { action: "uruchom", asystent: "prawnik_obserwator", wejscie: {} });
+  assert(inny.b.kod !== "wylaczone");
+  // the module, and a claim that is not a list: every action is refused
+  for (const wyl of [["asystenci"], "blad"] as Ja["wyl"][]) {
+    for (const action of ["lista", "slownik", "uruchom", "stan", "wynik", "historia", "ocena", "czysc", "plik"]) {
+      const r = await wolaj(osoba(wyl), { action, asystent: "zapytaj_portal", wejscie: { tekst: "x" }, co: "klienci", id: WA });
+      assertEquals([r.status, r.b.kod, r.b.klucz], [403, "wylaczone", "asystenci"], action + " " + JSON.stringify(wyl));
+      assertEquals([r.z.wywolania.length, r.z.odczyty.length], [0, 0], action);
+    }
+  }
+  // a look-alike key and a key of another page change nothing
+  assertEquals(ids((await wolaj(osoba(["asystenci.zapytaj", "poczta"]), { action: "lista" })).b), MOJE["kadry"]);
+  // an administrator is never restricted
+  const adm = await wolaj({ ...SZEF, wyl: ["asystenci"] }, { action: "lista" });
+  assertEquals([adm.status, ids(adm.b)], [200, MOJE["administrator"]]);
+  assertEquals((await wolaj({ ...SZEF, wyl: "blad" }, { action: "lista" })).status, 200);
+  // the gate still comes first: test mode lets nobody of the staff in, with or without a list
+  const z = zaleznosci({ ja: osoba(["asystenci"]) });
+  const t = await obsluz(post({ action: "lista" }), z.d);
+  assertEquals([t.status, (await t.json()).kod !== "wylaczone"], [403, true]);
+});

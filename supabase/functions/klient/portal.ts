@@ -26,10 +26,14 @@
 //   biuro_udostepnione { zrodlo, ids[] }            which of these documents are shared
 //   biuro_podglad     { nip, akcja: {...} }         administrator: a read-only action as the client sees it
 
+import { kluczAkcji, mozna, odmowa, type Wyl } from "../_shared/uprawnienia.ts";
+
 // deno-lint-ignore no-explicit-any
 type Any = any;
 export type Konto = { id: string; email: string; nip: string[]; nazwa: string | null };
-export type Staff = { email: string; admin: boolean; sekcje: string[] | null }; // sekcje null = every section
+// sekcje null = every section; wyl = the per-function switch-off list (index.ts always sets it — without it, as in
+// the tests' fakes, a person is not restricted)
+export type Staff = { email: string; admin: boolean; sekcje: string[] | null; wyl?: Wyl };
 export type Odp = { status: number; body: Any };
 export type Plik = { nazwa: string; typ: string; bytes: Uint8Array };
 export type Zalacznik = { n: number; nazwa: string; mime: string; rozmiar: number; path: string; sha256: string };
@@ -515,8 +519,14 @@ function zglDlaBiura(z: Any, zad: Record<string, string>) {
     assignee: z.assignee ?? null, odpowiedzial: z.odpowiedzial ?? null, status_reczny: z.status_reczny === true, notatka_wewnetrzna: z.notatka_wewnetrzna ?? null };
 }
 
+// Uprawnienia szczegółowe: the catalogue key of each office action (the rest of them need the page's key)
+const BIURO_BAZA = "klienci.zgloszenia";
+const BIURO_KLUCZE: Record<string, string> = { biuro_zgloszenie: "klienci.zgloszenia.odpowiedz", biuro_zalacznik: "klienci.zgloszenia.zalaczniki", biuro_udostepnij: "klienci.zgloszenia.udostepnianie" };
 export async function biuroAkcja(d: Deps, s: Staff, body: Any): Promise<Odp> {
   const akcja = String(body?.action ?? "");
+  // only the office path comes here (a portal session) — the client's token never does
+  const klucz = kluczAkcji(BIURO_KLUCZE, akcja, BIURO_BAZA);
+  if (!mozna({ admin: s.admin, wyl: s.wyl ?? [] }, klucz)) return odp(403, odmowa(klucz));
   const kat = kategorieStaff(s);
   if (akcja === "biuro_zgloszenia") {
     if (!kat.length) return odp(403, { error: "Brak uprawnień do zgłoszeń klientów." });

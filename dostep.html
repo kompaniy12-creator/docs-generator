@@ -48,6 +48,30 @@
   .status.error{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
   .status.success{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
   .empty{text-align:center;color:#888;padding:24px}
+  /* Uprawnienia szczegółowe */
+  .mini{font:inherit;font-size:12.5px;font-weight:600;padding:5px 10px;border-radius:8px;border:1px solid #d4dbe6;background:#fff;color:var(--brand-navy);cursor:pointer;white-space:nowrap}
+  .mini:hover{border-color:var(--brand-navy)}
+  .pill{display:inline-block;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:normal;line-height:1.35}
+  .pill.p-red{background:#fee2e2;color:#991b1b}.pill.p-amber{background:#fef3c7;color:#92400e}.pill.p-ok{background:#dcfce7;color:#166534}.pill.p-grey{background:#eef1f6;color:#5a6577}.pill.p-navy{background:#EEF3F9;color:#1B3F7F}
+  .secs span.pill{font-size:11.5px}
+  .upr-tools{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:10px;align-items:end;margin:0 0 12px}
+  @media(max-width:640px){.upr-tools{grid-template-columns:1fr}}
+  .upr-tools select{width:100%;padding:10px 12px;border:1px solid #d4dbe6;border-radius:8px;font:inherit;font-size:14px;background:#fff;color:#111}
+  .upr-w{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;padding:7px 0;border-top:1px solid #eef1f6;font-size:13.5px}
+  .upr-w label{display:inline-flex;align-items:flex-start;gap:8px;margin:0;font-size:13.5px;color:#1b2434;cursor:pointer;flex:1;min-width:210px}
+  .upr-w input{width:16px;height:16px;padding:0;margin:2px 0 0;flex:0 0 16px;accent-color:var(--brand-navy)}
+  .upr-w.d0{margin-top:10px;border-top:2px solid #dfe5ee;padding-top:10px}
+  .upr-w.d0 label{font-weight:700;font-size:14.5px}
+  .upr-w.d1{padding-left:22px}
+  .upr-w.d1 label{font-weight:600}
+  .upr-w.d2{padding-left:46px}
+  .upr-w.off label{opacity:.55;cursor:default}
+  .upr-w .pill{border-radius:11px}
+  .upr-w small{color:#8a97ab;font-size:12px;flex-basis:100%;padding-left:24px}
+  .upr-sum{margin:14px 0 0;padding:12px 0 0;border-top:2px solid #dfe5ee;font-size:13.5px}
+  .upr-sum ul{margin:6px 0 0;padding-left:20px}
+  .upr-sum li{margin:2px 0}
+  .upr-foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
 </style>
 </head>
 <body>
@@ -55,7 +79,7 @@
   <a href="index.html" class="back">← Powrót do portalu</a>
   <div class="brand"><img src="logo.png" alt="TD Consulting Group" /></div>
   <h1>Dostęp do portalu</h1>
-  <p class="lead">Kto może logować się do portalu. Każdej osobie wybierasz sekcje, do których ma dostęp. Nowej osobie ustawiasz hasło startowe i przekazujesz je osobiście — portal go nigdzie nie wysyła. Zmiana sekcji zaczyna działać po ponownym zalogowaniu tej osoby (najpóźniej po godzinie).</p>
+  <p class="lead">Kto może logować się do portalu. Każdej osobie wybierasz sekcje, do których ma dostęp. Nowej osobie ustawiasz hasło startowe i przekazujesz je osobiście — portal go nigdzie nie wysyła. Zmiana sekcji zaczyna działać po ponownym zalogowaniu tej osoby (najpóźniej po godzinie). W „Uprawnieniach szczegółowych” wyłączysz też pojedyncze strony i funkcje.</p>
 
   <div id="status" class="status"></div>
 
@@ -113,9 +137,36 @@
       <h2>Użytkownicy portalu</h2>
       <div id="list"><div class="empty">Ładowanie…</div></div>
     </div>
+
+    <div class="box" id="uprBox" hidden>
+      <h2 id="uprTitle">Uprawnienia szczegółowe</h2>
+      <p class="hint" style="margin:0 0 12px">Sekcje otwierają całe moduły. Tutaj dodatkowo wyłączasz tej osobie pojedyncze strony i funkcje — wszystko, co zaznaczone, jest dla niej włączone. Lista może tylko odbierać: nie nada sekcji ani funkcji administratora. Nowe funkcje portalu są domyślnie włączone.</p>
+      <div class="upr-tools">
+        <div><label for="uprSzukaj">Szukaj funkcji</label><input id="uprSzukaj" type="search" placeholder="np. SMS, akta, wysyłka" autocomplete="off" /></div>
+        <div><label for="uprSzablon">Szablon</label><select id="uprSzablon"></select></div>
+        <div><label for="uprKopia">Skopiuj uprawnienia z…</label><select id="uprKopia"></select></div>
+      </div>
+      <div class="secs" id="uprSekcje" style="margin:0 0 4px"></div>
+      <div id="uprDrzewo"></div>
+      <p class="hint" id="uprLegenda"></p>
+      <div class="upr-sum" id="uprSuma"></div>
+      <div class="upr-foot">
+        <button type="button" class="btn-main" id="uprZapisz">Zapisz uprawnienia</button>
+        <button type="button" class="btn-soft" id="uprWszystko">Włącz wszystkie funkcje</button>
+        <button type="button" class="btn-soft" id="uprAnuluj">Anuluj</button>
+      </div>
+      <p class="hint">Po zapisaniu ta osoba zostanie wylogowana i zaloguje się ponownie — już z nowymi uprawnieniami. Funkcje z oznaczeniem „blokada na serwerze” przestają działać natychmiast.</p>
+    </div>
+
+    <div class="box" id="histBox">
+      <h2>Historia zmian dostępu</h2>
+      <p class="hint" style="margin:0 0 10px">Kto, komu i co zmienił: dostęp do portalu, sekcje, uprawnienia administratora i wyłączone funkcje (ostatnie 200 zmian).</p>
+      <div id="histList"><div class="empty">Ładowanie…</div></div>
+    </div>
   </div>
 </main>
-<script src="dostep.js?v=3"></script>
+<script src="uprawnienia.js?v=1"></script>
+<script src="dostep.js?v=4"></script>
 <script src="klienci-konta.js?v=2"></script>
 </body>
 </html>

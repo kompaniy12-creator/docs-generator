@@ -25,6 +25,7 @@
 
 import { type Rodzaj, wierszRejestru, type Wpis } from "./rejestr.ts";
 import { czytajDate, czytajKonto, czytajKraj, czytajNip, czytajNumerVat, czytajRegon, czytajWlasny, maska } from "./walidacja.ts";
+import { mozna, odmowa, wylaczone, type Wyl } from "../_shared/uprawnienia.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -39,7 +40,9 @@ function cors(origin: string | null) {
 function json(body: unknown, status: number, origin: string | null) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...cors(origin) } });
 }
-async function portalKsiegowosc(req: Request): Promise<string | null> {
+// Uprawnienia szczegółowe: the catalogue key of each check
+const AKCJE: Record<string, string> = { wl_search: "ksiegowosc.narzedzia.biala_lista", wl_check: "ksiegowosc.narzedzia.biala_lista", vies: "ksiegowosc.narzedzia.vies" };
+async function portalKsiegowosc(req: Request): Promise<{ email: string; admin: boolean; wyl: Wyl } | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
   const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: ANON, Authorization: `Bearer ${token}` } });
@@ -47,7 +50,7 @@ async function portalKsiegowosc(req: Request): Promise<string | null> {
   const u = await r.json();
   const m = u?.app_metadata ?? {};
   const ksiegowosc = m.portal_admin === true || !Array.isArray(m.portal_sections) || m.portal_sections.includes("onboarding");
-  return m.portal === true && ksiegowosc ? String(u.email ?? "") : null;
+  return m.portal === true && ksiegowosc ? { email: String(u.email ?? ""), admin: m.portal_admin === true, wyl: wylaczone(m) } : null;
 }
 
 class Blad extends Error {
@@ -226,14 +229,17 @@ Deno.serve(async (req) => {
   const origin = req.headers.get("Origin");
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors(origin) });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405, origin);
-  const kto = await portalKsiegowosc(req);
-  if (kto === null) return json({ error: "Brak dostępu (portal, dział Księgowość)." }, 403, origin);
+  const ja = await portalKsiegowosc(req);
+  if (ja === null) return json({ error: "Brak dostępu (portal, dział Księgowość)." }, 403, origin);
+  const kto = ja.email;
 
   let b: any = null;
   try { const t = await req.text(); if (t.length <= 2000) b = JSON.parse(t); } catch { /* handled below */ }
   if (!b || typeof b !== "object" || Array.isArray(b)) return json({ error: "Nieprawidłowe zapytanie." }, 400, origin);
   const rodzaj: Rodzaj | null = b.action === "wl_search" || b.action === "wl_check" || b.action === "vies" ? b.action : null;
   if (!rodzaj) return json({ error: "Nieznana akcja." }, 400, origin);
+  // the per-function switch-off list (the page's key is the ancestor of both checks)
+  if (!mozna(ja, AKCJE[rodzaj])) return json(odmowa(AKCJE[rodzaj]), 403, origin);
   try {
     const { zap, out } = await (rodzaj === "wl_search" ? wlSearch(b, kto) : rodzaj === "wl_check" ? wlCheck(b, kto) : vies(b, kto));
     const wpis = await zapisz(wierszRejestru(rodzaj, kto, zap, out, null));

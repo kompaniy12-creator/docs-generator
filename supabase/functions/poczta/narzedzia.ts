@@ -18,7 +18,7 @@
 // Every answer of a confirmation kind ({ potwierdz: n }) changes nothing: the page asks the person and calls again.
 
 import PostalMime from "npm:postal-mime@2.4.4";
-import { type Ctx, type Deps, type ImapLike, type ImapZapisLike, type Me } from "./core.ts";
+import { type Ctx, type Deps, type ImapLike, type ImapZapisLike, type Me, mozeKlucz } from "./core.ts";
 import { type Folder, folderUzytkownika, type Meta, naMutf7, nieWybieralny, typFolderu, withTimeout } from "./imap.ts";
 import { folderPortalu, NAZWY } from "./foldery.ts";
 import { dataOk, isSkrzynka, parseMail, sha256hex, SKRZYNKI, type Skrzynka } from "./logic.ts";
@@ -34,7 +34,8 @@ export const AKCJE_N = ["szukaj_wszedzie", "odswiez_imap", "otwarto_imap", "eml_
 const Z_IMAP = ["szukaj_wszedzie", "odswiez_imap", "otwarto_imap", "eml_imap", "zrodlo_imap", "folder_utworz", "folder_zmien", "folder_usun", "oproznij", "zaplanuj"];
 export const BUDZET_SZUKANIA = 30000, NA_FOLDER = 20, MAX_WYNIKOW = 200, MAX_ZRODLO = 300 * 1024, MAX_PODPISOW = 10, MAX_SZABLONOW = 100, MAX_KONTAKTOW = 2000, MAX_CZEKA = 50, PARTIA = 200;
 const BUDZET_MS = 100000, UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const moze = (me: Me, s: Skrzynka) => me.admin || me.sekcje === null || me.sekcje.includes(SKRZYNKI[s].sekcja);
+// the section of the mailbox, and the mailbox not switched off for this person (Uprawnienia szczegółowe)
+const moze = (me: Me, s: Skrzynka) => (me.admin || me.sekcje === null || me.sekcje.includes(SKRZYNKI[s].sekcja)) && mozeKlucz(me, "poczta." + s);
 const naglowek = (m: Meta) => { const k = Object.keys(m.sekcje).find((x) => x.startsWith("BODY[HEADER")); return k ? m.sekcje[k] : new Uint8Array(0); };
 const blad = (e: unknown) => String((e as Error)?.message ?? e).replace(/[^\x20-\x7e -ɏ]/g, " ").slice(0, 200);
 const PORZADEK = ["inbox", "sent", "drafts", "archive", "", "junk", "trash"];

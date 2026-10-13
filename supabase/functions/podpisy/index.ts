@@ -138,6 +138,7 @@
 // ==========================================================================
 
 import { handle, type Auth, type Store } from "./core.ts";
+import { type Upr, wylaczone } from "../_shared/uprawnienia.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -231,6 +232,8 @@ const store: Store = {
   },
 };
 
+// what staff() learned about the caller of this very request (Uprawnienia szczegółowe)
+const uprZadania = new WeakMap<Request, Upr>();
 const auth: Auth = {
   // portal user with the Kadry section (as in the `akta` function)
   async staff(req) {
@@ -241,8 +244,11 @@ const auth: Auth = {
     const u = await r.json();
     const m = u?.app_metadata ?? {};
     const kadry = m.portal_admin === true || !Array.isArray(m.portal_sections) || m.portal_sections.includes("kadry");
-    return m.portal === true && kadry && u.email ? String(u.email) : null;
+    if (!(m.portal === true && kadry && u.email)) return null;
+    uprZadania.set(req, { admin: m.portal_admin === true, wyl: wylaczone(m) });
+    return String(u.email);
   },
+  upr: (req) => uprZadania.get(req),
   // the client session of the `klient` function: client accounts are not Supabase auth users,
   // the token is looked up by its hash and everything is then filtered by the account's NIPs
   async klient(req) {

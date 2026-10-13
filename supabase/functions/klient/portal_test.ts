@@ -460,3 +460,43 @@ Deno.test("ustawienie „dokumenty z historii”: domyślnie automatycznie; „t
   assertEquals((await A(e, { action: "dokumenty", nip: NIP_A })).body.firmowe.map((x: Any) => x.id), [ID.histA]);
   assertEquals(e.db.log.filter((l) => l.akcja === "biuro_ustawienia").length, 2);
 });
+
+// =============================================================== Uprawnienia szczegółowe (portal_wylaczone)
+Deno.test("uprawnienia: zgłoszenia klientów — strona i jej funkcje wyłączane osobno; klient (token) nie jest tym objęty", async () => {
+  const e = env();
+  const zgl = await A(e, { action: "zgloszenie_nowe", nip: NIP_A, kategoria: "kadry", rodzaj: "zmiana_pracownika", worker_id: ID.wA1, temat: "Pytanie testowe", tresc: "Treść przykładowa." });
+  assertEquals(zgl.status, 200);
+  const id = zgl.body.id;
+  const os = (wyl?: Staff["wyl"], o: Partial<Staff> = {}): Staff => ({ ...kadrowa, ...(wyl === undefined ? {} : { wyl }), ...o });
+  const b = (s: Staff, body: Any) => biuroAkcja(e.d, s, body);
+  // no list, an empty list: as today
+  for (const s of [os(), os([])]) {
+    assertEquals((await b(s, { action: "biuro_zgloszenia" })).status, 200);
+    assertEquals((await b(s, { action: "biuro_ustawienia" })).status, 200);
+  }
+  // one function switched off: only it is refused
+  const mapa: [string, string, Any][] = [
+    ["klienci.zgloszenia.odpowiedz", "biuro_zgloszenie", { id, status: "w_toku" }],
+    ["klienci.zgloszenia.zalaczniki", "biuro_zalacznik", { id, n: 1 }],
+    ["klienci.zgloszenia.udostepnianie", "biuro_udostepnij", { zrodlo: "akta", id, udostepnij: true }],
+  ];
+  for (const [klucz, action, reszta] of mapa) {
+    const r = await b(os([klucz]), { action, ...reszta });
+    assertEquals([r.status, r.body.kod, r.body.klucz], [403, "wylaczone", klucz], action);
+    assertEquals((await b(os([klucz]), { action: "biuro_zgloszenia" })).status, 200, action + ": lista zostaje");
+    for (const [inny, a2, r2] of mapa) if (inny !== klucz) assert((await b(os([klucz]), { action: a2, ...r2 })).body.kod !== "wylaczone", klucz + " nie blokuje " + a2);
+  }
+  // the page, the module, a broken claim: every office action is refused
+  for (const wyl of [["klienci.zgloszenia"], ["klienci"], "blad"] as Staff["wyl"][]) {
+    for (const action of ["biuro_zgloszenia", "biuro_zgloszenie", "biuro_zalacznik", "biuro_udostepnij", "biuro_udostepnione", "biuro_ustawienia"]) {
+      const r = await b(os(wyl), { action, id });
+      assertEquals([r.status, r.body.kod], [403, "wylaczone"], action + " " + JSON.stringify(wyl));
+    }
+  }
+  // an administrator is not restricted
+  assertEquals((await b({ ...admin, wyl: ["klienci"] }, { action: "biuro_zgloszenia" })).status, 200);
+  const adm = await b({ ...admin, wyl: "blad" }, { action: "biuro_zgloszenie", id, status: "w_toku" });
+  assert(adm.status !== 403 && adm.body.kod !== "wylaczone");
+  // the client's own actions never look at any list
+  assertEquals((await A(e, { action: "zgloszenia", nip: NIP_A })).status, 200);
+});

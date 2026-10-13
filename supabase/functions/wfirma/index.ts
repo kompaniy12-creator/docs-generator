@@ -13,6 +13,8 @@
 //   the file-content transport for type=file is undocumented — confirm with wFirma
 //   support before implementing the upload action.
 
+import { mozna, odmowa, wylaczone, type Upr } from "../_shared/uprawnienia.ts";
+
 const WF_BASE = "https://api2.wfirma.pl";
 const ACCESS = Deno.env.get("WFIRMA_ACCESS_KEY") ?? "";
 const SECRET = Deno.env.get("WFIRMA_SECRET_KEY") ?? "";
@@ -36,7 +38,8 @@ function json(body: unknown, status: number, origin: string | null) {
 }
 
 // Verify the caller is an authenticated portal user.
-async function requirePortalUser(req: Request): Promise<{ ok: true } | { ok: false; status: number; msg: string }> {
+const KLUCZ = "kadry.komplet.wfirma"; // Uprawnienia szczegółowe: every action of this function
+async function requirePortalUser(req: Request): Promise<{ ok: true; upr: Upr } | { ok: false; status: number; msg: string }> {
   const auth = req.headers.get("Authorization") ?? "";
   const token = auth.replace(/^Bearer\s+/i, "").trim();
   if (!token) return { ok: false, status: 401, msg: "Brak tokenu autoryzacji." };
@@ -51,7 +54,7 @@ async function requirePortalUser(req: Request): Promise<{ ok: true } | { ok: fal
   const secs = user?.app_metadata?.portal_sections;
   const kadry = user?.app_metadata?.portal_admin === true || !Array.isArray(secs) || secs.includes("kadry");
   if (!kadry) return { ok: false, status: 403, msg: "Brak dostępu do sekcji Kadry." };
-  return { ok: true };
+  return { ok: true, upr: { admin: user.app_metadata.portal_admin === true, wyl: wylaczone(user.app_metadata) } };
 }
 
 // ids of wFirma records are numbers: nothing else may reach the path of a request
@@ -107,6 +110,7 @@ Deno.serve(async (req) => {
   // auth
   const auth = await requirePortalUser(req);
   if (!auth.ok) return json({ error: auth.msg }, auth.status, origin);
+  if (!mozna(auth.upr, KLUCZ)) return json(odmowa(KLUCZ), 403, origin);
 
   if (action === "ping") {
     return json({

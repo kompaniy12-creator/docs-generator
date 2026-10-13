@@ -10,7 +10,7 @@
 //   { action: "analizuj_imap", skrzynka, folder, uid }                 run the normal analysis for this one message
 //   { action: "dziennik" }                                             admin: the access log
 
-import { analizuj, type Ctx, type Deps, type ImapLike, MAX_RAW, type Me, PARTIAL, przyjmij, utworzZadanie } from "./core.ts";
+import { analizuj, type Ctx, type Deps, type ImapLike, MAX_RAW, type Me, mozeKlucz, PARTIAL, przyjmij, utworzZadanie } from "./core.ts";
 import { dataImap, folderPortalu, kandydaci, NAZWY, ostatnia, TYPY } from "./foldery.ts";
 import { bezCtl } from "./mime.ts";
 import { bezLinkow, dataOk, htmlToText, isSkrzynka, maskuj, parseMail, poczatekDnia, sha256hex, SKRZYNKI, type Skrzynka } from "./logic.ts";
@@ -30,7 +30,8 @@ export const MAX_ZALACZNIK = 20 * 1024 * 1024;  // decoded bytes of one download
 const MAX_TEKST = 600 * 1024, MAX_HTML = 1400 * 1024, MAX_CID = 500 * 1024, MAX_CID_RAZEM = 2 * 1024 * 1024, SKAN = 400, BUDZET_MS = 55000;
 const OBRAZY = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
-const moze = (me: Me, s: Skrzynka) => me.admin || me.sekcje === null || me.sekcje.includes(SKRZYNKI[s].sekcja);
+// the section of the mailbox, and the mailbox not switched off for this person (Uprawnienia szczegółowe)
+const moze = (me: Me, s: Skrzynka) => (me.admin || me.sekcje === null || me.sekcje.includes(SKRZYNKI[s].sekcja)) && mozeKlucz(me, "poczta." + s);
 const noselect = (f: Folder) => f.flagi.some((x) => /^\\(noselect|nonexistent)$/i.test(x));
 const PORZADEK = ["inbox", "sent", "drafts", "archive", "", "junk", "trash"];
 const b64 = (b: Uint8Array) => { let s = ""; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); };
