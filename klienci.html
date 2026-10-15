@@ -245,7 +245,7 @@
     <div class="hint" id="klSub"></div>
     <label for="kl_nazwa">Nazwa klienta</label><input type="text" id="kl_nazwa" maxlength="200" placeholder="np. Przykładowa Sp. z o.o." autocomplete="off" />
     <div class="two">
-      <div><label for="kl_nip">NIP</label><input type="text" id="kl_nip" maxlength="16" inputmode="numeric" placeholder="10 cyfr" autocomplete="off" /></div>
+      <div><label for="kl_nip">NIP</label><div style="display:flex;gap:6px"><input type="text" id="kl_nip" maxlength="16" inputmode="numeric" placeholder="10 cyfr" autocomplete="off" style="flex:1;min-width:0" /><button type="button" class="mini" id="klPobierz" title="Pobierz nazwę, formę i adres z KRS / CEIDG / wykazu VAT">Pobierz z rejestrów</button></div></div>
       <div><label for="kl_forma">Forma prawna</label><select id="kl_forma"></select></div>
     </div>
     <div class="hint" id="klNipHint" style="margin:6px 0 0"></div>
@@ -373,6 +373,6 @@
 </div>
 <script src="qr-svg.js?v=1"></script>
 <script src="telegram-grupa.js?v=2"></script>
-<script src="klienci.js?v=8"></script>
+<script src="klienci.js?v=9"></script>
 </body>
 </html>

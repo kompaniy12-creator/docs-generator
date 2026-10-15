@@ -636,6 +636,40 @@
     $('klNipHint').textContent = k && /^nazwa:/.test(k.id) ? 'Klient nie ma jeszcze NIP — po wpisaniu jego dokumenty i historia w tej bazie zostaną przepięte na NIP.' : '';
     $('klMsg').textContent = ''; $('kl').hidden = false; $('kl_nazwa').focus();
   }
+  // NIP -> name, legal form and address: KRS first (spółki; our cache first, rejestr.io only when not cached),
+  // then sole traders (CEIDG / GUS / MF VAT register). Fills the form; nothing is saved until "Dalej" and the confirmation.
+  function nipPoprawny(n) { if (!/^\d{10}$/.test(n)) return false; var w = [6, 5, 7, 2, 3, 4, 5, 6, 7], s = 0; for (var i = 0; i < 9; i++) s += w[i] * +n[i]; return s % 11 === +n[9]; }
+  function wybierzForme(nazwaFormy, jdg) {
+    var sel = $('kl_forma'), opt = [].slice.call(sel.options).map(function (o) { return o.value; }).filter(Boolean), f = (nazwaFormy || '').toLowerCase(), hit = '';
+    var wzory = jdg ? [/jdg|jednoosob|działalno/i] : /ograniczon|z o\.? ?o/.test(f) ? [/z o\.? ?o|ograniczon/i] : /akcyjn/.test(f) && /komandyt/.test(f) ? [/s\.?k\.?a|komandytowo-akcyjn/i] : /akcyjn/.test(f) ? [/s\.? ?a\b|akcyjn/i] : /komandyt/.test(f) ? [/sp\.? ?k\b|komandyt/i] : /jawn/.test(f) ? [/sp\.? ?j\b|jawn/i] : /partner/.test(f) ? [/partner/i] : /fundacj/.test(f) ? [/fundacj/i] : /stowarzysz/.test(f) ? [/stowarzysz/i] : [];
+    wzory.some(function (re) { return opt.some(function (o) { if (re.test(o)) { hit = o; return true; } return false; }); });
+    if (!hit && nazwaFormy) { var o = document.createElement('option'); o.value = o.textContent = jdg ? 'JDG' : nazwaFormy.toLowerCase(); sel.appendChild(o); hit = o.value; }
+    if (hit) sel.value = hit;
+  }
+  $('klPobierz').addEventListener('click', async function () {
+    var nip = $('kl_nip').value.replace(/\D/g, ''), btn = this, hint = $('klNipHint');
+    if (!nipPoprawny(nip)) { hint.textContent = 'Wpisz poprawny NIP (10 cyfr).'; return; }
+    btn.disabled = true; hint.textContent = 'Pobieram dane z rejestrów…';
+    var ust = function (id, v) { if (v) $(id).value = v; };
+    try {
+      var r = await fetch(FIRMA + '?nip=' + nip, { headers: { apikey: window.sb.supabaseKey || '', Authorization: 'Bearer ' + await token() } });
+      var f = await r.json().catch(function () { return {}; });
+      if (r.ok && f && f.found !== false && f.nazwa) {
+        ust('kl_nazwa', f.nazwa); wybierzForme(f.forma || 'spółka', false);
+        ust('kl_adres', f.ulica || ''); ust('kl_miasto', [f.kod, f.miasto].filter(Boolean).join(' '));
+        hint.textContent = 'Dane z KRS' + (f.krs ? ' (KRS ' + f.krs + ')' : '') + '. Sprawdź i uzupełnij resztę.';
+        return;
+      }
+      var g = await fetch(BASE + 'gus-company', { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: window.sb.supabaseKey || '' }, body: JSON.stringify({ nip: nip }) });
+      var d = await g.json().catch(function () { return {}; });
+      if (!g.ok || !d.nazwa) { hint.textContent = (d && d.error) || (f && f.error) || 'Nie znaleziono firmy o tym NIP w rejestrach — wpisz dane ręcznie.'; return; }
+      ust('kl_nazwa', d.nazwa); var spolka = /sp[óo]łk|s\.\s?a\.|fundacj|stowarzysz/i.test(d.nazwa); wybierzForme(spolka ? d.nazwa : '', !spolka);
+      ust('kl_adres', d.ulica || d.adres || ''); ust('kl_miasto', [d.kod, d.miasto].filter(Boolean).join(' '));
+      hint.textContent = 'Dane z ' + ({ ceidg: 'CEIDG', gus: 'rejestru REGON (GUS)', mf: 'wykazu podatników VAT (MF) — dane podstawowe' }[d.zrodlo] || 'rejestru') + '. Sprawdź i uzupełnij resztę.';
+    } catch (e) { hint.textContent = 'Nie udało się pobrać danych — spróbuj ponownie albo wpisz je ręcznie.'; }
+    finally { btn.disabled = false; }
+  });
+  $('kl_nip').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('klPobierz').click(); } });
   function zFormularza() { var d = {}; KL_POLA.forEach(function (x) { d[x] = $('kl_' + x).value.trim(); }); return d; }
   $('klCancel').addEventListener('click', function () { $('kl').hidden = true; });
   $('kl').addEventListener('click', function (e) { if (e.target === $('kl')) $('kl').hidden = true; });
