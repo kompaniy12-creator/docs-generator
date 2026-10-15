@@ -125,11 +125,11 @@
       { href: 'ksiegowosc.html', ico: '📒', text: 'Klienci i zamknięcia miesiąca', short: 'Zamknięcia', wide: true },
       { href: 'terminy-ksiegowe.html', ico: '📅', text: 'Kalendarz terminów', short: 'Kalendarz', wide: true },
       { href: 'narzedzia-ksiegowe.html', ico: '🧮', text: 'Narzędzia księgowe', short: 'Narzędzia' },
-      { href: 'onboarding.html', ico: '🚀', text: 'Onboarding klientów', short: 'Onboarding', wide: true },
-      { href: 'onboarding.html?p=/deadlines', ico: '⏰', text: 'Terminy klientów', short: 'Terminy', wide: true },
     ] },
     { label: 'Klienci', ico: '🗃️', items: [
       { href: 'klienci.html', ico: '🗃️', text: 'Baza klientów', short: 'Klienci', wide: true },
+      { href: 'onboarding.html', ico: '🚀', text: 'Onboarding klientów', short: 'Onboarding', wide: true, secAny: ['onboarding'] },
+      { href: 'onboarding.html?p=/deadlines', ico: '⏰', text: 'Terminy klientów', short: 'Terminy', wide: true, secAny: ['onboarding'] },
       { href: 'zgloszenia-klientow.html', ico: '📨', text: 'Zgłoszenia klientów', short: 'Zgłoszenia', wide: true, secAny: ['kadry', 'onboarding'] },
       { href: 'umowy.html', ico: '📑', text: 'Umowy z klientami — generator', short: 'Umowy', admin: true, wide: true },
       { href: 'sms.html', ico: '💬', text: 'SMS do klientów', short: 'SMS', wide: true, secAny: ['kadry', 'onboarding'] },

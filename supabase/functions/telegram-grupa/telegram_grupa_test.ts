@@ -73,7 +73,9 @@ Deno.test("plan: variants by taxation and language, people, blockers", () => {
 
   // missing data blocks the creation instead of posting holes
   const b = zbudujPlan(DOMYSLNY, dane({ rachunek_zus: null }, false));
-  assert(b.podglad.blokady.some((x) => x.includes("{{rachunek_zus}}")) && b.podglad.blokady.some((x) => x.includes("{{ksiegowa_imie}}")));
+  // no ZUS account yet: the ZUS part of the payment instruction is left out instead of blocking
+  assert(!b.podglad.blokady.some((x) => x.includes("{{rachunek_zus}}")) && b.podglad.blokady.some((x) => x.includes("{{ksiegowa_imie}}")));
+  assert(b.plan.tematy.filter((t) => t.klucz === "ksiegowosc").flatMap((t) => t.wiadomosci).every((w) => !w.html.includes("Оплата взносов ZUS") && !w.html.includes("{{")));
   assert(b.podglad.ostrzezenia.some((x) => x.includes("nie jest przypisany do nikogo")));
   // a client without HR: that part of the welcome is dropped, nothing blocks
   const bezKadr = zbudujPlan(DOMYSLNY, { ...dane({ kadrowy: null }), kadrowa: null });

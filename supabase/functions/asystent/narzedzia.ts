@@ -721,7 +721,7 @@ export const NARZEDZIA: Narzedzie[] = [
     },
   },
   {
-    name: "braki_onboardingu", klient: false, dostep: { sekcje: ["onboarding", "rejestracja"] }, klucz: ["ksiegowosc.onboarding"],
+    name: "braki_onboardingu", klient: false, dostep: { sekcje: ["onboarding", "rejestracja"] }, klucz: ["klienci.onboarding"],
     description: "Kompletność kartoteki klienta policzona z danych portalu: umowa z biurem, powierzenie przetwarzania, pełnomocnictwa (z audytu umów), grupa Telegram, dane rejestrowe, dane kontaktowe i język w bazie, opiekunowie, konto w profilu klienta, subskrypcja bota. Każda pozycja: jest / brak / uwaga.",
     input_schema: sch({ nip: NIP }),
     async run(a, ctx, s) {

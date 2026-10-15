@@ -72,13 +72,13 @@ test('strony: klucz z adresu, także z ?s= i ?p=', () => {
   assert.deepEqual(U.kluczeStrony('historia.html', '?x=1&s=spolka'), ['spolka.historia']);
   assert.deepEqual(U.kluczeStrony('historia.html', ''), ['kadry.historia', 'spolka.historia', 'legalizacja.historia']);
   assert.deepEqual(U.kluczeStrony('historia.html', '?s=wymyslona'), ['kadry.historia', 'spolka.historia', 'legalizacja.historia']);
-  assert.deepEqual(U.kluczeStrony('onboarding.html', '?p=/deadlines'), ['ksiegowosc.terminy_klientow']);
-  assert.deepEqual(U.kluczeStrony('onboarding.html', '?p=%2Fdeadlines%2F5'), ['ksiegowosc.terminy_klientow']);
-  assert.deepEqual(U.kluczeStrony('onboarding.html', '?p=/clients/7'), ['ksiegowosc.onboarding']);
-  assert.deepEqual(U.kluczeStrony('onboarding.html', ''), ['ksiegowosc.onboarding']);
+  assert.deepEqual(U.kluczeStrony('onboarding.html', '?p=/deadlines'), ['klienci.terminy_klientow']);
+  assert.deepEqual(U.kluczeStrony('onboarding.html', '?p=%2Fdeadlines%2F5'), ['klienci.terminy_klientow']);
+  assert.deepEqual(U.kluczeStrony('onboarding.html', '?p=/clients/7'), ['klienci.onboarding']);
+  assert.deepEqual(U.kluczeStrony('onboarding.html', ''), ['klienci.onboarding']);
   assert.deepEqual(U.kluczeStrony('index.html', '?brak=1'), []);
   assert.deepEqual(U.kluczeStrony('/sciezka/poczta.html', ''), ['poczta']);
-  const m = M({ portal_sections: ['kadry', 'onboarding'], portal_wylaczone: ['kadry.historia', 'ksiegowosc.terminy_klientow'] });
+  const m = M({ portal_sections: ['kadry', 'onboarding'], portal_wylaczone: ['kadry.historia', 'klienci.terminy_klientow'] });
   assert.equal(U.mozeStrone(m, 'historia.html?s=kadry'), false);
   assert.equal(U.mozeStrone(m, 'historia.html?s=spolka'), true);
   assert.equal(U.mozeStrone(m, 'historia.html'), false, 'bez ?s= strona pokazuje wszystkie moduły');

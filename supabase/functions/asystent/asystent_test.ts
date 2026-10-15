@@ -977,7 +977,7 @@ Deno.test("uprawnienia — narzędzia i magazyn: strona wyłączona osobie zabie
     ["automatyzacja", { dni: 7 }, kadry, ["kadry.kontrola", "kadry"], ["kadry.kontrola.przypomnienia", "kadry.rejestr"]],
     ["zamkniecie_miesiaca", { okres: "2026-09", nip: null, opiekun: null }, ksieg, ["ksiegowosc.zamkniecia", "ksiegowosc"], ["ksiegowosc.zamkniecia.edycja", "ksiegowosc.narzedzia"]],
     ["rachunki_do_wplat", { nip: A }, ksieg, ["ksiegowosc.zamkniecia"], ["ksiegowosc.kalendarz"]],
-    ["braki_onboardingu", { nip: A }, ksieg, ["ksiegowosc.onboarding", "ksiegowosc"], ["ksiegowosc.terminy_klientow"]],
+    ["braki_onboardingu", { nip: A }, ksieg, ["klienci.onboarding", "klienci"], ["klienci.terminy_klientow"]],
   ];
   for (const [n, arg, kto, zamyka, nie] of P) {
     const wzor = await uruchom(kto([]), n, arg);
@@ -1018,7 +1018,9 @@ Deno.test("uprawnienia — narzędzia i magazyn: strona wyłączona osobie zabie
     r = await uruchom(kadry(wyl), "klient_karta", { nip: A });
     assertFalse(r.blad); assertFalse(r.odczyty.includes("rejestr") || r.odczyty.includes("telegram"));
     assertFalse(r.tresc.includes("\"rejestr\"") || r.tresc.includes("\"telegram\"")); assertStringIncludes(r.tresc, "Baza klientów"); assertStringIncludes(r.tresc, "\"znaleziono\":true");
+    // onboarding now sits under "Klienci": switching the whole module off closes the checklist too
     r = await uruchom({ ...J_KSIEG, wyl }, "braki_onboardingu", { nip: A });
+    if (wyl[0] === "klienci") { assert(r.blad); continue; }
     assertFalse(r.blad); assertFalse(r.odczyty.includes("rejestr") || r.odczyty.includes("telegram")); assertStringIncludes(r.tresc, "nie sprawdzono");
   }
   r = await uruchom(kadry(["klienci.baza.kontakty"]), "klient_karta", { nip: A });

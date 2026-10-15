@@ -85,10 +85,10 @@
     ['ksiegowosc.narzedzia.biala_lista', 'Biała lista VAT', { e: 'F1' }],
     ['ksiegowosc.narzedzia.vies', 'VIES', { e: 'F1' }],
     ['ksiegowosc.narzedzia.rejestr', 'Rejestr sprawdzeń VAT', { e: 'R3' }],
-    ['ksiegowosc.onboarding', 'Onboarding klientów', { p: 'onboarding.html', e: 'G1' }],
-    ['ksiegowosc.terminy_klientow', 'Terminy klientów', { p: 'onboarding.html?p=/deadlines', e: 'G1' }],
 
     ['klienci', 'Klienci', {}],
+    ['klienci.onboarding', 'Onboarding klientów', { s: 'onboarding', p: 'onboarding.html', e: 'G1' }],
+    ['klienci.terminy_klientow', 'Terminy klientów', { s: 'onboarding', p: 'onboarding.html?p=/deadlines', e: 'G1' }],
     ['klienci.baza', 'Baza klientów', { p: 'klienci.html', e: 'G1 F1', c: 'Stronę i jej listę blokuje serwer; nazwy, NIP, adresy i opiekunowie firm pozostają dostępne w listach wyboru innych stron (Rejestr, Akta, Dokumenty, Import, Księgowość).' }],
     ['klienci.baza.kontakty', 'Dane kontaktowe klientów', { s: 'kadry', e: 'F1 F2', c: 'Telefon, e-mail, osoba kontaktowa i Telegram znikają z Bazy klientów, z list klientów i z SMS-ów (numery zamaskowane). Adres e-mail klienta nadal widać tam, gdzie się na niego wysyła: przypomnienia w Kontroli, wysyłka kompletu, zgłoszenia pracowników, poczta.' }],
     ['klienci.zgloszenia', 'Zgłoszenia klientów', { s: ['kadry', 'onboarding'], p: 'zgloszenia-klientow.html', e: 'G1 F1' }],
@@ -262,7 +262,7 @@
       // without ?s= the page lists every module's documents: it needs each of the three history keys
       return ['kadry', 'spolka', 'legalizacja'].indexOf(s) !== -1 ? [s + '.historia'] : ['kadry.historia', 'spolka.historia', 'legalizacja.historia'];
     }
-    if (plik === 'onboarding.html') return [parametr(search, 'p').indexOf('/deadlines') === 0 ? 'ksiegowosc.terminy_klientow' : 'ksiegowosc.onboarding'];
+    if (plik === 'onboarding.html') return [parametr(search, 'p').indexOf('/deadlines') === 0 ? 'klienci.terminy_klientow' : 'klienci.onboarding'];
     for (var i = 0; i < STRONY.length; i++) if (STRONY[i].plik === plik && !STRONY[i].query) return [STRONY[i].klucz];
     return [];
   }

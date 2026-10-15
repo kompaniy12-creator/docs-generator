@@ -67,14 +67,14 @@ export const PLATNOSCI_OGOLNE = "<strong>Инструкция по оплате 
   "\n" +
   "⸻\n" +
   "\n" +
-  "<strong>2. Оплата взносов ZUS</strong>\n" +
+  "{{#ma_zus}}<strong>2. Оплата взносов ZUS</strong>\n" +
   "Счёт для оплаты ZUS:\n" +
   "<strong>{{rachunek_zus}}</strong>\n" +
   "В названии платежа укажите:\n" +
   "Wplata ZUS - месяц и год\n" +
   "\n" +
   "⸻\n" +
-  "\n" +
+  "\n{{/ma_zus}}" +
   "Если нужна помощь - пишите, всё подскажем и проверим 🙂";
 
 export const PLATNOSCI_RYCZALT = "<strong>Инструкция по оплате налогов и ZUS</strong>\n" +
@@ -89,14 +89,14 @@ export const PLATNOSCI_RYCZALT = "<strong>Инструкция по оплате
   "\n" +
   "⸻\n" +
   "\n" +
-  "<strong>2. Оплата взносов ZUS</strong>\n" +
+  "{{#ma_zus}}<strong>2. Оплата взносов ZUS</strong>\n" +
   "Счёт для оплаты ZUS:\n" +
   "<strong>{{rachunek_zus}}</strong>\n" +
   "В названии платежа укажите:\n" +
   "Wplata ZUS - месяц и год\n" +
   "\n" +
   "⸻\n" +
-  "\n" +
+  "\n{{/ma_zus}}" +
   "Если нужна помощь - пишите, всё подскажем и проверим 🙂";
 
 export const PLATNOSCI_SKALA = "<strong>Инструкция по оплате налогов и ZUS</strong>\n" +
@@ -111,14 +111,14 @@ export const PLATNOSCI_SKALA = "<strong>Инструкция по оплате �
   "\n" +
   "⸻\n" +
   "\n" +
-  "<strong>2. Оплата взносов ZUS</strong>\n" +
+  "{{#ma_zus}}<strong>2. Оплата взносов ZUS</strong>\n" +
   "Счёт для оплаты ZUS:\n" +
   "<strong>{{rachunek_zus}}</strong>\n" +
   "В названии платежа укажите:\n" +
   "Wplata ZUS - месяц и год\n" +
   "\n" +
   "⸻\n" +
-  "\n" +
+  "\n{{/ma_zus}}" +
   "Если нужна помощь - пишите, всё подскажем и проверим 🙂";
 
 export const PLATNOSCI_CIT = "<strong>Инструкция по оплате налогов и ZUS</strong>\n" +
@@ -133,14 +133,14 @@ export const PLATNOSCI_CIT = "<strong>Инструкция по оплате н�
   "\n" +
   "⸻\n" +
   "\n" +
-  "<strong>2. Оплата взносов ZUS</strong>\n" +
+  "{{#ma_zus}}<strong>2. Оплата взносов ZUS</strong>\n" +
   "Счёт для оплаты ZUS:\n" +
   "<strong>{{rachunek_zus}}</strong>\n" +
   "В названии платежа укажите:\n" +
   "Wplata ZUS - месяц и год\n" +
   "\n" +
   "⸻\n" +
-  "\n" +
+  "\n{{/ma_zus}}" +
   "Если нужна помощь - пишите, всё подскажем и проверим 🙂";
 
 export const KADRY_RU = "<strong>Инструкция по трудоустройству новых сотрудников</strong>\n" +
