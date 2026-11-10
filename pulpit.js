@@ -69,6 +69,8 @@
     d_rej: { m: 'Spółka', t: 'pakietów rejestracji S24 w 30 dni', c: 'green', h: 'historia.html?s=spolka', v: function (d) { return docCount(d, 'rejestracja-s24'); } },
     a_bledy: { m: 'Automaty', t: 'automatów z błędem', c: 'red', h: 'kontrola.html#rem', v: function (d) { return d.automaty.filter(function (a) { return a.ok === false; }).length; } },
     a_przyp: { m: 'Automaty', t: 'przypomnień do klientów w 30 dni', c: 'green', h: 'kontrola.html#rem', v: function (d) { return d.powiadomienia_30dni.wyslane; } },
+    w_zap: { m: 'Strona', t: 'zapytań ze strony w 7 dni', c: 'green', h: 'pulpit.html', v: function (d) { return (d.strona || {}).zapytania_7dni || 0; } },
+    w_ods: { m: 'Strona', t: 'odsłon strony td-group.pl w 7 dni', c: 'green', h: 'pulpit.html', v: function (d) { return (d.strona || {}).odslony_7dni || 0; } },
     p_zasady: { m: 'Przepisy', t: 'zasad do sprawdzenia po zmianie prawa', c: 'amber', h: 'wiedza.html', v: function (d) { return d.prawo.zasady_do_sprawdzenia; } },
   };
 
@@ -146,6 +148,21 @@
     aktywnosc: { m: 'Ogólne', t: 'Ostatnia aktywność', link: null, hint: 'Co działo się w portalu w ostatnich 14 dniach, we wszystkich modułach.', r: function (d, n) {
       return d.aktywnosc.length ? d.aktywnosc.slice(0, n).map(function (a) { return line(esc(a.tekst) + '<br><small>' + when(a.at) + '</small>', '<span class="pill p-grey">' + esc(a.modul) + '</span>'); }).join('') : '<div class="empty">Brak aktywności.</div>';
     } },
+    strona_zapytania: { m: 'Strona', t: 'Zapytania ze strony td-group.pl', link: null, hint: 'Formularz kontaktowy i kalkulator ceny, ostatnie 30 dni. Kliknij adres, żeby odpowiedzieć.', r: function (d, n) {
+      var l = (d.strona || {}).zapytania || [];
+      return l.length ? l.slice(0, n).map(function (z) {
+        var tresc = [z.wiadomosc, z.wycena].filter(Boolean).join(' · ');
+        return line('<b>' + esc(z.imie) + '</b>' + (z.firma ? ' — ' + esc(z.firma) : '') + '<br><small>' + when(z.utworzono) + ' · <a href="mailto:' + esc(z.email) + '">' + esc(z.email) + '</a>' + (z.telefon ? ' · ' + esc(z.telefon) : '') + '</small>' +
+          (tresc ? '<br><small>' + esc(tresc.length > 220 ? tresc.slice(0, 220) + '…' : tresc) + '</small>' : ''),
+          z.mail_ok === false ? '<span class="pill p-amber" title="Zapytanie jest zapisane tutaj, ale e-mail do biura nie wyszedł.">bez e-maila</span>' : '');
+      }).join('') : '<div class="empty">Brak zapytań w ostatnich 30 dniach.</div>';
+    } },
+    strona_ruch: { m: 'Strona', t: 'Odsłony strony td-group.pl (30 dni)', link: null, hint: 'Liczba otwartych podstron dzień po dniu, najczęściej czytane i skąd przychodzą odwiedzający. Licznik nie zapisuje nic o osobach.', r: function (d, n) {
+      var w = d.strona || {}, dni = w.odslony_dni || [], max = Math.max.apply(null, dni.map(function (x) { return x.n; }).concat([1]));
+      return '<div class="spark">' + dni.map(function (x) { return '<i class="' + (x.n ? '' : 'z') + '" style="height:' + Math.max(3, Math.round(x.n / max * 100)) + '%" title="' + pl(x.d) + ': ' + x.n + '"></i>'; }).join('') + '</div>' +
+        line('Razem w 30 dni', '<b>' + (w.odslony_30dni || 0) + '</b>') + line('W 7 dni', '<b>' + (w.odslony_7dni || 0) + '</b>') +
+        bars((w.strony || []).slice(0, n)) + (w.zrodla && w.zrodla.length ? '<p class="hint">Skąd przychodzą</p>' + bars(w.zrodla.slice(0, n)) : '');
+    } },
     prawo: { m: 'Przepisy', t: 'Przepisy', link: ['wiedza.html', 'baza wiedzy'], hint: 'Czy zmieniły się ustawy, na których opiera się portal.', r: function (d) {
       var p = d.prawo;
       return line('Obserwowane akty prawne', '<b>' + p.akty + '</b>') + line('Zasady do sprawdzenia', '<span class="pill ' + (p.zasady_do_sprawdzenia ? 'p-amber' : 'p-ok') + '">' + p.zasady_do_sprawdzenia + '</span>') +
@@ -155,12 +172,14 @@
 
   var DEFAULT = {
     tiles: ['k_nowe', 'z_po', 'k_dokpo', 'o_po', 'k_term30', 'z_otw', 'k_prac', 'c_firmy', 'm_prop', 'pd_wer'],
-    widgets: [['decyzje', 1, 6], ['zespol', 1, 6], ['terminy', 1, 6], ['zgloszenia', 1, 6], ['onboarding', 1, 8], ['klienci_stan', 1, 8], ['nowe_moduly', 1, 8], ['opiekunowie', 1, 6], ['automaty', 1, 6], ['aktywnosc', 1, 8]],
+    widgets: [['decyzje', 1, 6], ['zespol', 1, 6], ['terminy', 1, 6], ['zgloszenia', 1, 6], ['onboarding', 1, 8], ['klienci_stan', 1, 8], ['nowe_moduly', 1, 8], ['opiekunowie', 1, 6], ['strona_zapytania', 1, 6], ['strona_ruch', 1, 6], ['automaty', 1, 6], ['aktywnosc', 1, 8]],
     refresh: 0, dense: false,
   };
   function load() {
     var s; try { s = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { s = null; }
     s = s && Array.isArray(s.tiles) && Array.isArray(s.widgets) ? s : JSON.parse(JSON.stringify(DEFAULT));
+    // panels added to the portal later appear once in a layout saved before them
+    if (!s.strona) { s.strona = 1; ['strona_zapytania', 'strona_ruch'].forEach(function (id) { if (!s.widgets.some(function (w) { return w[0] === id; })) s.widgets.push([id, 1, 6]); }); }
     s.tiles = s.tiles.filter(function (id) { return TILES[id]; });
     s.widgets = s.widgets.filter(function (w) { return WIDGETS[w[0]]; });
     return s;

@@ -99,6 +99,8 @@ function czytaj(t: Stoper) {
     t.m("smsUst", soft("portal_ustawienia?select=value&key=eq.sms")),
     t.m("prac", soft("portal_pracownicy?select=email,aktywny,telegram_chat")),
     t.m("konta_portalu", portalEmails()),
+    t.m("wizyty", soft(`strona_wizyty?select=dzien,sciezka,zrodlo,licznik&dzien=gte.${ago(30).slice(0, 10)}`)),
+    t.m("zapytania", soft(`strona_zgloszenia?select=utworzono,imie,email,telefon,firma,wiadomosc,wycena,jezyk,mail_ok&utworzono=gte.${ago(30)}&order=utworzono.desc`)),
   ]);
 }
 
@@ -116,7 +118,7 @@ async function obsluz(req: Request, t: Stoper): Promise<Response> {
   if (!(await t.m("auth", isAdmin(req)))) return json({ error: "Tylko administrator." }, 403, origin);
   try {
     const dzis = today();
-    const [rows, zadania, onb, klienci, konta, klog, joby, powiad, wiedza, akty, faktury, hist, baza, umowy, tgWyniki, podpisy, pakiety, poczta, sms, smsUst, prac, konta_portalu] = await czytaj(t);
+    const [rows, zadania, onb, klienci, konta, klog, joby, powiad, wiedza, akty, faktury, hist, baza, umowy, tgWyniki, podpisy, pakiety, poczta, sms, smsUst, prac, konta_portalu, wizyty, zapytania] = await czytaj(t);
 
     // ---- Kadry
     const st: Record<string, number> = {};
@@ -219,6 +221,20 @@ async function obsluz(req: Request, t: Stoper): Promise<Response> {
     for (const h of hist) if (Date.parse(h.created_at) > Date.now() - 14 * 86400000) akt.push({ at: h.created_at, modul: "Dokumenty", tekst: `${h.title ?? h.doc_type}${h.subject ? " — " + h.subject : ""} (${String(h.user_email ?? "").split("@")[0]})` });
     akt.sort((a, b) => b.at.localeCompare(a.at));
 
+    // ---- Strona td-group.pl: page views (numbers only) and contact-form submissions
+    const odDnia = new Map<string, number>(), odStrony = new Map<string, number>(), odZrodla = new Map<string, number>();
+    const tydzien = ago(7).slice(0, 10);
+    let odslony7 = 0;
+    for (const w of wizyty) {
+      odDnia.set(w.dzien, (odDnia.get(w.dzien) ?? 0) + w.licznik);
+      odStrony.set(w.sciezka, (odStrony.get(w.sciezka) ?? 0) + w.licznik);
+      // "strona" is a click from one page of the site to another: not a source of visitors
+      if (w.zrodlo !== "strona") odZrodla.set(w.zrodlo, (odZrodla.get(w.zrodlo) ?? 0) + w.licznik);
+      if (w.dzien > tydzien) odslony7 += w.licznik;
+    }
+    const odslonyDni: { d: string; n: number }[] = [];
+    for (let i = 29; i >= 0; i--) { const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10); odslonyDni.push({ d, n: odDnia.get(d) ?? 0 }); }
+
     const docs = new Map<string, number>();
     for (const h of hist) docs.set(h.doc_type, (docs.get(h.doc_type) ?? 0) + 1);
 
@@ -262,6 +278,12 @@ async function obsluz(req: Request, t: Stoper): Promise<Response> {
       prawo: { zasady_do_sprawdzenia: wiedza.filter((w) => w.do_sprawdzenia).length, zmienione_akty: akty.filter((a) => a.zmiana_wykryta).map((a) => a.skrot), akty: akty.length },
       faktury: { ostatnia_synchronizacja: faktury[0]?.synced_at ?? null },
       dokumenty_30dni: top(docs, 12),
+      strona: {
+        odslony_7dni: odslony7, odslony_30dni: wizyty.reduce((a, w) => a + w.licznik, 0), odslony_dni: odslonyDni,
+        strony: top(odStrony, 12), zrodla: top(odZrodla, 8),
+        zapytania_7dni: zapytania.filter((z) => Date.parse(z.utworzono) > Date.now() - 7 * 86400000).length, zapytania_30dni: zapytania.length,
+        zapytania: zapytania.slice(0, 20),
+      },
       aktywnosc: akt.slice(0, 40),
     }, 200, origin);
   } catch (e) {
