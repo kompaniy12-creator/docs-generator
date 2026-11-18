@@ -7,9 +7,10 @@ import { BladJdg, doZapisu, type Jdg, pobierzJdg, zrodlaJdg } from "../_shared/j
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const CACHE_DNI = 30;        // a firm found is asked again after this many days
-const CACHE_BRAK_DNI = 2;    // "no such firm" is remembered shorter
-const CACHE_MF_DNI = 7;      // MF's basic record; once CEIDG / GUS is connected it is replaced after a day
+// A firm once found is never asked for again by itself: the providers' requests are counted (and paid), so
+// the first lookup is the only one and every later one is served from our own base. Only an explicit
+// refresh (`swieze`) asks the sources again.
+const CACHE_BRAK_DNI = 2;    // "no such firm" is remembered for this long (a firm may be registered later)
 const MF_KLUCZ = "mf-search"; // MF allows 100 "search" requests a day: the counter shared with the clients base
 const MF_DZIENNIE = 80;       // ... of which single lookups take at most this many (the bulk refresh stops at 60)
 export const MAX_GUS_DZIEN = 300;     // requests to the provider a day, everybody together
@@ -68,14 +69,28 @@ export async function jdgFirma(nip: string, ip: string | null, swieze = false): 
     const c = await db(`portal_gus_cache?nip=eq.${nip}&select=znaleziono,dane,fetched_at`);
     const row = c.ok ? (await c.json())[0] : null;
     const wiek = row ? Date.now() - Date.parse(row.fetched_at) : Infinity;
-    const mf = row?.dane?.zrodlo === "mf";
-    const waznosc = (mf ? (zr.ceidg || zr.gus ? 1 : CACHE_MF_DNI) : row?.znaleziono ? CACHE_DNI : CACHE_BRAK_DNI) * 86400000;
-    if (row && !swieze && wiek < waznosc) {
-      if (!row.znaleziono) return { stan: "brak", powod: tekst(row.dane?.powod, 120) || "brak w rejestrze REGON" };
+    // "not found" by MF alone only means "not a VAT payer": once a fuller source is connected it is asked after a day
+    const waznoscBraku = (row?.dane?.zrodlo === "mf" && (zr.ceidg || zr.gus) ? 1 : CACHE_BRAK_DNI) * 86400000;
+    if (row && !swieze) {
       // rows written before the sources were joined hold { nazwa, regon, adres } only
-      return { stan: "ok", dane: { ...PUSTY, ...row.dane, nip, zrodlo: row.dane?.zrodlo ?? "gus", znaleziono: true }, pobrano: row.fetched_at, z_pamieci: true };
+      if (row.znaleziono) return { stan: "ok", dane: { ...PUSTY, ...row.dane, nip, zrodlo: row.dane?.zrodlo ?? "gus", znaleziono: true }, pobrano: row.fetched_at, z_pamieci: true };
+      if (wiek < waznoscBraku) return { stan: "brak", powod: tekst(row.dane?.powod, 120) || "brak w rejestrze REGON" };
     }
   } catch (_e) { /* no cache: ask the sources within the caps */ }
+  // what the clients base already read from the registers for this NIP (its own snapshots) — no new request
+  if (!swieze) {
+    try {
+      const r = await db(`klienci_rejestr?nip=eq.${nip}&znaleziono=is.true&zrodlo=in.(ceidg,gus,mf)&select=dane,sprawdzono_at,fetched_at&order=fetched_at.desc&limit=1`);
+      const m = r.ok ? (await r.json())[0] : null;
+      if (m?.dane && typeof m.dane === "object" && tekst(m.dane.nazwa, 300)) {
+        const { proby: _p, ...zapis } = m.dane;
+        const dane = { ...PUSTY, ...zapis, nip, zrodlo: ["ceidg", "gus", "mf"].includes(zapis.zrodlo) ? zapis.zrodlo : "gus", znaleziono: true };
+        const pobrano = m.sprawdzono_at ?? m.fetched_at ?? new Date().toISOString();
+        await db("portal_gus_cache", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ nip, znaleziono: true, dane, fetched_at: pobrano }) }).then((x) => x.body?.cancel()).catch(() => {});
+        return { stan: "ok", dane, pobrano, z_pamieci: true };
+      }
+    } catch (_e) { /* the snapshots are a shortcut only */ }
+  }
   if (ip && !(await limit("gus-ip:" + ip, MAX_GUS_IP_DZIEN))) return { stan: "limit" };
   if (!(await limit("gus", MAX_GUS_DZIEN))) return { stan: "limit" };
   let j: Jdg;

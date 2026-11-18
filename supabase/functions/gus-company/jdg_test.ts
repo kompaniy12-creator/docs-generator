@@ -172,7 +172,7 @@ Deno.test("dzisPl i parseAdres (adres z przecinkiem przed kodem)", () => {
 
 // ---------------------------------------------------------------- dane.ts: cache and caps around the chain
 Deno.test("jdgFirma / gusFirma: pamięć odpowiedzi, limity, MF po odmowie GUS, stary wiersz pamięci", async () => {
-  const cache: Record<string, Any> = {}, limity: Record<string, number> = {};
+  const cache: Record<string, Any> = {}, limity: Record<string, number> = {}, migawki: Record<string, Any> = {};
   let mf = 0, gus = 0;
   const orig = globalThis.fetch;
   Deno.env.set("DATAPORT_API_KEY", KLUCZ);
@@ -180,6 +180,7 @@ Deno.test("jdgFirma / gusFirma: pamięć odpowiedzi, limity, MF po odmowie GUS, 
     const url = String(u);
     if (url.startsWith("http://db.test/rest/v1/portal_gus_cache?nip=eq.")) { const r = cache[url.split("eq.")[1].slice(0, 10)]; return Promise.resolve(J(r ? [r] : [])); }
     if (url === "http://db.test/rest/v1/portal_gus_cache") { const b = JSON.parse(init.body); cache[b.nip] = b; return Promise.resolve(new Response(null, { status: 201 })); }
+    if (url.startsWith("http://db.test/rest/v1/klienci_rejestr?nip=eq.")) { const m = migawki[url.split("eq.")[1].slice(0, 10)]; return Promise.resolve(J(m ? [m] : [])); }
     if (url === "http://db.test/rest/v1/rpc/klienci_limit") { const b = JSON.parse(init.body), n = (limity[b.p_klucz] ?? 0) + 1; if (n > b.p_max) return Promise.resolve(J(false)); limity[b.p_klucz] = n; return Promise.resolve(J(true)); }
     if (url.startsWith("https://dataport.pl/")) { gus++; return Promise.resolve(J({ success: false, message: "Klucz API jest nieaktywny" })); }
     if (url.startsWith("https://wl-api.mf.gov.pl/")) { mf++; return Promise.resolve(J(MF_OK)); }
@@ -190,13 +191,22 @@ Deno.test("jdgFirma / gusFirma: pamięć odpowiedzi, limity, MF po odmowie GUS, 
     assertEquals(w.stan, "ok"); assertEquals(w.stan === "ok" && [w.dane.nazwa, w.dane.regon, w.dane.adres, w.zrodlo], ["JAN PRZYKŁADOWY", "999000013", "PRZYKŁADOWA 1/2, 00-000 WARSZAWA", "mf"]);
     assertEquals([gus, mf, limity["mf-search"], limity["gus-ip:ip1"]], [1, 1, 1, 1]);
     assert(!/pesel|0099990000|proby/i.test(JSON.stringify(cache))); assertEquals(cache[N].dane.zrodlo, "mf");
-    // a fuller source is configured: MF's record is good for a day, then the sources are asked again
+    // a firm once found is served from our base whatever its age: the first lookup is the only request
     await jdgFirma(N, null); assertEquals([gus, mf], [1, 1]);
-    cache[N].fetched_at = new Date(Date.now() - 2 * 86400000).toISOString();
-    const drugi = await jdgFirma(N, null); assertEquals([gus, mf, drugi.stan === "ok" && drugi.z_pamieci], [2, 2, false]);
-    // MF's share of the day used up, GUS refusing: "limit", nothing is cached as missing
-    limity["mf-search"] = 80; cache[N].fetched_at = new Date(Date.now() - 2 * 86400000).toISOString();
-    assertEquals((await jdgFirma(N, null)).stan, "limit"); assertEquals(mf, 2); assertEquals(cache[N].znaleziono, true);
+    cache[N].fetched_at = new Date(Date.now() - 400 * 86400000).toISOString();
+    const drugi = await jdgFirma(N, null); assertEquals([gus, mf, drugi.stan === "ok" && drugi.z_pamieci], [1, 1, true]);
+    // only an explicit refresh asks the sources again
+    const swiezy = await jdgFirma(N, null, true); assertEquals([gus, mf, swiezy.stan === "ok" && swiezy.z_pamieci], [2, 2, false]);
+    // MF's share of the day used up, GUS refusing, a refresh asked for: "limit", the record held stays
+    limity["mf-search"] = 80;
+    assertEquals((await jdgFirma(N, null, true)).stan, "limit"); assertEquals(mf, 2); assertEquals(cache[N].znaleziono, true);
+    assertEquals((await jdgFirma(N, null)).stan, "ok");
+    // what the clients base has already read from a register is taken from there: no request, and remembered
+    const N3 = nip("999000035");
+    migawki[N3] = { dane: { nazwa: "USŁUGI WZORCOWE ANNA PRÓBNA", regon: "999000035", adres: "Testowa 3, 00-002 Warszawa", zrodlo: "gus", proby: [{ zrodlo: "gus", wynik: "ok" }] }, sprawdzono_at: "2026-10-01T10:00:00.000Z", fetched_at: "2026-10-01T10:00:00.000Z" };
+    const zBazy = await jdgFirma(N3, "ip1");
+    assertEquals([gus, mf, zBazy.stan === "ok" && zBazy.z_pamieci, zBazy.stan === "ok" && zBazy.dane.nazwa, zBazy.stan === "ok" && zBazy.pobrano], [3, 2, true, "USŁUGI WZORCOWE ANNA PRÓBNA", "2026-10-01T10:00:00.000Z"]);
+    assert(cache[N3]?.znaleziono === true && !("proby" in cache[N3].dane));
     // a row written before the sources were joined: { nazwa, regon, adres } only
     const N2 = nip("999000024");
     cache[N2] = { nip: N2, znaleziono: true, dane: { nazwa: "HANDEL PRZYKŁADOWY EWA TESTOWA", regon: "999000024", adres: "ul. Wzorcowa 2 00-001 Warszawa" }, fetched_at: new Date().toISOString() };
