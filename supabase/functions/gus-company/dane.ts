@@ -86,6 +86,9 @@ export async function jdgFirma(nip: string, ip: string | null, swieze = false): 
     console.error("gus:", b ? b.proby.map((x) => x.zrodlo + " " + x.wynik.slice(0, 80)).join("; ") : "błąd");
     return { stan: b?.limit ? "limit" : "niedostepne" };
   }
+  // a fuller source that failed while a poorer one answered would otherwise fail unseen
+  const zle = j.proby.filter((x) => x.wynik.startsWith("błąd"));
+  if (zle.length) console.error("gus:", zle.map((x) => x.zrodlo + " " + x.wynik.slice(0, 80)).join("; "));
   const teraz = new Date().toISOString();
   const zapisz = (znaleziono: boolean, dane: Any) => db("portal_gus_cache", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify({ nip, znaleziono, dane, fetched_at: teraz }) }).then((r) => r.body?.cancel()).catch(() => {});
   if (!j.znaleziono) { await zapisz(false, { zrodlo: j.zrodlo, powod: j.powod ?? "" }); return { stan: "brak", powod: j.powod ?? "" }; }
