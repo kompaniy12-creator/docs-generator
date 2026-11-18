@@ -18,8 +18,8 @@
   // ---------------- Documents (categorised, required validation) ----------------
   var DOC_CATS = [
     { key: 'tozsamosc', label: 'Paszport', hint: 'paszport (strona ze zdjęciem) / dowód osobisty', required: true, ai: true },
-    { key: 'pobyt', label: 'Dokumenty legalizujące pobyt', hint: 'decyzja / karta pobytu / wiza', required: false, ai: true },
-    { key: 'praca', label: 'Dokumenty legalizujące pracę', hint: 'powiadomienie / zezwolenie na pracę / oświadczenie o powierzeniu pracy', required: false, ai: true },
+    { key: 'pobyt', label: 'Dokumenty legalizujące pobyt', hint: 'decyzja / karta pobytu / wiza', required: true, ai: true },
+    { key: 'praca', label: 'Dokumenty legalizujące pracę', hint: 'powiadomienie / zezwolenie na pracę / oświadczenie o powierzeniu pracy', required: true, zamow: true, ai: true },
     { key: 'student', label: 'Dla studenta — zaświadczenie / legitymacja', hint: 'jeżeli posiada', required: false, typ: 'zlecenie' },
     { key: 'bhp', label: 'Szkolenie wstępne BHP', hint: 'karta szkolenia wstępnego BHP', required: false },
     { key: 'badania', label: 'Skierowanie i orzeczenie lekarskie', hint: 'skierowanie na badanie + orzeczenie lekarskie', required: false },
@@ -28,6 +28,19 @@
     { key: 'konto', label: 'Potwierdzenie nr konta', hint: 'opcjonalnie', required: false },
     { key: 'inne', label: 'Inne załączniki', hint: 'opcjonalnie', required: false },
   ];
+  // What the office can prepare instead of the client attaching the document (price list of the office, PLN).
+  var ZAMOW = [
+    { k: 'powiadomienie', nazwa: 'Powiadomienie o powierzeniu pracy obywatelowi Ukrainy', cena: 100 },
+    { k: 'oswiadczenie', nazwa: 'Oświadczenie o powierzeniu pracy (Białoruś, Mołdawia, Armenia, Ukraina)', cena: 150 },
+    { k: 'zezwolenie_a', nazwa: 'Zezwolenie na pracę typ A (pozostałe kraje)', cena: 250 },
+  ];
+  // the chosen order of a category, or null: { k, nazwa, cena }
+  function zamowienie(catKey) {
+    var el = catEls[catKey], box = el && el.querySelector('.doc-zamow input[type=checkbox]');
+    if (!box || !box.checked) return null;
+    var r = el.querySelector('.doc-zamow input[type=radio]:checked');
+    return r ? ZAMOW.filter(function (z) { return z.k === r.value; })[0] : null;
+  }
   var docFiles = {}; // key -> [{file, url}]
   var catEls = {};
   DOC_CATS.forEach(function (c) { docFiles[c.key] = []; });
@@ -47,8 +60,25 @@
       '</div>' +
       '<input type="file" accept="image/*,application/pdf" multiple hidden />' +
       '<button type="button" class="doc-add">+ Dodaj plik</button>' +
-      '<ul class="files"></ul>';
+      '<ul class="files"></ul>' +
+      (c.zamow ? '<div class="doc-zamow"><label class="doc-zamow-main"><input type="checkbox" /> <span>Nie mam tego dokumentu — zamawiam przygotowanie w biurze</span></label>' +
+        '<div class="doc-zamow-opts" hidden>' + ZAMOW.map(function (z) {
+          return '<label><input type="radio" value="' + z.k + '" /> <span>' + z.nazwa + '</span> <b>' + z.cena + ' zł</b></label>';
+        }).join('') + '</div></div>' : '');
     var input = el.querySelector('input');
+    if (c.zamow) {
+      var zBox = el.querySelector('.doc-zamow-main input'), zOpts = el.querySelector('.doc-zamow-opts');
+      // radios without a name stay out of the form data; keep them exclusive by hand
+      zOpts.addEventListener('change', function (ev) {
+        zOpts.querySelectorAll('input').forEach(function (r) { if (r !== ev.target) r.checked = false; });
+        el.classList.remove('missing');
+      });
+      zBox.addEventListener('change', function () {
+        zOpts.hidden = !zBox.checked;
+        if (!zBox.checked) zOpts.querySelectorAll('input').forEach(function (r) { r.checked = false; });
+        el.classList.remove('missing');
+      });
+    }
     el.querySelector('.doc-add').addEventListener('click', function () { input.click(); });
     input.addEventListener('change', function () { addFiles(c.key, input.files); input.value = ''; });
     ['dragenter', 'dragover'].forEach(function (e) { el.addEventListener(e, function (ev) { ev.preventDefault(); el.classList.add('drag'); }); });
@@ -111,7 +141,8 @@
   function missingRequiredDocs() {
     var miss = [];
     DOC_CATS.forEach(function (c) {
-      if (c.required && docFiles[c.key].length === 0) { catEls[c.key].classList.add('missing'); miss.push(c); }
+      // a category the office can prepare counts as covered once the order is chosen
+      if (c.required && docFiles[c.key].length === 0 && !(c.zamow && zamowienie(c.key))) { catEls[c.key].classList.add('missing'); miss.push(c); }
     });
     return miss;
   }
@@ -620,6 +651,7 @@
     fd.forEach(function (v, k) { data[k] = typeof v === 'string' ? v.trim() : v; });
     ['p_nopesel', 'm_same', 'r_has', 'p_gotowka', 'u_godziny_zmienne', 'u_bezterminowo', 'u_minimalna'].forEach(function (k) { data[k] = $(k).checked; });
     data.r_dodatkowi = data.r_has ? extraRodzina() : [];
+    data.zamow_praca = zamowienie('praca');
     var td = telDigits(data.p_telefon); // same format whether or not the field was left with a blur
     if (td) data.p_telefon = '+48 ' + td.slice(0, 3) + ' ' + td.slice(3, 6) + ' ' + td.slice(6);
     // fields hidden for the chosen contract type are disabled and absent above
