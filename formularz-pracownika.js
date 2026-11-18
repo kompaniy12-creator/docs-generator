@@ -30,9 +30,9 @@
   ];
   // What the office can prepare instead of the client attaching the document (price list of the office, PLN).
   var ZAMOW = [
-    { k: 'powiadomienie', nazwa: 'Powiadomienie o powierzeniu pracy obywatelowi Ukrainy', cena: 100 },
-    { k: 'oswiadczenie', nazwa: 'Oświadczenie o powierzeniu pracy (Białoruś, Mołdawia, Armenia, Ukraina)', cena: 150 },
-    { k: 'zezwolenie_a', nazwa: 'Zezwolenie na pracę typ A (pozostałe kraje)', cena: 250 },
+    { k: 'powiadomienie', nazwa: 'Powiadomienie o powierzeniu pracy obywatelowi Ukrainy', cena: 100, urzad: 0 },
+    { k: 'oswiadczenie', nazwa: 'Oświadczenie o powierzeniu pracy (Białoruś, Mołdawia, Armenia, Ukraina)', cena: 150, urzad: 400 },
+    { k: 'zezwolenie_a', nazwa: 'Zezwolenie na pracę typ A (pozostałe kraje)', cena: 250, urzad: 400 },
   ];
   // the chosen order of a category, or null: { k, nazwa, cena }
   function zamowienie(catKey) {
@@ -63,8 +63,9 @@
       '<ul class="files"></ul>' +
       (c.zamow ? '<div class="doc-zamow"><label class="doc-zamow-main"><input type="checkbox" /> <span>Nie mam tego dokumentu — zamawiam przygotowanie w biurze</span></label>' +
         '<div class="doc-zamow-opts" hidden>' + ZAMOW.map(function (z) {
-          return '<label><input type="radio" value="' + z.k + '" /> <span>' + z.nazwa + '</span> <b>' + z.cena + ' zł</b></label>';
-        }).join('') + '</div></div>' : '');
+          return '<label><input type="radio" value="' + z.k + '" /> <span>' + z.nazwa +
+            '<small>opłata urzędowa: ' + (z.urzad ? z.urzad + ' zł' : 'bezpłatnie') + '</small></span> <b>' + z.cena + ' zł</b></label>';
+        }).join('') + '<p class="doc-zamow-note">Cena obejmuje przygotowanie dokumentu przez biuro. Opłatę urzędową firma płaci osobno, ze swojego rachunku.</p></div></div>' : '');
     var input = el.querySelector('input');
     if (c.zamow) {
       var zBox = el.querySelector('.doc-zamow-main input'), zOpts = el.querySelector('.doc-zamow-opts');

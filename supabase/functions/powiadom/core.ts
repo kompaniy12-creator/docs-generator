@@ -1,5 +1,5 @@
 // powiadom: the handler (index.ts only serves it, so that tests can call it with a mocked fetch).
-import { bezTokenu, tekstNowe } from "./logic.ts";
+import { bezTokenu, tekstNowe, zadanieZamowienia } from "./logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -48,6 +48,34 @@ async function tg(method: string, body?: unknown): Promise<any> {
     console.error("telegram", method, "błąd sieci:", bezTokenu(e instanceof Error ? e.name : "error", TG));
     return { ok: false, description: "błąd sieci" };
   }
+}
+// The task about a document ordered in the form goes to the HR officer of that client, else to the
+// default HR person, else to the one named in the settings of tasks. Once per submission (unique key).
+// deno-lint-ignore no-explicit-any
+async function zadanieZamowione(id: string, p: any) {
+  const spec = zadanieZamowienia(p, id);
+  if (!spec) return;
+  const { nip, ...zadanie } = spec;
+  const rpc = async (fn: string, args: unknown) => {
+    const r = await db(`rpc/${fn}`, { method: "POST", body: JSON.stringify(args) });
+    const v = r.ok ? await r.json().catch(() => null) : null;
+    return typeof v === "string" && v.includes("@") ? v.toLowerCase() : "";
+  };
+  let assignee = "";
+  if (nip.length === 10) {
+    const k = await db(`klienci_baza?nip=eq.${nip}&select=kadrowy&limit=1`);
+    const alias = String((k.ok ? (await k.json().catch(() => []))[0]?.kadrowy : "") ?? "").trim();
+    if (alias) assignee = await rpc("portal_pracownik_po_aliasie", { p_alias: alias });
+  }
+  if (!assignee) assignee = await rpc("portal_pracownik_domyslny", { p_dzial: "kadry" });
+  if (!assignee) {
+    const u = await db("portal_ustawienia?key=eq.zadania&select=value");
+    const v = String((u.ok ? (await u.json().catch(() => []))[0]?.value?.kadry : "") ?? "").toLowerCase();
+    if (v.includes("@")) assignee = v;
+  }
+  if (!assignee) { console.error("zadanie zamowienia: brak osoby z kadr", id); return; }
+  const r = await db("portal_zadania?on_conflict=klucz", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates" }, body: JSON.stringify({ ...zadanie, assignee }) });
+  if (!r.ok) console.error("zadanie zamowienia", id, r.status);
 }
 type Chat = { id: string; name: string };
 async function savedChats(): Promise<Chat[]> {
@@ -104,6 +132,8 @@ export async function handle(req: Request): Promise<Response> {
         return json({ ok: false }, 200, origin);
       }
       if (!(await mark(new Date().toISOString()))) return json({ ok: false }, 200, origin);
+      // an ordered document becomes a task for the HR officer at once (never blocks the message)
+      try { await zadanieZamowione(id, p); } catch (e) { console.error("zadanie zamowienia", bezTokenu(e instanceof Error ? e.message : "error", TG)); }
       // the submission comes from a public form: its free text is cleaned (no links, mentions, markup; short)
       await send(chats, tekstNowe(p, PORTAL));
       return json({ ok: true }, 200, origin);

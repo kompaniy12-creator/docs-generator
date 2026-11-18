@@ -71,7 +71,7 @@
     if (p.u_minimalna === true) html += '<div class="grid"><div><b>Wynagrodzenie:</b> minimalne ustawowe (' + (p.u_typ === 'praca' ? 'miesięczne' : 'stawka godzinowa') + ')</div></div>';
     if (p.u_stawka) html += '<div class="grid"><div><b>Stawka:</b> ' + (p.u_jedn === 'mies' ? 'miesięczna' : 'godzinowa') + '</div></div>';
     if (p.u_godziny_zmienne === true) html += '<div class="grid"><div><b>Godziny:</b> zmienne — klient przesyła co miesiąc</div></div>';
-    if (p.zamow_praca && p.zamow_praca.nazwa) html += '<div class="grid"><div><b>Zamówienie w biurze:</b> ' + esc(p.zamow_praca.nazwa) + ' — ' + esc(p.zamow_praca.cena) + ' zł</div></div>';
+    if (p.zamow_praca && p.zamow_praca.nazwa) html += '<div class="grid"><div><b>Zamówienie w biurze:</b> ' + esc(p.zamow_praca.nazwa) + ' — ' + esc(p.zamow_praca.cena) + ' zł' + (p.zamow_praca.urzad != null ? ' · opłata urzędowa: ' + (Number(p.zamow_praca.urzad) ? esc(p.zamow_praca.urzad) + ' zł (firma płaci osobno)' : 'bezpłatnie') : '') + '</div></div>';
     if (p.p_gotowka === true) html += '<div class="grid"><div><b>Wynagrodzenie:</b> gotówką (wniosek w komplecie)</div></div>';
     var docs = r.doc_paths || [];
     html += '<div class="sec">Dokumenty (' + docs.length + ')</div><div class="docs" data-docs></div>';

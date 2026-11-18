@@ -1,7 +1,7 @@
 // deno test --allow-env supabase/functions/powiadom/core_test.ts
 // Nothing here touches the network: fetch is replaced, so no message can leave.
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { bezTokenu, czysty, dataIso, tekstNowe } from "./logic.ts";
+import { bezTokenu, czysty, dataIso, tekstNowe, zadanieZamowienia } from "./logic.ts";
 
 const TOKEN = "123456:TEST-token_abc";
 Deno.env.set("SUPABASE_URL", "https://db.test");
@@ -40,6 +40,7 @@ Deno.test("bezTokenu", () => {
 type Row = { id: string; status: string; created_at: string; payload: Record<string, unknown> };
 function world(row: Row | null, opts: { sentHour?: number; tgThrows?: boolean; chats?: unknown[] } = {}) {
   const sent: { chat_id: string; text: string }[] = [];
+  const zadania: Record<string, unknown>[] = [];
   const logs: string[] = [];
   const realFetch = globalThis.fetch, realErr = console.error;
   console.error = (...a: unknown[]) => { logs.push(a.map(String).join(" ")); };
@@ -50,6 +51,13 @@ function world(row: Row | null, opts: { sentHour?: number; tgThrows?: boolean; c
       if (opts.tgThrows) throw new TypeError(`error sending request for url (${url})`);
       sent.push(JSON.parse(String(init?.body)));
       return new Response(JSON.stringify({ ok: true }));
+    }
+    if (url.includes("klienci_baza")) return new Response(JSON.stringify([{ kadrowy: "AT" }]));
+    if (url.includes("rpc/portal_pracownik_po_aliasie")) return new Response(JSON.stringify("Kadrowa@biuro.test"));
+    if (url.includes("portal_zadania")) {
+      const z = JSON.parse(String(init?.body));
+      if (!zadania.some((x) => x.klucz === z.klucz)) zadania.push(z); // the unique key of the table
+      return new Response("", { status: 201 });
     }
     if (url.includes("portal_ustawienia")) return new Response(JSON.stringify([{ value: opts.chats ?? [{ id: "-1000", name: "kadry" }] }]));
     if (url.includes("zatrudnienie_zgloszenia") && method === "PATCH") {
@@ -63,7 +71,7 @@ function world(row: Row | null, opts: { sentHour?: number; tgThrows?: boolean; c
     if (url.includes("zatrudnienie_zgloszenia")) return new Response(JSON.stringify(row ? [structuredClone(row)] : []));
     throw new Error("unexpected fetch " + url);
   }) as typeof fetch;
-  return { sent, logs, restore() { globalThis.fetch = realFetch; console.error = realErr; } };
+  return { sent, zadania, logs, restore() { globalThis.fetch = realFetch; console.error = realErr; } };
 }
 const ID = "00000000-0000-4000-8000-000000000001";
 const call = (id = ID) => handle(new Request("https://fn.test/powiadom", { method: "POST", body: JSON.stringify({ action: "nowe", id }) })).then((r) => r.json());
@@ -131,4 +139,29 @@ Deno.test("admin actions still need an administrator", async () => {
     assertEquals(r.status, 403);
     assertEquals(w.sent.length, 0);
   } finally { w.restore(); }
+});
+
+Deno.test("zadanieZamowienia: names and amounts are the office's, not the form's", () => {
+  assertEquals(zadanieZamowienia({}, ID), null);
+  assertEquals(zadanieZamowienia({ zamow_praca: { k: "constructor", nazwa: "x", cena: 1 } }, ID), null);
+  const z = zadanieZamowienia({ zamow_praca: { k: "oswiadczenie", nazwa: "Cokolwiek https://zly.example", cena: 1 }, p_imiona: "Oksana", p_nazwisko: "Testowa", p_obywatelstwo: "ukraińskie", z_nazwa: "Przykładowa Firma", z_nip: "555-555-55-55", u_od: "2026-12-01" }, ID)!;
+  assertEquals(z.klucz, "zamow_praca:" + ID);
+  assertEquals(z.nip, "5555555555");
+  assert(z.tytul.startsWith("Zamówienie: Oświadczenie o powierzeniu pracy") && z.tytul.includes("Oksana Testowa"), z.tytul);
+  assert(z.opis.includes("Cena biura: 150 zł") && z.opis.includes("Opłata urzędowa: 400 zł — płaci firma osobno") && !z.opis.includes("zly.example"), z.opis);
+  assert(zadanieZamowienia({ zamow_praca: { k: "powiadomienie" } }, ID)!.opis.includes("Opłata urzędowa: bezpłatnie"));
+  assert(tekstNowe({ zamow_praca: { k: "zezwolenie_a" } }, "P").includes("Zamówienie w biurze: Zezwolenie na pracę typ A — 250 zł"));
+});
+Deno.test("an ordered document -> one task for the client's HR officer; no order -> no task", async () => {
+  const w = world(fresh({ zamow_praca: { k: "powiadomienie" }, z_nip: "5555555555", p_imiona: "Oksana", p_nazwisko: "Testowa" }));
+  try {
+    await Promise.all(Array.from({ length: 5 }, () => call()));
+    assertEquals(w.zadania.length, 1);
+    assertEquals(w.zadania[0].assignee, "kadrowa@biuro.test");
+    assertEquals(w.zadania[0].link, "zatrudnienie.html");
+    assert(!("nip" in w.zadania[0]));
+    assertEquals(w.sent.length, 1);
+  } finally { w.restore(); }
+  const w2 = world(fresh());
+  try { await call(); assertEquals(w2.zadania.length, 0); } finally { w2.restore(); }
 });
