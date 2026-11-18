@@ -460,12 +460,34 @@
         '<div class="field"><label>PESEL</label><input type="text" inputmode="numeric" maxlength="11" data-r="pesel" /><span class="err"></span></div></div>' +
       '<div class="row"><div class="field"><label>Data urodzenia</label><input type="date" data-r="dataur" /></div>' +
         '<div class="field"><label>Pokrewieństwo</label><input type="text" data-r="pokrew" placeholder="np. dziecko / małżonek" /></div></div>' +
-      '<div class="field"><label>Adres zamieszkania</label><input type="text" data-r="adres" /></div>';
+      '<div class="field"><label>Adres zamieszkania</label><input type="text" data-r="adres" />' +
+        '<label class="check-row" style="margin-top:6px"><input type="checkbox" data-jak-prac /> Taki sam jak adres pracownika</label></div>';
     el.querySelector('button').addEventListener('click', function () { el.remove(); $('rodzinaAdd').style.display = ''; });
     wrap.appendChild(el);
     if (wrap.children.length >= MAX_RODZINA - 1) $('rodzinaAdd').style.display = 'none';
   }
   $('rodzinaAdd').addEventListener('click', addRodzina);
+  // "the same address as the worker's": the field is filled from the worker's address and follows it while ticked
+  function adresPracownika() {
+    var v = function (id) { return ($(id).value || '').trim(); };
+    var nr = v('a_nrdom') + (v('a_nrmiesz') ? '/' + v('a_nrmiesz') : '');
+    var pierwsza = [v('a_ulica'), nr].filter(Boolean).join(' ');
+    var druga = [v('a_kod'), v('a_miejscowosc')].filter(Boolean).join(' ');
+    return [pierwsza, druga].filter(Boolean).join(', ');
+  }
+  function ustawJakPrac(box) {
+    var pole = box.closest('.field').querySelector('input[type=text]');
+    if (box.checked) pole.value = adresPracownika();
+    pole.readOnly = box.checked;
+  }
+  form.addEventListener('change', function (e) {
+    if (e.target && e.target.matches && e.target.matches('input[data-jak-prac]')) ustawJakPrac(e.target);
+  });
+  ['a_ulica', 'a_nrdom', 'a_nrmiesz', 'a_kod', 'a_miejscowosc'].forEach(function (id) {
+    $(id).addEventListener('input', function () {
+      form.querySelectorAll('input[data-jak-prac]:checked').forEach(ustawJakPrac);
+    });
+  });
   function extraRodzina() {
     return Array.prototype.map.call($('rodzinaExtra').children, function (el) {
       var m = {};
@@ -648,6 +670,8 @@
   function showStatus(msg, type) { statusEl.textContent = msg; statusEl.className = 'status ' + type; }
 
   function collect() {
+    // the worker's address may have been filled in by the document reader after the box was ticked
+    form.querySelectorAll('input[data-jak-prac]:checked').forEach(ustawJakPrac);
     var fd = new FormData(form), data = {};
     fd.forEach(function (v, k) { data[k] = typeof v === 'string' ? v.trim() : v; });
     ['p_nopesel', 'm_same', 'r_has', 'p_gotowka', 'u_godziny_zmienne', 'u_bezterminowo', 'u_minimalna'].forEach(function (k) { data[k] = $(k).checked; });

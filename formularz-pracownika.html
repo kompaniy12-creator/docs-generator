@@ -455,7 +455,8 @@
           <div class="field"><label for="r_dataur">Data urodzenia</label><input id="r_dataur" name="r_dataur" type="date" /></div>
           <div class="field"><label for="r_pokrew">Pokrewieństwo</label><input id="r_pokrew" name="r_pokrew" type="text" placeholder="np. dziecko / małżonek" /></div>
         </div>
-        <div class="field"><label for="r_adres">Adres zamieszkania</label><input id="r_adres" name="r_adres" type="text" /></div>
+        <div class="field"><label for="r_adres">Adres zamieszkania</label><input id="r_adres" name="r_adres" type="text" />
+          <label class="check-row" style="margin-top:6px"><input type="checkbox" data-jak-prac /> Taki sam jak adres pracownika</label></div>
         <div id="rodzinaExtra"></div>
         <button type="button" id="rodzinaAdd" style="margin-top:10px;background:#fff;border:1.5px solid var(--brand-navy);color:var(--brand-navy);border-radius:8px;padding:9px 14px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer">＋ Dodaj następnego członka rodziny</button>
       </div>
@@ -479,6 +480,6 @@
 
 <script src="stawki.js?v=2"></script>
 <script src="urzedy.js"></script>
-<script src="formularz-pracownika.js?v=4"></script>
+<script src="formularz-pracownika.js?v=5"></script>
 </body>
 </html>
